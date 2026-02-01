@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 1 of 7 (Database Foundation)
-Plan: 2 of TBD in current phase
+Plan: 3 of TBD in current phase
 Status: Plan complete
-Last activity: 2026-02-01 - Completed 01-02: Status command wired to database
+Last activity: 2026-02-01 - Completed 01-03: Database integration tests
 
-Progress: [███░░░░░░░░] 20%
+Progress: [████░░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 3 min
-- Total execution time: 0.1 hours
+- Total plans completed: 3
+- Average duration: 4 min
+- Total execution time: 0.2 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-database-foundation | 2 | TBD | 3 min |
+| 01-database-foundation | 3 | TBD | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 3 min
+- Last 5 plans: 4 min
 - Trend: -
 
 *Updated after each plan completion*
@@ -52,6 +52,11 @@ Recent decisions affecting current work:
 - Output formats use JsonResponse wrapper for consistency across all commands
 - CLI commands needing global context receive (args, &Cli) signature
 
+**From 01-03 (Database Integration Tests):**
+- Tests use real Magellan database schema (version 4) not mocks for authentic validation
+- OptionalExtension trait required for nullable query results in rusqlite
+- Error tests use if-let pattern matching to avoid Debug trait requirement on MirageDb
+
 ### Pending Todos
 
 None yet.
@@ -63,5 +68,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 01-02: Status command wired to database
+Stopped at: Completed 01-03: Database integration tests
 Resume file: None

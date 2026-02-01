@@ -396,19 +396,6 @@ mod tests {
         conn
     }
 
-    /// Create cfg_blocks entries for a set of block IDs
-    ///
-    /// This is needed because cfg_paths has foreign keys to cfg_blocks
-    fn create_test_blocks(conn: &mut Connection, function_id: i64, block_ids: &[BlockId]) {
-        for &block_id in block_ids {
-            conn.execute(
-                "INSERT INTO cfg_blocks (function_id, block_kind, terminator)
-                 VALUES (?1, ?2, ?3)",
-                rusqlite::params!(function_id, "entry", "ret"),
-            ).unwrap();
-        }
-    }
-
     /// Create mock paths for testing
     fn create_mock_paths() -> Vec<Path> {
         vec![

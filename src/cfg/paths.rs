@@ -179,6 +179,103 @@ pub fn is_feasible_path(cfg: &Cfg, blocks: &[BlockId]) -> bool {
     true
 }
 
+/// Check if a path is statically feasible using pre-computed reachable set
+///
+/// This is an optimized version of `is_feasible_path` for batch operations.
+/// Instead of calling `is_reachable_from_entry` for each block (which is O(n)
+/// per call), we use a pre-computed HashSet of reachable block IDs, making
+/// reachability checks O(1).
+///
+/// **Why:** O(n) batch feasibility checking vs O(n²) for repeated individual calls.
+/// Pre-compute reachable set once with `find_reachable()`, reuse for all paths.
+///
+/// **Additional criterion over is_feasible_path:**
+/// 5. **All blocks reachable:** Every block in the path must be reachable from entry
+///    - Uses pre-computed HashSet for O(1) lookup
+///
+/// # Arguments
+///
+/// * `cfg` - Control flow graph to analyze
+/// * `blocks` - Block IDs in execution order
+/// * `reachable_blocks` - Pre-computed set of reachable BlockIds
+///
+/// # Returns
+///
+/// `true` if the path is statically feasible, `false` otherwise
+///
+/// # Examples
+///
+/// ```rust
+/// use mirage::cfg::reachability::find_reachable;
+///
+/// let reachable_nodes = find_reachable(&cfg);
+/// let reachable_blocks: HashSet<BlockId> = reachable_nodes
+///     .iter()
+///     .map(|&idx| cfg[idx].id)
+///     .collect();
+///
+/// for path in paths {
+///     let feasible = is_feasible_path_precomputed(&cfg, &path.blocks, &reachable_blocks);
+/// }
+/// ```
+pub fn is_feasible_path_precomputed(
+    cfg: &Cfg,
+    blocks: &[BlockId],
+    reachable_blocks: &HashSet<BlockId>,
+) -> bool {
+    use crate::cfg::BlockKind;
+
+    // Criterion 1: Path must be non-empty
+    if blocks.is_empty() {
+        return false;
+    }
+
+    // Criterion 2: First block must be Entry kind
+    let first_idx = match find_node_by_block_id(cfg, blocks[0]) {
+        Some(idx) => idx,
+        None => return false, // Block doesn't exist
+    };
+    if cfg[first_idx].kind != BlockKind::Entry {
+        return false;
+    }
+
+    // Criterion 5: All blocks must be reachable (O(1) per block)
+    for &block_id in blocks {
+        if !reachable_blocks.contains(&block_id) {
+            return false;
+        }
+    }
+
+    // Criterion 3: Last block must have valid exit terminator
+    let last_idx = match find_node_by_block_id(cfg, *blocks.last().unwrap()) {
+        Some(idx) => idx,
+        None => return false, // Block doesn't exist
+    };
+
+    match &cfg[last_idx].terminator {
+        Terminator::Return => {}, // Feasible: normal exit
+        Terminator::Abort(_) => {}, // Feasible: error path but reachable
+        Terminator::Call { unwind: None, .. } => {}, // Feasible: no unwind
+        Terminator::Call { unwind: Some(_), target: Some(_) } => {}, // Feasible: has target
+        // Infeasible terminators (dead ends)
+        Terminator::Unreachable |
+        Terminator::Goto { .. } |
+        Terminator::SwitchInt { .. } |
+        Terminator::Call { unwind: Some(_), target: None } => {
+            return false;
+        }
+    }
+
+    // Criterion 4: All intermediate blocks must exist
+    for &block_id in blocks.iter().skip(1).take(blocks.len().saturating_sub(2)) {
+        if find_node_by_block_id(cfg, block_id).is_none() {
+            return false;
+        }
+    }
+
+    true
+}
+
 /// Classify a path based on its terminators and reachability
 ///
 /// **Classification rules (in priority order):**
@@ -2122,5 +2219,129 @@ mod tests {
 
         assert!(!is_feasible_path(&g, &path),
                 "Path ending in Call with only unwind (no target) should be infeasible");
+    }
+
+    // Task 2: is_feasible_path_precomputed tests
+
+    #[test]
+    fn test_is_feasible_path_precomputed_matches_basic() {
+        let cfg = create_diamond_cfg();
+
+        // Pre-compute reachable set
+        use crate::cfg::reachability::find_reachable;
+        let reachable_nodes = find_reachable(&cfg);
+        let reachable_blocks: HashSet<BlockId> = reachable_nodes
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Test multiple paths - both should give same result
+        let test_paths = vec![
+            vec![0, 1, 3],      // Complete path - feasible
+            vec![0, 2, 3],      // Complete path - feasible
+            vec![0, 1],         // Dead end - infeasible
+            vec![],             // Empty - infeasible
+        ];
+
+        for path in test_paths {
+            let basic = is_feasible_path(&cfg, &path);
+            let precomputed = is_feasible_path_precomputed(&cfg, &path, &reachable_blocks);
+            assert_eq!(
+                basic, precomputed,
+                "is_feasible_path_precomputed should match is_feasible_path for {:?}",
+                path
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_feasible_path_precomputed_unreachable_block() {
+        let cfg = create_dead_code_cfg();
+
+        // Pre-compute reachable set (only block 0 is reachable)
+        use crate::cfg::reachability::find_reachable;
+        let reachable_nodes = find_reachable(&cfg);
+        let reachable_blocks: HashSet<BlockId> = reachable_nodes
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Path with unreachable block
+        let path = vec![1]; // Block 1 is not reachable from entry
+
+        assert!(!is_feasible_path_precomputed(&cfg, &path, &reachable_blocks),
+                "Path with unreachable block should be infeasible");
+    }
+
+    #[test]
+    fn test_is_feasible_path_precomputed_performance() {
+        use crate::cfg::reachability::find_reachable;
+        use std::time::Instant;
+
+        let cfg = create_diamond_cfg();
+
+        // Pre-compute reachable set once
+        let reachable_nodes = find_reachable(&cfg);
+        let reachable_blocks: HashSet<BlockId> = reachable_nodes
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Create many test paths
+        let test_paths: Vec<Vec<BlockId>> = (0..1000)
+            .map(|_| vec![0, 1, 3])
+            .collect();
+
+        // Time the precomputed version
+        let start = Instant::now();
+        for path in &test_paths {
+            let _ = is_feasible_path_precomputed(&cfg, path, &reachable_blocks);
+        }
+        let precomputed_duration = start.elapsed();
+
+        // Should be very fast (< 5ms for 1000 paths)
+        assert!(
+            precomputed_duration.as_millis() < 5,
+            "is_feasible_path_precomputed should check 1000 paths in <5ms, took {}ms",
+            precomputed_duration.as_millis()
+        );
+    }
+
+    #[test]
+    fn test_is_feasible_path_precomputed_all_criteria() {
+        use crate::cfg::reachability::find_reachable;
+
+        // Test with normal path (feasible)
+        let cfg_normal = create_linear_cfg();
+        let reachable_normal = find_reachable(&cfg_normal)
+            .iter()
+            .map(|&idx| cfg_normal[idx].id)
+            .collect();
+        assert!(
+            is_feasible_path_precomputed(&cfg_normal, &[0, 1, 2], &reachable_normal),
+            "Complete linear path should be feasible"
+        );
+
+        // Test with error path (feasible)
+        let cfg_error = create_error_cfg();
+        let reachable_error = find_reachable(&cfg_error)
+            .iter()
+            .map(|&idx| cfg_error[idx].id)
+            .collect();
+        assert!(
+            is_feasible_path_precomputed(&cfg_error, &[0, 1], &reachable_error),
+            "Path ending in Abort should be feasible (error path but reachable)"
+        );
+
+        // Test with degenerate path (infeasible)
+        let cfg_degen = create_unreachable_term_cfg();
+        let reachable_degen = find_reachable(&cfg_degen)
+            .iter()
+            .map(|&idx| cfg_degen[idx].id)
+            .collect();
+        assert!(
+            !is_feasible_path_precomputed(&cfg_degen, &[0, 1], &reachable_degen),
+            "Path ending in Unreachable should be infeasible"
+        );
     }
 }

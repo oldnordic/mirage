@@ -2,9 +2,11 @@
 
 pub mod ast;
 pub mod edge;
+pub mod mir;
 
 pub use ast::{ast_to_cfg, CFGBuilder};
 pub use edge::{EdgeType, classify_terminator};
+pub use mir::ullbc_to_cfg;
 
 use petgraph::graph::DiGraph;
 use serde::{Deserialize, Serialize};
@@ -37,7 +39,7 @@ pub enum BlockKind {
 }
 
 /// Terminator instruction (simplified representation)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Terminator {
     Goto { target: BlockId },
     SwitchInt { targets: Vec<BlockId>, otherwise: BlockId },

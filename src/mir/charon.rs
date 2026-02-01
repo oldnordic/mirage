@@ -53,6 +53,18 @@ pub struct UllbcBlock {
     pub id: usize,
     pub statements: Vec<String>,  // Simplified
     pub terminator: UllbcTerminator,
+    /// Source location span (optional, depends on Charon output)
+    #[serde(default)]
+    pub span: Option<UllbcSpan>,
+}
+
+/// Source span from ULLBC
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UllbcSpan {
+    pub start_line: usize,
+    pub start_column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -81,6 +81,7 @@ mod tests {
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
+            source_location: None,
         });
 
         // Block 1: if statement, goes to 2 (true) or 3 (false)
@@ -92,6 +93,7 @@ mod tests {
                 targets: vec![2],
                 otherwise: 3,
             },
+            source_location: None,
         });
 
         // Block 2: true branch, returns
@@ -100,6 +102,7 @@ mod tests {
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
+            source_location: None,
         });
 
         // Block 3: false branch, returns
@@ -108,6 +111,7 @@ mod tests {
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
+            source_location: None,
         });
 
         // Add edges
@@ -195,6 +199,7 @@ mod tests {
                 targets: vec![1],
                 otherwise: 2,
             },
+            source_location: None,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -202,6 +207,7 @@ mod tests {
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
+            source_location: None,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -209,6 +215,7 @@ mod tests {
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
+            source_location: None,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -216,6 +223,7 @@ mod tests {
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
+            source_location: None,
         });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -242,6 +250,7 @@ mod tests {
                 target: Some(1),
                 unwind: Some(2),
             },
+            source_location: None,
         });
 
         // Block 1: normal return
@@ -250,6 +259,7 @@ mod tests {
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
+            source_location: None,
         });
 
         // Block 2: unwind exit
@@ -258,6 +268,7 @@ mod tests {
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Abort("panic".to_string()),
+            source_location: None,
         });
 
         g.add_edge(b0, b1, EdgeType::Call);
@@ -283,6 +294,7 @@ mod tests {
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Return,
+            source_location: None,
         });
 
         // A single block that is both entry and exit
@@ -300,6 +312,7 @@ mod tests {
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
+            source_location: None,
         });
 
         // Block 1: normal path
@@ -308,6 +321,7 @@ mod tests {
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Return,
+            source_location: None,
         });
 
         // Block 2: unreachable (dead code)
@@ -316,6 +330,7 @@ mod tests {
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Unreachable,
+            source_location: None,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);

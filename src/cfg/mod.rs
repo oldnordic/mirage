@@ -29,6 +29,8 @@ pub struct BasicBlock {
     pub statements: Vec<String>,
     /// Terminator instruction
     pub terminator: Terminator,
+    /// Source location for this block (if available)
+    pub source_location: Option<SourceLocation>,
 }
 
 /// Block identifier

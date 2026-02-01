@@ -193,6 +193,7 @@ impl<'a> CFGBuilder<'a> {
                     .map(|n| self.node_text(*n))
                     .collect(),
                 terminator: self.extract_terminator(statements),
+                source_location: None, // TODO: Extract from tree-sitter node ranges
             };
 
             let node_idx = self.graph.add_node(basic_block);

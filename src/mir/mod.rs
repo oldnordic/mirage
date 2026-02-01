@@ -2,4 +2,4 @@
 
 pub mod charon;
 
-pub use charon::{run_charon, parse_ullbc, UllbcData, UllbcBody, UllbcBlock, UllbcTerminator};
+pub use charon::{parse_ullbc, run_charon, UllbcBlock, UllbcBody, UllbcData, UllbcSpan, UllbcTerminator};

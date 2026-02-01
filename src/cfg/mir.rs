@@ -1,10 +1,16 @@
 //! Convert ULLBC to Mirage CFG
 
-use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
-use crate::mir::UllbcBody;
+use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, SourceLocation, Terminator};
+use crate::mir::{UllbcBody, UllbcSpan};
+use std::path::PathBuf;
 
 /// Convert ULLBC body to Mirage CFG
 pub fn ullbc_to_cfg(body: &UllbcBody) -> Cfg {
+    ullbc_to_cfg_with_file(body, PathBuf::from("unknown.rs"))
+}
+
+/// Convert ULLBC body to Mirage CFG with file path for source locations
+pub fn ullbc_to_cfg_with_file(body: &UllbcBody, file_path: PathBuf) -> Cfg {
     let mut graph = Cfg::new();
 
     // Map block IDs to graph node indices
@@ -22,11 +28,17 @@ pub fn ullbc_to_cfg(body: &UllbcBody) -> Cfg {
             }
         };
 
+        // Extract source location from span if available
+        let source_location = block.span.as_ref().map(|span| {
+            SourceLocation::from_charon_span(file_path.clone(), &convert_ullbc_span(span))
+        });
+
         let basic_block = BasicBlock {
             id: block.id,
             kind,
             statements: block.statements.clone(),
             terminator: convert_terminator(&block.terminator),
+            source_location,
         };
 
         node_indices.push(graph.add_node(basic_block));
@@ -63,6 +75,17 @@ fn convert_terminator(term: &crate::mir::UllbcTerminator) -> Terminator {
             unwind: *unwind,
         },
         crate::mir::UllbcTerminator::Abort { message } => Terminator::Abort(message.clone()),
+    }
+}
+
+/// Convert ULLBC span to CharonSpan (adapter type)
+fn convert_ullbc_span(span: &UllbcSpan) -> crate::cfg::CharonSpan {
+    crate::cfg::CharonSpan {
+        file_id: 0, // UllbcSpan doesn't have file_id, use 0 as placeholder
+        start_line: span.start_line,
+        start_column: span.start_column,
+        end_line: span.end_line,
+        end_column: span.end_column,
     }
 }
 
@@ -111,11 +134,13 @@ mod tests {
                     id: 0,
                     statements: vec!["let x = 1".to_string()],
                     terminator: UllbcTerminator::Goto { target: 1 },
+                    span: None,
                 },
                 UllbcBlock {
                     id: 1,
                     statements: vec![],
                     terminator: UllbcTerminator::Return,
+                    span: None,
                 },
             ],
         }
@@ -154,16 +179,19 @@ mod tests {
                         target: Some(1),
                         unwind: Some(2),
                     },
+                    span: None,
                 },
                 UllbcBlock {
                     id: 1,
                     statements: vec![],
                     terminator: UllbcTerminator::Return,
+                    span: None,
                 },
                 UllbcBlock {
                     id: 2,
                     statements: vec![],
                     terminator: UllbcTerminator::Return,
+                    span: None,
                 },
             ],
         };
@@ -195,21 +223,25 @@ mod tests {
                         targets: vec![1, 2],
                         otherwise: 3,
                     },
+                    span: None,
                 },
                 UllbcBlock {
                     id: 1,
                     statements: vec![],
                     terminator: UllbcTerminator::Return,
+                    span: None,
                 },
                 UllbcBlock {
                     id: 2,
                     statements: vec![],
                     terminator: UllbcTerminator::Return,
+                    span: None,
                 },
                 UllbcBlock {
                     id: 3,
                     statements: vec![],
                     terminator: UllbcTerminator::Return,
+                    span: None,
                 },
             ],
         };
@@ -244,11 +276,13 @@ mod tests {
                     id: 0,
                     statements: vec![],
                     terminator: UllbcTerminator::Goto { target: 1 },
+                    span: None,
                 },
                 UllbcBlock {
                     id: 1,
                     statements: vec![],
                     terminator: UllbcTerminator::Return,
+                    span: None,
                 },
             ],
         };
@@ -272,11 +306,13 @@ mod tests {
                     id: 0,
                     statements: vec![],
                     terminator: UllbcTerminator::Goto { target: 1 },
+                    span: None,
                 },
                 UllbcBlock {
                     id: 1,
                     statements: vec![],
                     terminator: UllbcTerminator::Unreachable,
+                    span: None,
                 },
             ],
         };

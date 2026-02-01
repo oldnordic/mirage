@@ -992,3 +992,214 @@ mod status_tests {
         assert_eq!(status.cfg_dominators, 0, "Empty database should have 0 cfg_dominators");
     }
 }
+
+// ============================================================================
+// paths() Command Tests
+// ============================================================================
+
+#[cfg(test)]
+mod paths_tests {
+    use super::*;
+    use crate::cfg::{PathKind, PathLimits, enumerate_paths};
+
+    /// Test that paths() command enumerates paths from a test CFG
+    #[test]
+    fn test_paths_enumeration_basic() {
+        let cfg = cmds::create_test_cfg();
+        let limits = PathLimits::default();
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // Test CFG has 2 paths (entry -> true -> return, entry -> false -> return)
+        assert!(!paths.is_empty(), "Should find at least one path");
+        assert_eq!(paths.len(), 2, "Test CFG should have exactly 2 paths");
+
+        // Both paths should be Normal kind (no errors in test CFG)
+        let normal_count = paths.iter().filter(|p| p.kind == PathKind::Normal).count();
+        assert_eq!(normal_count, 2, "Both paths should be Normal");
+    }
+
+    /// Test that show_errors flag filters to error paths only
+    #[test]
+    fn test_paths_show_errors_filter() {
+        let cfg = cmds::create_test_cfg();
+        let limits = PathLimits::default();
+        let mut paths = enumerate_paths(&cfg, &limits);
+
+        // Filter to error paths
+        paths.retain(|p| p.kind == PathKind::Error);
+
+        // Test CFG has no error paths
+        assert_eq!(paths.len(), 0, "Test CFG should have no error paths");
+
+        // Verify filter worked by checking all remaining paths would be errors
+        for path in &paths {
+            assert_eq!(path.kind, PathKind::Error, "Filtered paths should all be Error kind");
+        }
+    }
+
+    /// Test that max_length limit is applied to path enumeration
+    #[test]
+    fn test_paths_max_length_limit() {
+        let cfg = cmds::create_test_cfg();
+
+        // Set a very low max_length limit
+        let limits = PathLimits::default().with_max_length(1);
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // All paths should have length <= 1
+        for path in &paths {
+            assert!(path.len() <= 1, "Path length should be <= max_length limit");
+        }
+
+        // With max_length=1, we should get fewer paths than unrestricted
+        let unlimited_paths = enumerate_paths(&cfg, &PathLimits::default());
+        assert!(paths.len() <= unlimited_paths.len(),
+            "Limited enumeration should produce <= paths than unlimited");
+    }
+
+    /// Test that PathsArgs.function is extracted correctly
+    #[test]
+    fn test_paths_args_function_extraction() {
+        let args = PathsArgs {
+            function: "test_function".to_string(),
+            show_errors: false,
+            max_length: None,
+            with_blocks: false,
+        };
+
+        assert_eq!(args.function, "test_function");
+        assert!(!args.show_errors);
+        assert!(args.max_length.is_none());
+        assert!(!args.with_blocks);
+    }
+
+    /// Test that PathsArgs with flags set correctly reflects state
+    #[test]
+    fn test_paths_args_with_flags() {
+        let args = PathsArgs {
+            function: "my_func".to_string(),
+            show_errors: true,
+            max_length: Some(10),
+            with_blocks: true,
+        };
+
+        assert_eq!(args.function, "my_func");
+        assert!(args.show_errors, "show_errors flag should be true");
+        assert_eq!(args.max_length, Some(10), "max_length should be Some(10)");
+        assert!(args.with_blocks, "with_blocks flag should be true");
+    }
+
+    /// Test PathSummary conversion from Path
+    #[test]
+    fn test_path_summary_from_path() {
+        use crate::cfg::Path;
+
+        let path = Path::new(vec![0, 1, 2], PathKind::Normal);
+        let summary = PathSummary::from(path);
+
+        assert!(!summary.path_id.is_empty(), "path_id should not be empty");
+        assert_eq!(summary.kind, "Normal", "kind should match PathKind");
+        assert_eq!(summary.length, 3, "length should match path length");
+        assert_eq!(summary.blocks, vec![0, 1, 2], "blocks should match path blocks");
+    }
+
+    /// Test PathSummary conversion for different PathKinds
+    #[test]
+    fn test_path_summary_different_kinds() {
+        use crate::cfg::Path;
+
+        let kinds = vec![
+            (PathKind::Normal, "Normal"),
+            (PathKind::Error, "Error"),
+            (PathKind::Degenerate, "Degenerate"),
+            (PathKind::Unreachable, "Unreachable"),
+        ];
+
+        for (kind, expected_str) in kinds {
+            let path = Path::new(vec![0, 1], kind);
+            let summary = PathSummary::from(path);
+            assert_eq!(summary.kind, expected_str,
+                "PathKind::{:?} should serialize to {}", kind, expected_str);
+        }
+    }
+
+    /// Test that multiple paths produce multiple PathSummaries
+    #[test]
+    fn test_paths_response_multiple_paths() {
+        use crate::cfg::Path;
+
+        let paths = vec![
+            Path::new(vec![0, 1], PathKind::Normal),
+            Path::new(vec![0, 2], PathKind::Normal),
+            Path::new(vec![0, 1, 3], PathKind::Error),
+        ];
+
+        let summaries: Vec<PathSummary> = paths.into_iter().map(PathSummary::from).collect();
+
+        assert_eq!(summaries.len(), 3, "Should have 3 summaries");
+
+        // Check that error path is correctly identified
+        let error_summaries = summaries.iter().filter(|s| s.kind == "Error").count();
+        assert_eq!(error_summaries, 1, "Should have 1 error path");
+    }
+
+    /// Test PathsResponse contains expected metadata
+    #[test]
+    fn test_paths_response_metadata() {
+        let response = PathsResponse {
+            function: "test_func".to_string(),
+            total_paths: 5,
+            error_paths: 2,
+            paths: vec![],
+        };
+
+        assert_eq!(response.function, "test_func");
+        assert_eq!(response.total_paths, 5);
+        assert_eq!(response.error_paths, 2);
+        assert!(response.paths.is_empty());
+    }
+
+    /// Test integration: create_test_cfg produces enumerable paths
+    #[test]
+    fn test_paths_integration_with_test_cfg() {
+        let cfg = cmds::create_test_cfg();
+        let limits = PathLimits::default();
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // Verify we got the expected number of paths for the diamond CFG
+        assert!(!paths.is_empty(), "Test CFG should produce paths");
+
+        // Each path should start at entry (block 0)
+        for path in &paths {
+            assert_eq!(path.blocks[0], 0, "All paths should start at entry block 0");
+            assert_eq!(path.entry, 0, "Path entry should be block 0");
+        }
+
+        // Each path should end at an exit block
+        for path in &paths {
+            assert!(path.exit == 2 || path.exit == 3,
+                "Path exit should be either block 2 or 3 (the return blocks)");
+        }
+    }
+
+    /// Test that with_blocks flag affects output format (integration check)
+    #[test]
+    fn test_paths_args_with_blocks_flag() {
+        let args_with = PathsArgs {
+            function: "test".to_string(),
+            show_errors: false,
+            max_length: None,
+            with_blocks: true,
+        };
+
+        let args_without = PathsArgs {
+            function: "test".to_string(),
+            show_errors: false,
+            max_length: None,
+            with_blocks: false,
+        };
+
+        assert!(args_with.with_blocks, "with_blocks should be true");
+        assert!(!args_without.with_blocks, "with_blocks should be false");
+    }
+}

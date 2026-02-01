@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 1 of 7 (Database Foundation)
-Plan: 1 of TBD in current phase
+Plan: 2 of TBD in current phase
 Status: Plan complete
-Last activity: 2026-02-01 - Completed 01-01: Incremental update tracking and migration framework
+Last activity: 2026-02-01 - Completed 01-02: Status command wired to database
 
-Progress: [██░░░░░░░░░] 10%
+Progress: [███░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
+- Total plans completed: 2
 - Average duration: 3 min
 - Total execution time: 0.1 hours
 
@@ -27,7 +27,7 @@ Progress: [██░░░░░░░░░] 10%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-database-foundation | 1 | TBD | 3 min |
+| 01-database-foundation | 2 | TBD | 3 min |
 
 **Recent Trend:**
 - Last 5 plans: 3 min
@@ -47,6 +47,11 @@ Recent decisions affecting current work:
 - Foreign key enforcement requires explicit PRAGMA in tests (SQLite default: OFF)
 - function_hash uses TEXT type (not BLOB) for easier debugging and human-readability
 
+**From 01-02 (Status Command):**
+- Database path resolution follows Magellan pattern: CLI arg > MIRAGE_DB env > default "./codemcp.db"
+- Output formats use JsonResponse wrapper for consistency across all commands
+- CLI commands needing global context receive (args, &Cli) signature
+
 ### Pending Todos
 
 None yet.
@@ -58,5 +63,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 01-01: Incremental update tracking and migration framework
+Stopped at: Completed 01-02: Status command wired to database
 Resume file: None

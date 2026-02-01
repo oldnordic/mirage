@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 2 of 7 (CFG Construction) - In Progress
-Plan: 04 complete (of 6 in this phase)
-Status: CFG analysis utilities complete with entry/exit detection and graph traversal functions
-Last activity: 2026-02-01 - Completed 02-04: Entry/exit detection and CFG analysis
+Plan: 05 complete (of 6 in this phase)
+Status: Source location mapping integrated into BasicBlock for CFG-to-source traceability
+Last activity: 2026-02-01 - Completed 02-05: Source location mapping
 
-Progress: [██████████░] 67% (Phase 2/7, Plan 4/6 in phase)
+Progress: [█████████░] 83% (Phase 2/7, Plan 5/6 in phase)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 4 min
-- Total execution time: 0.5 hours
+- Total plans completed: 8
+- Average duration: 5 min
+- Total execution time: 0.7 hours
 
 **By Phase:**
 
 | Phase | Plans | Complete | Avg/Plan |
 |-------|-------|----------|----------|
 | 01-database-foundation | 3 | 3/3 | 4 min |
-| 02-cfg-construction | 6 | 4/6 | 4 min |
+| 02-cfg-construction | 6 | 5/6 | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 4 min
+- Last 5 plans: 5 min
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -85,6 +85,14 @@ Recent decisions affecting current work:
 - Entry detection uses first-node query (id=0 always entry by construction)
 - Variable naming: avoid `cfg` as variable name (conflicts with Rust built-in macro)
 
+**From 02-05 (Source Location Mapping):**
+- source_location is Optional<SourceLocation> on BasicBlock (AST CFG doesn't have spans yet)
+- Charon ULLBC spans provide line:column but not byte offsets (uses 0 placeholder)
+- File ID to path mapping deferred (requires ULLBC file table access)
+- byte_to_line_column correctly handles UTF-8 multibyte characters for column counting
+- SourceLocation::display() produces "file:line:col-line:col" format for IDE integration
+- overlaps() method for source range intersection (useful for coverage analysis)
+
 ### Pending Todos
 
 None yet.
@@ -97,5 +105,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 02-04: Entry/exit detection and CFG analysis
+Stopped at: Completed 02-05: Source location mapping
 Resume file: None

@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 2 of 7 (CFG Construction) - In Progress
-Plan: 03 complete (of 6 in this phase)
-Status: Core CFG types defined, ready for builder implementation
-Last activity: 2026-02-01 - Completed 02-03: Core CFG data structures
+Plan: 01 complete (of 6 in this phase)
+Status: MIR extraction via Charon implemented, ULLBC to CFG conversion complete
+Last activity: 2026-02-01 - Completed 02-01: MIR extraction via Charon
 
-Progress: [██████████░] 19% (Phase 2/7, Plan 3/6 in phase)
+Progress: [██████████░] 24% (Phase 2/7, Plan 2/6 in phase)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 4 min
-- Total execution time: 0.3 hours
+- Total plans completed: 5
+- Average duration: 5 min
+- Total execution time: 0.4 hours
 
 **By Phase:**
 
 | Phase | Plans | Complete | Avg/Plan |
 |-------|-------|----------|----------|
 | 01-database-foundation | 3 | 3/3 | 4 min |
-| 02-cfg-construction | 6 | 1/6 | 5 min |
+| 02-cfg-construction | 6 | 2/6 | 6 min |
 
 **Recent Trend:**
-- Last 5 plans: 4 min
+- Last 5 plans: 5 min
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -65,6 +65,13 @@ Recent decisions affecting current work:
 - BlockId uses usize for simple integer indexing within functions
 - All domain types derive Serialize/Deserialize for JSON export capability
 
+**From 02-01 (MIR Extraction via Charon):**
+- Charon used as external binary (not linked) to avoid nightly Rust requirement
+- ULLBC structures simplified for CFG needs - full Charon types are much larger
+- EdgeType classification matches MIR terminator semantics (Call/Exception for unwind)
+- BlockKind inference: Entry (id=0), Exit (Return/Unreachable), Normal (others)
+- External tool integration pattern: spawn binary, capture stdout, parse JSON
+
 ### Pending Todos
 
 None yet.
@@ -72,9 +79,10 @@ None yet.
 ### Blockers/Concerns
 
 - **sccache corruption**: Build cache occasionally returns stale results. Workaround: `RUSTC_WRAPPER=""` env var to bypass. Not blocking but noted.
+- **Charon external dependency**: Users must install Charon binary separately. Documented in SUMMARY.md but not enforced.
 
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 02-03: Core CFG data structures
+Stopped at: Completed 02-01: MIR extraction via Charon
 Resume file: None

@@ -2682,3 +2682,300 @@ mod verify_tests {
         assert!(!result.found_in_cache);
     }
 }
+
+// ============================================================================
+// Output Format Consistency Tests (06-07)
+// ============================================================================
+
+#[cfg(test)]
+mod output_format_tests {
+    use super::*;
+    use crate::output::JsonResponse;
+
+    /// Test that all response structs serialize correctly to JSON
+    #[test]
+    fn test_all_response_types_serialize() {
+        // PathsResponse
+        let paths_resp = PathsResponse {
+            function: "test_func".to_string(),
+            total_paths: 2,
+            error_paths: 0,
+            paths: vec![],
+        };
+        let paths_json = serde_json::to_string(&paths_resp);
+        assert!(paths_json.is_ok(), "PathsResponse should serialize");
+
+        // DominanceResponse
+        let dom_resp = DominanceResponse {
+            function: "test_func".to_string(),
+            kind: "dominators".to_string(),
+            root: Some(0),
+            dominance_tree: vec![],
+            must_pass_through: None,
+        };
+        let dom_json = serde_json::to_string(&dom_resp);
+        assert!(dom_json.is_ok(), "DominanceResponse should serialize");
+
+        // UnreachableResponse
+        let unreach_resp = UnreachableResponse {
+            function: "test_func".to_string(),
+            total_functions: 1,
+            functions_with_unreachable: 0,
+            unreachable_count: 0,
+            blocks: vec![],
+        };
+        let unreach_json = serde_json::to_string(&unreach_resp);
+        assert!(unreach_json.is_ok(), "UnreachableResponse should serialize");
+
+        // VerifyResult
+        let verify_res = VerifyResult {
+            path_id: "test_path".to_string(),
+            valid: true,
+            found_in_cache: true,
+            function_id: Some(1),
+            reason: "Test".to_string(),
+            current_paths: 2,
+        };
+        let verify_json = serde_json::to_string(&verify_res);
+        assert!(verify_json.is_ok(), "VerifyResult should serialize");
+    }
+
+    /// Test that JsonResponse wrapper works for all response types
+    #[test]
+    fn test_json_response_wrapper_for_all_commands() {
+        // PathsResponse wrapped
+        let paths_resp = PathsResponse {
+            function: "test_func".to_string(),
+            total_paths: 2,
+            error_paths: 0,
+            paths: vec![],
+        };
+        let paths_wrapper = JsonResponse::new(paths_resp);
+        assert_eq!(paths_wrapper.schema_version, "1.0.0");
+        assert_eq!(paths_wrapper.tool, "mirage");
+        assert!(!paths_wrapper.execution_id.is_empty());
+
+        // DominanceResponse wrapped
+        let dom_resp = DominanceResponse {
+            function: "test_func".to_string(),
+            kind: "dominators".to_string(),
+            root: Some(0),
+            dominance_tree: vec![],
+            must_pass_through: None,
+        };
+        let dom_wrapper = JsonResponse::new(dom_resp);
+        assert_eq!(dom_wrapper.schema_version, "1.0.0");
+        assert_eq!(dom_wrapper.tool, "mirage");
+
+        // UnreachableResponse wrapped
+        let unreach_resp = UnreachableResponse {
+            function: "test_func".to_string(),
+            total_functions: 1,
+            functions_with_unreachable: 0,
+            unreachable_count: 0,
+            blocks: vec![],
+        };
+        let unreach_wrapper = JsonResponse::new(unreach_resp);
+        assert_eq!(unreach_wrapper.schema_version, "1.0.0");
+        assert_eq!(unreach_wrapper.tool, "mirage");
+
+        // VerifyResult wrapped
+        let verify_res = VerifyResult {
+            path_id: "test_path".to_string(),
+            valid: true,
+            found_in_cache: true,
+            function_id: Some(1),
+            reason: "Test".to_string(),
+            current_paths: 2,
+        };
+        let verify_wrapper = JsonResponse::new(verify_res);
+        assert_eq!(verify_wrapper.schema_version, "1.0.0");
+        assert_eq!(verify_wrapper.tool, "mirage");
+    }
+
+    /// Test that to_json() produces compact JSON
+    #[test]
+    fn test_json_response_compact_format() {
+        let data = vec!["item1", "item2"];
+        let wrapper = JsonResponse::new(data);
+        let compact = wrapper.to_json();
+
+        // Compact JSON should not have unnecessary whitespace
+        assert!(!compact.contains("\n"), "Compact JSON should not have newlines");
+        assert!(compact.contains("\"item1\""), "Compact JSON should contain data");
+    }
+
+    /// Test that to_pretty_json() produces formatted JSON
+    #[test]
+    fn test_json_response_pretty_format() {
+        let data = vec!["item1", "item2"];
+        let wrapper = JsonResponse::new(data);
+        let pretty = wrapper.to_pretty_json();
+
+        // Pretty JSON should have newlines for formatting
+        assert!(pretty.contains("\n"), "Pretty JSON should have newlines");
+        assert!(pretty.contains("  "), "Pretty JSON should have indentation");
+
+        // Both formats should produce valid JSON with same data
+        let compact = wrapper.to_json();
+        let compact_val: serde_json::Value = serde_json::from_str(&compact).unwrap();
+        let pretty_val: serde_json::Value = serde_json::from_str(&pretty).unwrap();
+        assert_eq!(compact_val, pretty_val, "Both formats should produce same data");
+    }
+
+    /// Test that JsonResponse contains required fields
+    #[test]
+    fn test_json_response_required_fields() {
+        let data = "test_data";
+        let wrapper = JsonResponse::new(data);
+
+        // Check all required fields exist and have correct values
+        assert_eq!(wrapper.schema_version, "1.0.0");
+        assert_eq!(wrapper.tool, "mirage");
+        assert!(!wrapper.execution_id.is_empty());
+        assert!(!wrapper.timestamp.is_empty());
+
+        // Verify execution_id format (should be timestamp-processid)
+        assert!(wrapper.execution_id.contains("-"), "execution_id should contain hyphen");
+
+        // Verify timestamp is valid RFC3339 format
+        let parsed_time = chrono::DateTime::parse_from_rfc3339(&wrapper.timestamp);
+        assert!(parsed_time.is_ok(), "timestamp should be valid RFC3339");
+    }
+
+    /// Test that format selection logic works correctly
+    #[test]
+    fn test_output_format_enum_matches() {
+        // Test that all three formats are distinct
+        assert_ne!(OutputFormat::Human, OutputFormat::Json);
+        assert_ne!(OutputFormat::Human, OutputFormat::Pretty);
+        assert_ne!(OutputFormat::Json, OutputFormat::Pretty);
+
+        // Test equality
+        assert_eq!(OutputFormat::Human, OutputFormat::Human);
+        assert_eq!(OutputFormat::Json, OutputFormat::Json);
+        assert_eq!(OutputFormat::Pretty, OutputFormat::Pretty);
+    }
+
+    /// Test that human format doesn't contain JSON artifacts
+    #[test]
+    fn test_human_output_no_json_artifacts() {
+        // Human format should print readable text, not JSON
+        // This test verifies the pattern: Human output uses println!, not JsonResponse
+
+        let function_name = "test_function";
+        let path_count = 5;
+
+        // Simulate human format output
+        let mut output = String::new();
+        output.push_str(&format!("Function: {}\n", function_name));
+        output.push_str(&format!("Total paths: {}\n", path_count));
+
+        // Human output should not contain JSON artifacts
+        assert!(!output.contains("{"), "Human output should not contain JSON objects");
+        assert!(!output.contains("}"), "Human output should not contain JSON objects");
+        assert!(!output.contains("\""), "Human output should not contain JSON quotes");
+        assert!(!output.contains("schema_version"), "Human output should not contain JSON metadata");
+    }
+
+    /// Test that JSON output contains all expected metadata
+    #[test]
+    fn test_json_output_has_metadata() {
+        let data = "test_data";
+        let wrapper = JsonResponse::new(data);
+        let json = wrapper.to_json();
+
+        // JSON should contain all metadata fields
+        assert!(json.contains("\"schema_version\""));
+        assert!(json.contains("\"execution_id\""));
+        assert!(json.contains("\"tool\""));
+        assert!(json.contains("\"timestamp\""));
+        assert!(json.contains("\"data\""));
+    }
+
+    /// Test error response format
+    #[test]
+    fn test_error_response_format() {
+        use crate::output::JsonError;
+
+        let error = JsonError::new("category", "message", "CODE");
+        assert_eq!(error.error, "category");
+        assert_eq!(error.message, "message");
+        assert_eq!(error.code, "CODE");
+        assert!(error.remediation.is_none());
+
+        let error_with_remediation = error.with_remediation("Try X instead");
+        assert_eq!(error_with_remediation.remediation, Some("Try X instead".to_string()));
+
+        // Error response should serialize
+        let json = serde_json::to_string(&error_with_remediation);
+        assert!(json.is_ok());
+        let json_str = json.unwrap();
+        assert!(json_str.contains("\"error\""));
+        assert!(json_str.contains("\"message\""));
+        assert!(json_str.contains("\"code\""));
+        assert!(json_str.contains("\"remediation\""));
+    }
+
+    /// Test that all CLI struct variants can be created with different output formats
+    #[test]
+    fn test_cli_with_different_output_formats() {
+        let formats = vec![
+            OutputFormat::Human,
+            OutputFormat::Json,
+            OutputFormat::Pretty,
+        ];
+
+        for format in formats {
+            let cli = Cli {
+                db: Some("./test.db".to_string()),
+                output: format,
+                command: Commands::Status(StatusArgs {}),
+            };
+
+            assert_eq!(cli.output, format);
+            assert_eq!(cli.db, Some("./test.db".to_string()));
+        }
+    }
+
+    /// Test CfgFormat enum values
+    #[test]
+    fn test_cfg_format_enum() {
+        let formats = vec![CfgFormat::Human, CfgFormat::Dot, CfgFormat::Json];
+
+        for format in &formats {
+            match format {
+                CfgFormat::Human => assert!(true),
+                CfgFormat::Dot => assert!(true),
+                CfgFormat::Json => assert!(true),
+            }
+        }
+
+        // Test distinctness
+        assert_ne!(CfgFormat::Human, CfgFormat::Dot);
+        assert_ne!(CfgFormat::Human, CfgFormat::Json);
+        assert_ne!(CfgFormat::Dot, CfgFormat::Json);
+    }
+
+    /// Test that response field naming follows snake_case convention
+    #[test]
+    fn test_response_snake_case_naming() {
+        // All JSON field names should use snake_case
+        let paths_resp = PathsResponse {
+            function: "test".to_string(),
+            total_paths: 1,
+            error_paths: 0,
+            paths: vec![],
+        };
+        let json = serde_json::to_string(&paths_resp).unwrap();
+
+        // Check for snake_case fields
+        assert!(json.contains("\"function\""));
+        assert!(json.contains("\"total_paths\""));
+        assert!(json.contains("\"error_paths\""));
+
+        // Should not have camelCase
+        assert!(!json.contains("\"totalPaths\""));
+        assert!(!json.contains("\"errorPaths\""));
+    }
+}

@@ -223,23 +223,114 @@ struct PathsResponse {
     paths: Vec<PathSummary>,
 }
 
-/// Summary of a single path for JSON output
+/// LLM-optimized block representation with metadata
+#[derive(serde::Serialize)]
+struct PathBlock {
+    block_id: usize,
+    terminator: String,
+}
+
+/// Source location range for a path (to be populated in plan 07-02)
+#[derive(serde::Serialize)]
+struct SourceRange {
+    file_path: String,
+    start_line: usize,
+    end_line: usize,
+}
+
+/// Summary of a single path for JSON output (LLM-optimized)
 #[derive(serde::Serialize)]
 struct PathSummary {
     path_id: String,
     kind: String,
     length: usize,
-    blocks: Vec<usize>,
+    blocks: Vec<PathBlock>,
+    /// Human-readable summary (to be populated in plan 07-04)
+    summary: Option<String>,
+    /// Source range for the entire path (to be populated in plan 07-02)
+    source_range: Option<SourceRange>,
 }
 
 impl From<crate::cfg::Path> for PathSummary {
     fn from(path: crate::cfg::Path) -> Self {
         let length = path.len();
+        // Convert Vec<usize> block IDs to Vec<PathBlock> with placeholder terminator
+        // Full terminator info will be added in plan 07-02 when source locations are integrated
+        let blocks: Vec<PathBlock> = path.blocks
+            .into_iter()
+            .map(|block_id| PathBlock {
+                block_id,
+                terminator: "Unknown".to_string(),
+            })
+            .collect();
+
         Self {
             path_id: path.path_id,
             kind: format!("{:?}", path.kind),
             length,
-            blocks: path.blocks,
+            blocks,
+            summary: None,  // To be populated in plan 07-04
+            source_range: None,  // To be populated in plan 07-02
+        }
+    }
+}
+
+impl PathSummary {
+    /// Create PathSummary with CFG data for source locations
+    /// This provides actual terminator types and source range information
+    pub fn from_with_cfg(path: crate::cfg::Path, cfg: &crate::cfg::Cfg) -> Self {
+        // Build PathBlock list with actual terminator types from CFG
+        let blocks: Vec<PathBlock> = path.blocks.iter().map(|&block_id| {
+            // Find the node in the CFG
+            let node_idx = cfg.node_indices()
+                .find(|&n| cfg[n].id == block_id);
+
+            let terminator = match node_idx {
+                Some(idx) => format!("{:?}", cfg[idx].terminator),
+                None => "Unknown".to_string(),
+            };
+
+            PathBlock {
+                block_id,
+                terminator,
+            }
+        }).collect();
+
+        // Calculate source range from first and last blocks
+        let source_range = Self::calculate_source_range(&path, cfg);
+
+        let length = path.len();
+
+        Self {
+            path_id: path.path_id,
+            kind: format!("{:?}", path.kind),
+            length,
+            summary: None,  // Filled in plan 07-04
+            source_range,
+            blocks,
+        }
+    }
+
+    /// Calculate overall source range for a path
+    fn calculate_source_range(path: &crate::cfg::Path, cfg: &crate::cfg::Cfg) -> Option<SourceRange> {
+        let first_loc = path.blocks.first()
+            .and_then(|&bid| cfg.node_indices().find(|&n| cfg[n].id == bid))
+            .and_then(|idx| cfg[idx].source_location.clone());
+
+        let last_loc = path.blocks.last()
+            .and_then(|&bid| cfg.node_indices().find(|&n| cfg[n].id == bid))
+            .and_then(|idx| cfg[idx].source_location.clone());
+
+        match (first_loc, last_loc) {
+            (Some(first), Some(last)) => {
+                // Use first file_path, combine line ranges
+                Some(SourceRange {
+                    file_path: first.file_path.to_string_lossy().to_string(),
+                    start_line: first.start_line,
+                    end_line: last.end_line,
+                })
+            }
+            _ => None,
         }
     }
 }

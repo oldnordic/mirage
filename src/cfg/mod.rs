@@ -1,12 +1,16 @@
 // CFG data structures shared by MIR and AST pipelines
 
+pub mod analysis;
 pub mod ast;
 pub mod edge;
 pub mod mir;
+pub mod source;
 
+pub use analysis::{find_entry, find_exits, is_exit_block};
 pub use ast::{ast_to_cfg, CFGBuilder};
 pub use edge::{EdgeType, classify_terminator};
 pub use mir::ullbc_to_cfg;
+pub use source::{CharonSpan, SourceLocation};
 
 use petgraph::graph::DiGraph;
 use serde::{Deserialize, Serialize};

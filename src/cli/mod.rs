@@ -522,23 +522,23 @@ pub mod cmds {
                 }
             }
             OutputFormat::Json => {
-                // Compact JSON
+                // Compact JSON with source locations from CFG
                 let response = PathsResponse {
                     function: args.function.clone(),
                     total_paths: paths.len(),
                     error_paths: error_count,
-                    paths: paths.into_iter().map(PathSummary::from).collect(),
+                    paths: paths.iter().map(|p| PathSummary::from_with_cfg(p.clone(), &cfg)).collect(),
                 };
                 let wrapper = output::JsonResponse::new(response);
                 println!("{}", wrapper.to_json());
             }
             OutputFormat::Pretty => {
-                // Formatted JSON with indentation
+                // Formatted JSON with indentation and source locations from CFG
                 let response = PathsResponse {
                     function: args.function.clone(),
                     total_paths: paths.len(),
                     error_paths: error_count,
-                    paths: paths.into_iter().map(PathSummary::from).collect(),
+                    paths: paths.iter().map(|p| PathSummary::from_with_cfg(p.clone(), &cfg)).collect(),
                 };
                 let wrapper = output::JsonResponse::new(response);
                 println!("{}", wrapper.to_pretty_json());

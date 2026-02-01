@@ -10,6 +10,8 @@ use clap::Parser;
 use anyhow::Result;
 
 mod cli;
+mod cfg;
+mod mir;
 mod output;
 mod storage;
 

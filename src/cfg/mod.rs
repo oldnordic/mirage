@@ -1,0 +1,46 @@
+// CFG data structures shared by MIR and AST pipelines
+
+pub mod edge;
+
+pub use edge::{EdgeType, classify_terminator};
+
+use petgraph::graph::DiGraph;
+use serde::{Deserialize, Serialize};
+
+/// Control Flow Graph
+pub type Cfg = DiGraph<BasicBlock, EdgeType>;
+
+/// Basic block in a CFG
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BasicBlock {
+    /// Unique identifier within the function
+    pub id: BlockId,
+    /// Block kind (entry, normal, exit)
+    pub kind: BlockKind,
+    /// Statements in this block (simplified for now)
+    pub statements: Vec<String>,
+    /// Terminator instruction
+    pub terminator: Terminator,
+}
+
+/// Block identifier
+pub type BlockId = usize;
+
+/// Block classification
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlockKind {
+    Entry,
+    Normal,
+    Exit,
+}
+
+/// Terminator instruction (simplified representation)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Terminator {
+    Goto { target: BlockId },
+    SwitchInt { targets: Vec<BlockId>, otherwise: BlockId },
+    Return,
+    Unreachable,
+    Call { target: Option<BlockId>, unwind: Option<BlockId> },
+    Abort(String),
+}

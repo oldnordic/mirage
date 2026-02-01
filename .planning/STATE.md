@@ -5,24 +5,24 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 3: Reachability & Control Structure (complete)
-**Last focus:** Phase 2: CFG Construction (complete)
+**Current focus:** Phase 4: Dominance Analysis (in progress)
+**Last focus:** Phase 3: Reachability & Control Structure (complete)
 
 ## Current Position
 
-Phase: 3 of 7 (Reachability & Control Structure) - Complete
-Plan: 04 complete (of 4 in this phase)
-Status: All reachability analysis, loop detection, and branching pattern recovery complete
-Last activity: 2026-02-01 - Completed 03-04: Branching pattern recovery
+Phase: 4 of 7 (Dominance Analysis) - In progress
+Plan: 01 complete (of 2 in this phase)
+Status: Dominator tree implementation complete
+Last activity: 2026-02-01 - Completed 04-01: Dominator tree wrapper
 
-Progress: [████████████░] 42% (Phase 3/7 complete, 13/13 plans total)
+Progress: [█████████████] 46% (Phase 4/7 in progress, 14/15 plans total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
-- Average duration: 4.7 min
-- Total execution time: 1.0 hours
+- Total plans completed: 14
+- Average duration: 4.5 min
+- Total execution time: 1.1 hours
 
 **By Phase:**
 
@@ -31,9 +31,10 @@ Progress: [████████████░] 42% (Phase 3/7 complete, 13/
 | 01-database-foundation | 3 | 3/3 | 4 min |
 | 02-cfg-construction | 6 | 6/6 | 5 min |
 | 03-reachability-control | 4 | 4/4 | 4.5 min |
+| 04-dominance-analysis | 1 | 1/2 | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 5 min
+- Last 5 plans: 4 min
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -134,6 +135,14 @@ Recent decisions affecting current work:
 - find_common_successor excludes source nodes to find actual merge points
 - Pattern detection approach: find branch points → verify structure → extract metadata
 
+**From 04-01 (Dominator Tree):**
+- DominatorTree wraps petgraph's simple_fast instead of reimplementing Cooper et al. algorithm
+- immediate_dominator() returns None for root node (unreachable nodes excluded from map)
+- dominates() walks up dominator chain (O(depth) instead of O(|V|) set iteration)
+- Children HashMap provides O(1) reverse dominator tree traversal
+- Dominators iterator provides ergonomic upward traversal from node to root
+- common_dominator() uses HashSet for O(min(|a|,|b|)) intersection finding
+
 ### Pending Todos
 
 None yet.
@@ -146,5 +155,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 03-04: Branching pattern recovery
+Stopped at: Completed 04-01: Dominator tree wrapper
 Resume file: None

@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 5 of 7 (Path Enumeration) - In progress
-Plan: 01 complete (of 6 in this phase)
-Status: DFS path enumeration core with cycle detection and loop bounding
-Last activity: 2026-02-01 - Completed 05-01: DFS-based path enumeration with BLAKE3 hashing
+Plan: 03 complete (of 6 in this phase)
+Status: Path bounding enforcement with self-loop detection and nested loop bounding
+Last activity: 2026-02-01 - Completed 05-03: Configurable path bounding with presets
 
-Progress: [████████████░] 57% (Phase 5/7 in progress, 17/30 plans complete)
+Progress: [████████████░] 60% (Phase 5/7 in progress, 18/30 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 17
+- Total plans completed: 18
 - Average duration: 4.5 min
-- Total execution time: 1.3 hours
+- Total execution time: 1.4 hours
 
 **By Phase:**
 
@@ -32,7 +32,7 @@ Progress: [████████████░] 57% (Phase 5/7 in progress, 
 | 02-cfg-construction | 6 | 6/6 | 5 min |
 | 03-reachability-control | 4 | 4/4 | 4.5 min |
 | 04-dominance-analysis | 3 | 3/3 | 3.7 min |
-| 05-path-enumeration | 6 | 1/6 | 6 min |
+| 05-path-enumeration | 6 | 3/6 | 5 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.2 min
@@ -165,6 +165,14 @@ Recent decisions affecting current work:
 - PathLimits default: max_length=1000, max_paths=10000, loop_unroll_limit=3
 - PathKind::Normal default; classification deferred to plan 05-02
 
+**From 05-03 (Configurable Path Bounding):**
+- Loop iteration counting: increment on header entry, decrement on backtrack
+- Loop iteration counter allows (limit-1) actual loop iterations due to increment on first visit
+- Independent counters per loop header enable O(k^n) bounding for nested loops (k=limit, n=depth)
+- PathLimits presets: quick_analysis (100, 1000, 2) for fast results; thorough (10000, 100000, 5) for completeness
+- Self-loops handled via loop_headers check - bounded like regular back-edges
+- Builder pattern with method chaining for convenient PathLimits configuration
+
 ### Pending Todos
 
 None yet.
@@ -177,5 +185,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 05-01: DFS path enumeration with BLAKE3 hashing
+Stopped at: Completed 05-03: Configurable path bounding with presets
 Resume file: None

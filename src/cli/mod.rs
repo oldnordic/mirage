@@ -224,7 +224,7 @@ struct PathsResponse {
 }
 
 /// LLM-optimized block representation with metadata
-#[derive(serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 struct PathBlock {
     block_id: usize,
     terminator: String,
@@ -1775,7 +1775,17 @@ mod paths_tests {
         assert!(!summary.path_id.is_empty(), "path_id should not be empty");
         assert_eq!(summary.kind, "Normal", "kind should match PathKind");
         assert_eq!(summary.length, 3, "length should match path length");
-        assert_eq!(summary.blocks, vec![0, 1, 2], "blocks should match path blocks");
+
+        // blocks is now Vec<PathBlock> with block_id and terminator
+        assert_eq!(summary.blocks.len(), 3, "should have 3 blocks");
+        assert_eq!(summary.blocks[0].block_id, 0, "first block_id should be 0");
+        assert_eq!(summary.blocks[1].block_id, 1, "second block_id should be 1");
+        assert_eq!(summary.blocks[2].block_id, 2, "third block_id should be 2");
+        assert_eq!(summary.blocks[0].terminator, "Unknown", "terminator should be Unknown placeholder");
+
+        // Optional fields should be None until populated in future plans
+        assert!(summary.summary.is_none(), "summary should be None");
+        assert!(summary.source_range.is_none(), "source_range should be None");
     }
 
     /// Test PathSummary conversion for different PathKinds
@@ -1876,6 +1886,112 @@ mod paths_tests {
 
         assert!(args_with.with_blocks, "with_blocks should be true");
         assert!(!args_without.with_blocks, "with_blocks should be false");
+    }
+
+    /// Test PathSummary::from_with_cfg with source locations
+    #[test]
+    fn test_path_summary_from_with_cfg() {
+        use crate::cfg::{BasicBlock, BlockKind, EdgeType, Path, PathKind, SourceLocation, Terminator};
+        use petgraph::graph::DiGraph;
+        use std::path::PathBuf;
+
+        // Create a test CFG with source locations
+        let mut g = DiGraph::new();
+
+        let loc0 = SourceLocation {
+            file_path: PathBuf::from("test.rs"),
+            byte_start: 0,
+            byte_end: 10,
+            start_line: 1,
+            start_column: 1,
+            end_line: 1,
+            end_column: 10,
+        };
+
+        let loc1 = SourceLocation {
+            file_path: PathBuf::from("test.rs"),
+            byte_start: 11,
+            byte_end: 20,
+            start_line: 2,
+            start_column: 1,
+            end_line: 2,
+            end_column: 10,
+        };
+
+        let loc2 = SourceLocation {
+            file_path: PathBuf::from("test.rs"),
+            byte_start: 21,
+            byte_end: 30,
+            start_line: 3,
+            start_column: 1,
+            end_line: 3,
+            end_column: 10,
+        };
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec!["let x = 1".to_string()],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: Some(loc0),
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec!["if x > 0".to_string()],
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 2,
+            },
+            source_location: Some(loc1),
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Exit,
+            statements: vec!["return true".to_string()],
+            terminator: Terminator::Return,
+            source_location: Some(loc2),
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+
+        // Create a path and use from_with_cfg
+        let path = Path::new(vec![0, 1, 2], PathKind::Normal);
+        let summary = PathSummary::from_with_cfg(path, &g);
+
+        // Check terminator is populated
+        assert_eq!(summary.blocks[0].terminator, "Goto { target: 1 }");
+        assert!(summary.blocks[1].terminator.contains("SwitchInt"));
+        assert_eq!(summary.blocks[2].terminator, "Return");
+
+        // Check source_range is populated
+        assert!(summary.source_range.is_some(), "source_range should be Some");
+        let sr = summary.source_range.as_ref().unwrap();
+        assert_eq!(sr.file_path, "test.rs");
+        assert_eq!(sr.start_line, 1);
+        assert_eq!(sr.end_line, 3);
+    }
+
+    /// Test PathSummary::from_with_cfg with no source locations (graceful None)
+    #[test]
+    fn test_path_summary_from_with_cfg_no_source_locations() {
+        use crate::cfg::{Path, PathKind};
+
+        // Use the test CFG which has no source locations
+        let cfg = cmds::create_test_cfg();
+        let path = Path::new(vec![0, 1, 2], PathKind::Normal);
+        let summary = PathSummary::from_with_cfg(path, &cfg);
+
+        // Terminator should still be populated
+        assert!(summary.blocks[0].terminator.contains("Goto"));
+        assert!(summary.blocks[1].terminator.contains("SwitchInt"));
+        assert_eq!(summary.blocks[2].terminator, "Return");
+
+        // source_range should be None when no source locations exist
+        assert!(summary.source_range.is_none(), "source_range should be None when CFG has no locations");
     }
 }
 

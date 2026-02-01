@@ -10,25 +10,25 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 2 of 7 (CFG Construction) - In Progress
-Plan: 01 complete (of 6 in this phase)
-Status: MIR extraction via Charon implemented, ULLBC to CFG conversion complete
-Last activity: 2026-02-01 - Completed 02-01: MIR extraction via Charon
+Plan: 02 complete (of 6 in this phase)
+Status: AST-based CFG construction complete, leader detection and edge handling implemented
+Last activity: 2026-02-01 - Completed 02-02: AST-based CFG construction
 
-Progress: [██████████░] 24% (Phase 2/7, Plan 2/6 in phase)
+Progress: [██████████░] 33% (Phase 2/7, Plan 3/6 in phase)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 5 min
-- Total execution time: 0.4 hours
+- Total execution time: 0.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Complete | Avg/Plan |
 |-------|-------|----------|----------|
 | 01-database-foundation | 3 | 3/3 | 4 min |
-| 02-cfg-construction | 6 | 2/6 | 6 min |
+| 02-cfg-construction | 6 | 3/6 | 6 min |
 
 **Recent Trend:**
 - Last 5 plans: 5 min
@@ -72,6 +72,13 @@ Recent decisions affecting current work:
 - BlockKind inference: Entry (id=0), Exit (Return/Unreachable), Normal (others)
 - External tool integration pattern: spawn binary, capture stdout, parse JSON
 
+**From 02-02 (AST-based CFG Construction):**
+- Leader-based algorithm for CFG construction: first statement, branch targets, post-branch statements
+- tree-sitter 0.22 used for language-agnostic AST parsing (language grammars feature-gated)
+- Terminator enum derives PartialEq/Eq for test assertions
+- Edge types encode semantic meaning: TrueBranch/FalseBranch for conditionals, LoopBack/LoopExit for loops
+- CFGBuilder pattern: find_leaders → build_blocks → connect_edges
+
 ### Pending Todos
 
 None yet.
@@ -84,5 +91,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 02-01: MIR extraction via Charon
+Stopped at: Completed 02-02: AST-based CFG construction
 Resume file: None

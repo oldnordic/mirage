@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: CFG Construction** - Build control flow graphs from MIR and AST ✓ Completed 2026-02-01
 - [x] **Phase 3: Reachability & Control Structure** - Analyze what code can execute ✓ Completed 2026-02-01
 - [x] **Phase 4: Dominance Analysis** - Compute must-pass-through relationships ✓ Completed 2026-02-01
-- [ ] **Phase 5: Path Enumeration** - Enumerate and classify execution paths
+- [x] **Phase 5: Path Enumeration** - Enumerate and classify execution paths ✓ Completed 2026-02-01
 - [ ] **Phase 6: CLI Interface** - User-facing commands for all analysis types
 - [ ] **Phase 7: LLM Integration** - Structured outputs for agent consumption
 
@@ -142,15 +142,17 @@ Plans:
 8. Path enumeration respects configurable depth and count limits
 9. Database updates are incremental at function level
 
-**Plans**: TBD
+**Plans**: 6 plans in 4 waves
 
 Plans:
-- [ ] 05-01: DFS-based path enumeration
-- [ ] 05-02: Path classification
-- [ ] 05-03: Loop bounding and limits
-- [ ] 05-04: Feasibility checking
-- [ ] 05-05: Path caching with BLAKE3
-- [ ] 05-06: Performance optimization
+- [x] 05-01-PLAN.md — DFS-based path enumeration core (Path, PathKind, PathLimits, enumerate_paths, hash_path)
+- [x] 05-02-PLAN.md — Path classification (classify_path, classify_path_precomputed)
+- [x] 05-03-PLAN.md — Loop bounding and limits (PathLimits enforcement, cycle detection, nested loop handling)
+- [x] 05-04-PLAN.md — Feasibility checking (is_feasible_path, static analysis)
+- [x] 05-05-PLAN.md — Path caching with BLAKE3 (store_paths, get_cached_paths, invalidate_function_paths)
+- [x] 05-06-PLAN.md — Performance optimization (batch inserts, EnumerationContext, enumerate_paths_cached)
+
+**Status**: ✓ Completed 2026-02-01
 
 ### Phase 6: CLI Interface
 
@@ -218,7 +220,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 2. CFG Construction | 6/6 | ✓ Complete | 2026-02-01 |
 | 3. Reachability & Control Structure | 4/4 | ✓ Complete | 2026-02-01 |
 | 4. Dominance Analysis | 3/3 | ✓ Complete | 2026-02-01 |
-| 5. Path Enumeration | 0/TBD | Not started | - |
+| 5. Path Enumeration | 6/6 | ✓ Complete | 2026-02-01 |
 | 6. CLI Interface | 0/TBD | Not started | - |
 | 7. LLM Integration | 0/TBD | Not started | - |
 

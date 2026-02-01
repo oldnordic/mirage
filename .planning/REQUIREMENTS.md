@@ -38,12 +38,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Path Enumeration
 
-- [ ] **PATH-01**: System enumerates all feasible execution paths through a function
-- [ ] **PATH-02**: System classifies paths (normal, error, degenerate, unreachable)
-- [ ] **PATH-03**: System implements path length bounding to prevent explosion
-- [ ] **PATH-04**: System distinguishes feasible from infeasible paths
-- [ ] **PATH-05**: System caches enumerated paths with BLAKE3 IDs
-- [ ] **PATH-06**: System assigns unique path ID for each enumerated path
+- [x] **PATH-01**: System enumerates all feasible execution paths through a function
+- [x] **PATH-02**: System classifies paths (normal, error, degenerate, unreachable)
+- [x] **PATH-03**: System implements path length bounding to prevent explosion
+- [x] **PATH-04**: System distinguishes feasible from infeasible paths
+- [x] **PATH-05**: System caches enumerated paths with BLAKE3 IDs
+- [x] **PATH-06**: System assigns unique path ID for each enumerated path
 
 ### MIR Integration
 
@@ -84,9 +84,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Performance
 
-- [ ] **PERF-01**: CFG construction completes in O(n) time where n is code size
-- [ ] **PERF-02**: Path enumeration respects configurable depth and count limits
-- [ ] **PERF-03**: Database updates are incremental (function-level granularity)
+- [x] **PERF-01**: CFG construction completes in O(n) time where n is code size
+- [x] **PERF-02**: Path enumeration respects configurable depth and count limits
+- [x] **PERF-03**: Database updates are incremental (function-level granularity)
 
 ## v2 Requirements
 
@@ -147,12 +147,12 @@ Which phases cover which requirements.
 | CTRL-02 | Phase 3 | Complete |
 | CTRL-03 | Phase 3 | Complete |
 | CTRL-04 | Phase 3 | Complete |
-| PATH-01 | Phase 5 | Pending |
-| PATH-02 | Phase 5 | Pending |
-| PATH-03 | Phase 5 | Pending |
-| PATH-04 | Phase 5 | Pending |
-| PATH-05 | Phase 5 | Pending |
-| PATH-06 | Phase 5 | Pending |
+| PATH-01 | Phase 5 | Complete |
+| PATH-02 | Phase 5 | Complete |
+| PATH-03 | Phase 5 | Complete |
+| PATH-04 | Phase 5 | Complete |
+| PATH-05 | Phase 5 | Complete |
+| PATH-06 | Phase 5 | Complete |
 | MIR-01 | Phase 2 | Pending |
 | MIR-02 | Phase 2 | Pending |
 | MIR-03 | Phase 2 | Pending |
@@ -178,9 +178,9 @@ Which phases cover which requirements.
 | LLM-02 | Phase 7 | Pending |
 | LLM-03 | Phase 7 | Pending |
 | LLM-04 | Phase 7 | Pending |
-| PERF-01 | Phase 5 | Pending |
-| PERF-02 | Phase 5 | Pending |
-| PERF-03 | Phase 5 | Pending |
+| PERF-01 | Phase 5 | Complete |
+| PERF-02 | Phase 5 | Complete |
+| PERF-03 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 51 total

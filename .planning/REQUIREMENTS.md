@@ -77,10 +77,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### LLM Integration
 
-- [ ] **LLM-01**: Path queries return structured JSON with path IDs
-- [ ] **LLM-02**: Path results include block sequence and source locations
-- [ ] **LLM-03**: Error responses include remediation suggestions
-- [ ] **LLM-04**: System provides natural language summaries of control flow
+- [x] **LLM-01**: Path queries return structured JSON with path IDs
+- [x] **LLM-02**: Path results include block sequence and source locations
+- [x] **LLM-03**: Error responses include remediation suggestions
+- [x] **LLM-04**: System provides natural language summaries of control flow
 
 ### Performance
 
@@ -174,10 +174,10 @@ Which phases cover which requirements.
 | CLI-10 | Phase 6 | Complete |
 | CLI-11 | Phase 6 | Complete |
 | CLI-12 | Phase 6 | Complete |
-| LLM-01 | Phase 7 | Pending |
-| LLM-02 | Phase 7 | Pending |
-| LLM-03 | Phase 7 | Pending |
-| LLM-04 | Phase 7 | Pending |
+| LLM-01 | Phase 7 | Complete |
+| LLM-02 | Phase 7 | Complete |
+| LLM-03 | Phase 7 | Complete |
+| LLM-04 | Phase 7 | Complete |
 | PERF-01 | Phase 5 | Complete |
 | PERF-02 | Phase 5 | Complete |
 | PERF-03 | Phase 5 | Complete |

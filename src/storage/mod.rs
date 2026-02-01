@@ -1,0 +1,327 @@
+// Database storage layer extending Magellan's schema
+//
+// Mirage uses the same Magellan database and extends it with:
+// - cfg_blocks: Basic blocks within functions
+// - cfg_edges: Control flow between blocks
+// - cfg_paths: Enumerated execution paths
+// - cfg_path_elements: Blocks in each path
+// - cfg_dominators: Dominance relationships
+// - cfg_post_dominators: Reverse dominance
+
+use anyhow::{Context, Result};
+use rusqlite::{Connection, params};
+use std::path::Path;
+
+/// Mirage schema version
+pub const MIRAGE_SCHEMA_VERSION: i32 = 1;
+
+/// Magellan schema version we require
+pub const REQUIRED_MAGELLAN_SCHEMA_VERSION: i32 = 4;
+
+/// SQLiteGraph schema version we require
+pub const REQUIRED_SQLITEGRAPH_SCHEMA_VERSION: i32 = 3;
+
+/// Database connection wrapper
+pub struct MirageDb {
+    conn: Connection,
+}
+
+impl MirageDb {
+    /// Open database at the given path
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref();
+        if !path.exists() {
+            anyhow::bail!("Database not found: {}", path.display());
+        }
+
+        let conn = Connection::open(path)
+            .context("Failed to open database")?;
+
+        let db = Self { conn };
+        db.verify_schema()?;
+        Ok(db)
+    }
+
+    /// Verify the database has compatible schema versions
+    fn verify_schema(&self) -> Result<()> {
+        // Check Mirage schema
+        let mirage_version: i32 = self.conn.query_row(
+            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        if mirage_version > MIRAGE_SCHEMA_VERSION {
+            anyhow::bail!(
+                "Database schema version {} is newer than supported version {}.
+                 Please update Mirage.",
+                mirage_version, MIRAGE_SCHEMA_VERSION
+            );
+        }
+
+        // Check Magellan schema compatibility
+        let magellan_version: i32 = self.conn.query_row(
+            "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
+            [],
+            |row| row.get(0),
+            ).unwrap_or(0);
+
+        if magellan_version != REQUIRED_MAGELLAN_SCHEMA_VERSION {
+            anyhow::bail!(
+                "Magellan schema version {} is incompatible with required version {}.
+                 Please update Magellan.",
+                magellan_version, REQUIRED_MAGELLAN_SCHEMA_VERSION
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Get a reference to the underlying connection
+    pub fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
+    /// Get a mutable reference to the underlying connection
+    pub fn conn_mut(&mut self) -> &mut Connection {
+        &mut self.conn
+    }
+}
+
+/// Create Mirage schema tables in an existing Magellan database
+pub fn create_schema(conn: &mut Connection) -> Result<()> {
+    // Create mirage_meta table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS mirage_meta (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            mirage_schema_version INTEGER NOT NULL,
+            magellan_schema_version INTEGER NOT NULL,
+            rustc_version TEXT,
+            created_at INTEGER NOT NULL
+        )",
+        [],
+    )?;
+
+    // Create cfg_blocks table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cfg_blocks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            function_id INTEGER NOT NULL,
+            block_kind TEXT NOT NULL,
+            byte_start INTEGER,
+            byte_end INTEGER,
+            terminator TEXT,
+            function_hash TEXT,
+            FOREIGN KEY (function_id) REFERENCES graph_entities(id)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cfg_blocks_function ON cfg_blocks(function_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cfg_blocks_function_hash ON cfg_blocks(function_hash)",
+        [],
+    )?;
+
+    // Create cfg_edges table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cfg_edges (
+            from_id INTEGER NOT NULL,
+            to_id INTEGER NOT NULL,
+            edge_type TEXT NOT NULL,
+            PRIMARY KEY (from_id, to_id, edge_type),
+            FOREIGN KEY (from_id) REFERENCES cfg_blocks(id),
+            FOREIGN KEY (to_id) REFERENCES cfg_blocks(id)
+        )",
+        [],
+    )?;
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cfg_edges_from ON cfg_edges(from_id)", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cfg_edges_to ON cfg_edges(to_id)", [])?;
+
+    // Create cfg_paths table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cfg_paths (
+            path_id TEXT PRIMARY KEY,
+            function_id INTEGER NOT NULL,
+            path_kind TEXT NOT NULL,
+            entry_block INTEGER NOT NULL,
+            exit_block INTEGER NOT NULL,
+            length INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (function_id) REFERENCES graph_entities(id),
+            FOREIGN KEY (entry_block) REFERENCES cfg_blocks(id),
+            FOREIGN KEY (exit_block) REFERENCES cfg_blocks(id)
+        )",
+        [],
+    )?;
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cfg_paths_function ON cfg_paths(function_id)", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cfg_paths_kind ON cfg_paths(path_kind)", [])?;
+
+    // Create cfg_path_elements table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cfg_path_elements (
+            path_id TEXT NOT NULL,
+            sequence_order INTEGER NOT NULL,
+            block_id INTEGER NOT NULL,
+            PRIMARY KEY (path_id, sequence_order),
+            FOREIGN KEY (path_id) REFERENCES cfg_paths(path_id),
+            FOREIGN KEY (block_id) REFERENCES cfg_blocks(id)
+        )",
+        [],
+    )?;
+
+    conn.execute("CREATE INDEX IF NOT EXISTS cfg_path_elements_block ON cfg_path_elements(block_id)", [])?;
+
+    // Create cfg_dominators table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cfg_dominators (
+            block_id INTEGER NOT NULL,
+            dominator_id INTEGER NOT NULL,
+            is_strict BOOLEAN NOT NULL,
+            PRIMARY KEY (block_id, dominator_id, is_strict),
+            FOREIGN KEY (block_id) REFERENCES cfg_blocks(id),
+            FOREIGN KEY (dominator_id) REFERENCES cfg_blocks(id)
+        )",
+        [],
+    )?;
+
+    // Create cfg_post_dominators table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cfg_post_dominators (
+            block_id INTEGER NOT NULL,
+            post_dominator_id INTEGER NOT NULL,
+            is_strict BOOLEAN NOT NULL,
+            PRIMARY KEY (block_id, post_dominator_id, is_strict),
+            FOREIGN KEY (block_id) REFERENCES cfg_blocks(id),
+            FOREIGN KEY (post_dominator_id) REFERENCES cfg_blocks(id)
+        )",
+        [],
+    )?;
+
+    // Initialize mirage_meta
+    let now = chrono::Utc::now().timestamp();
+    conn.execute(
+        "INSERT OR REPLACE INTO mirage_meta (id, mirage_schema_version, magellan_schema_version, created_at)
+         VALUES (1, ?, ?, ?)",
+        params![MIRAGE_SCHEMA_VERSION, REQUIRED_MAGELLAN_SCHEMA_VERSION, now],
+    )?;
+
+    Ok(())
+}
+
+/// Database status information
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DatabaseStatus {
+    pub cfg_blocks: i64,
+    pub cfg_edges: i64,
+    pub cfg_paths: i64,
+    pub cfg_dominators: i64,
+    pub mirage_schema_version: i32,
+    pub magellan_schema_version: i32,
+}
+
+impl MirageDb {
+    /// Get database statistics
+    pub fn status(&self) -> Result<DatabaseStatus> {
+        let cfg_blocks: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM cfg_blocks",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        let cfg_edges: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM cfg_edges",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        let cfg_paths: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        let cfg_dominators: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM cfg_dominators",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        let mirage_schema_version: i32 = self.conn.query_row(
+            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        let magellan_schema_version: i32 = self.conn.query_row(
+            "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        Ok(DatabaseStatus {
+            cfg_blocks,
+            cfg_edges,
+            cfg_paths,
+            cfg_dominators,
+            mirage_schema_version,
+            magellan_schema_version,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_schema() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        // First create the Magellan tables (simplified)
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        // Insert Magellan meta
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, ?, ?, ?)",
+            params![REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, 0],
+        ).unwrap();
+
+        // Create Mirage schema
+        create_schema(&mut conn).unwrap();
+
+        // Verify tables exist
+        let table_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'cfg_%'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert!(table_count >= 5); // cfg_blocks, cfg_edges, cfg_paths, cfg_path_elements, cfg_dominators
+    }
+}

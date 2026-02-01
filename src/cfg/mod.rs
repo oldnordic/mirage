@@ -1,7 +1,9 @@
 // CFG data structures shared by MIR and AST pipelines
 
+pub mod ast;
 pub mod edge;
 
+pub use ast::{ast_to_cfg, CFGBuilder};
 pub use edge::{EdgeType, classify_terminator};
 
 use petgraph::graph::DiGraph;

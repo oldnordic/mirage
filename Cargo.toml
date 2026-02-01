@@ -30,6 +30,9 @@ serde_json = "1.0"
 # Graph data structures
 petgraph = "0.8"
 
+# AST parsing (for non-Rust code fallback)
+tree-sitter = "0.22"
+
 # MIR extraction (rustc internals - requires nightly)
 # Note: These are optional and will be implemented later
 # For now, we'll use external tools like Charon or rustc -Z dump-mir

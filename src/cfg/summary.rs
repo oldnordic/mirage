@@ -38,7 +38,7 @@ pub fn summarize_path(cfg: &Cfg, path: &Path) -> String {
 }
 
 /// Describe a single block in natural language
-fn describe_block(cfg: &Cfg, block_id: BlockId) -> String {
+pub fn describe_block(cfg: &Cfg, block_id: BlockId) -> String {
     // Find the node with this block_id
     let node_idx = match cfg.node_indices().find(|&n| cfg[n].id == block_id) {
         Some(idx) => idx,
@@ -66,7 +66,7 @@ fn describe_block(cfg: &Cfg, block_id: BlockId) -> String {
                 format!("switch ({} targets)", count)
             }
         }
-        Terminator::Call { target } => {
+        Terminator::Call { target, unwind: _ } => {
             target.as_ref().map(|t| format!("call b{}", t)).unwrap_or_else(|| "call".to_string())
         }
         Terminator::Unreachable => "unreachable".to_string(),
@@ -94,7 +94,7 @@ pub fn summarize_cfg(function_name: &str, cfg: &Cfg) -> String {
         .unwrap_or_else(|| "unknown".to_string());
 
     let exits = find_exits(cfg);
-    let exit_count = exits.count();
+    let exit_count = exits.len();
 
     let loops = detect_natural_loops(cfg);
     let loop_count = loops.len();
@@ -137,7 +137,7 @@ mod tests {
             source_location: None,
         });
 
-        cfg.add_node(BasicBlock {
+        let b2 = cfg.add_node(BasicBlock {
             id: 2,
             kind: BlockKind::Exit,
             statements: vec![],
@@ -230,7 +230,7 @@ mod tests {
             source_location: None,
         });
 
-        cfg.add_node(BasicBlock {
+        let b1 = cfg.add_node(BasicBlock {
             id: 1,
             kind: BlockKind::Exit,
             statements: vec![],

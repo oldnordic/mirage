@@ -34,18 +34,11 @@ impl MirageDb {
             anyhow::bail!("Database not found: {}", path.display());
         }
 
-        let conn = Connection::open(path)
+        let mut conn = Connection::open(path)
             .context("Failed to open database")?;
 
-        let db = Self { conn };
-        db.verify_schema()?;
-        Ok(db)
-    }
-
-    /// Verify the database has compatible schema versions
-    fn verify_schema(&self) -> Result<()> {
-        // Check Mirage schema
-        let mirage_version: i32 = self.conn.query_row(
+        // Verify schema and run migrations if needed
+        let mirage_version: i32 = conn.query_row(
             "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
             [],
             |row| row.get(0),
@@ -60,11 +53,11 @@ impl MirageDb {
         }
 
         // Check Magellan schema compatibility
-        let magellan_version: i32 = self.conn.query_row(
+        let magellan_version: i32 = conn.query_row(
             "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
             [],
             |row| row.get(0),
-            ).unwrap_or(0);
+        ).unwrap_or(0);
 
         if magellan_version != REQUIRED_MAGELLAN_SCHEMA_VERSION {
             anyhow::bail!(
@@ -74,7 +67,12 @@ impl MirageDb {
             );
         }
 
-        Ok(())
+        // Run migrations if we're behind current version
+        if mirage_version < MIRAGE_SCHEMA_VERSION {
+            migrate_schema(&mut conn)?;
+        }
+
+        Ok(Self { conn })
     }
 
     /// Get a reference to the underlying connection
@@ -86,6 +84,61 @@ impl MirageDb {
     pub fn conn_mut(&mut self) -> &mut Connection {
         &mut self.conn
     }
+}
+
+/// A schema migration
+struct Migration {
+    version: i32,
+    description: &'static str,
+    up: fn(&mut Connection) -> Result<()>,
+}
+
+/// Get all registered migrations
+fn migrations() -> Vec<Migration> {
+    // No migrations yet - framework is ready for future schema changes
+    vec![]
+}
+
+/// Run schema migrations to bring database up to current version
+pub fn migrate_schema(conn: &mut Connection) -> Result<()> {
+    let current_version: i32 = conn.query_row(
+        "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+        [],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    if current_version >= MIRAGE_SCHEMA_VERSION {
+        // Already at or above current version
+        return Ok(());
+    }
+
+    // Get migrations that need to run
+    let pending: Vec<_> = migrations()
+        .into_iter()
+        .filter(|m| m.version > current_version && m.version <= MIRAGE_SCHEMA_VERSION)
+        .collect();
+
+    for migration in pending {
+        // Run migration
+        (migration.up)(conn)
+            .with_context(|| format!("Failed to run migration v{}: {}", migration.version, migration.description))?;
+
+        // Update version
+        conn.execute(
+            "UPDATE mirage_meta SET mirage_schema_version = ? WHERE id = 1",
+            params![migration.version],
+        )?;
+    }
+
+    // Ensure we're at the final version
+    if current_version < MIRAGE_SCHEMA_VERSION {
+        conn.execute(
+            "UPDATE mirage_meta SET mirage_schema_version = ? WHERE id = 1",
+            params![MIRAGE_SCHEMA_VERSION],
+        )?;
+    }
+
+    Ok(())
 }
 
 /// Create Mirage schema tables in an existing Magellan database
@@ -323,5 +376,98 @@ mod tests {
         ).unwrap();
 
         assert!(table_count >= 5); // cfg_blocks, cfg_edges, cfg_paths, cfg_path_elements, cfg_dominators
+    }
+
+    #[test]
+    fn test_migrate_schema_from_version_0() {
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        // Create Magellan tables
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, ?, ?, ?)",
+            params![REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, 0],
+        ).unwrap();
+
+        // Create Mirage schema at version 0 (no mirage_meta yet)
+        create_schema(&mut conn).unwrap();
+
+        // Verify version is 1
+        let version: i32 = conn.query_row(
+            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(version, MIRAGE_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_migrate_schema_no_op_when_current() {
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        // Create Magellan tables
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, ?, ?, ?)",
+            params![REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, 0],
+        ).unwrap();
+
+        // Create Mirage schema
+        create_schema(&mut conn).unwrap();
+
+        // Migration should be a no-op - already at current version
+        migrate_schema(&mut conn).unwrap();
+
+        // Verify version is still 1
+        let version: i32 = conn.query_row(
+            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(version, MIRAGE_SCHEMA_VERSION);
     }
 }

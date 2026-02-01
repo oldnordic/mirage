@@ -5,12 +5,14 @@ pub mod ast;
 pub mod edge;
 pub mod export;
 pub mod mir;
+pub mod reachability;
 pub mod source;
 
 pub use analysis::{find_entry, find_exits, is_exit_block};
 pub use ast::{ast_to_cfg, CFGBuilder};
 pub use edge::{EdgeType, classify_terminator};
 pub use export::{export_dot, export_json, CFGExport};
+pub use reachability::{find_unreachable, find_reachable, is_reachable_from_entry};
 pub use mir::ullbc_to_cfg;
 pub use source::{CharonSpan, SourceLocation};
 

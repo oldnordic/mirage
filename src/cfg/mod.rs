@@ -2,6 +2,7 @@
 
 pub mod analysis;
 pub mod ast;
+pub mod dominance_frontiers;
 pub mod dominators;
 pub mod edge;
 pub mod export;
@@ -13,6 +14,7 @@ pub mod reachability;
 pub mod source;
 
 pub use analysis::{find_entry, find_exits, is_exit_block};
+pub use dominance_frontiers::{DominanceFrontiers, compute_dominance_frontiers};
 pub use dominators::{DominatorTree, compute_dominator_tree};
 pub use post_dominators::{PostDominatorTree, compute_post_dominator_tree};
 pub use ast::{ast_to_cfg, CFGBuilder};

@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 7 of 7 (LLM Integration) - In progress
-Plan: 01 of 4 - LLM-optimized JSON response structs
-Status: Plan 07-01 complete. Path queries return structured JSON with PathBlock structs containing block_id and terminator for LLM consumption.
-Last activity: 2026-02-01 - Completed 07-01: LLM-optimized JSON response structs
+Plan: 03 of 4 - Error remediation suggestions for LLM guidance
+Status: Plan 07-03 complete. Error code constants (E001-E007) with remediation hints, centralized JsonError factory methods, and JSON-aware error handling across all CLI commands.
+Last activity: 2026-02-01 - Completed 07-03: Error remediation suggestions
 
-Progress: [████████████████░] 87% (Phase 7: 1/4 complete, 30/31 plans complete)
+Progress: [████████████████▓] 90% (Phase 7: 3/4 complete, 32/34 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 30
-- Average duration: 4.9 min
-- Total execution time: 2.5 hours
+- Total plans completed: 32
+- Average duration: 4.8 min
+- Total execution time: 2.6 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [████████████████░] 87% (Phase 7: 1/
 | 04-dominance-analysis | 3 | 3/3 | 3.7 min |
 | 05-path-enumeration | 6 | 6/6 | 4.6 min |
 | 06-cli-interface | 7 | 7/7 | 5.6 min |
-| 07-llm-integration | 4 | 1/4 | 5.5 min |
+| 07-llm-integration | 4 | 3/4 | 4.5 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -278,6 +278,14 @@ Recent decisions affecting current work:
 - calculate_source_range helper derives path-level span from first and last block source locations
 - Metadata enrichment pattern: separate from_with_cfg method rather than replacing From trait
 
+**From 07-03 (Error Remediation Suggestions):**
+- Error code format uses "E###" prefix for machine parsing (e.g., E001, E002, E003)
+- Remediation hints stored as constants for consistency and maintainability
+- Block not found errors don't include remediation (less actionable - block IDs are internal)
+- All database errors consistently suggest running 'mirage index' command
+- JSON-aware error handling pattern: matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty)
+- Human mode retains colored output with separate info() calls for hints
+
 ### Pending Todos
 
 None yet.
@@ -290,5 +298,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 07-01: LLM-optimized JSON response structs
+Stopped at: Completed 07-03: Error remediation suggestions for LLM guidance
 Resume file: None

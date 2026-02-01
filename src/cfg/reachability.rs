@@ -5,6 +5,7 @@ use crate::cfg::analysis::find_entry;
 use petgraph::algo::has_path_connecting;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::Dfs;
+use petgraph::algo::DfsSpace;
 use std::collections::HashSet;
 
 /// Find all blocks reachable from the entry node
@@ -76,6 +77,84 @@ pub fn unreachable_block_ids(cfg: &Cfg) -> Vec<BlockId> {
         .filter_map(|&idx| cfg.node_weight(idx))
         .map(|block| block.id)
         .collect()
+}
+
+/// Check if node `from` can reach node `to`
+///
+/// Returns true if there exists any path from `from` to `to`.
+/// This is a simple yes/no query - it does not enumerate paths.
+///
+/// # Performance Note
+/// For single queries, this allocates a new DFS visitor.
+/// Use `can_reach_cached` or `ReachabilityCache` for repeated queries.
+///
+/// # Example
+/// ```rust
+/// let entry = find_entry(&cfg).unwrap();
+/// let exit = NodeIndex::new(5);
+/// if can_reach(&cfg, entry, exit) {
+///     println!("Exit is reachable from entry");
+/// }
+/// ```
+pub fn can_reach(cfg: &Cfg, from: NodeIndex, to: NodeIndex) -> bool {
+    has_path_connecting(cfg, from, to, None)
+}
+
+/// Check if node `from` can reach node `to` using cached DFS state
+///
+/// This version reuses the provided DfsSpace for better performance
+/// when making multiple reachability queries.
+///
+/// # Example
+/// ```rust
+/// let mut space = DfsSpace::new(&cfg);
+/// for (from, to) in queries {
+///     if can_reach_cached(&cfg, from, to, &mut space) {
+///         // ...
+///     }
+/// }
+/// ```
+pub fn can_reach_cached(
+    cfg: &Cfg,
+    from: NodeIndex,
+    to: NodeIndex,
+    space: &mut DfsSpace<NodeIndex, <Cfg as petgraph::visit::Visitable>::Map>,
+) -> bool {
+    has_path_connecting(cfg, from, to, Some(space))
+}
+
+/// Cache for repeated reachability queries
+///
+/// Holds reusable DFS state to avoid allocation on each query.
+/// Create once, reuse for many queries on the same CFG.
+///
+/// # Example
+/// ```rust
+/// let mut cache = ReachabilityCache::new(&cfg);
+/// for node in cfg.node_indices() {
+///     if cache.can_reach(&cfg, entry, node) {
+///         println!("Node {:?} is reachable", node);
+///     }
+/// }
+/// ```
+pub struct ReachabilityCache {
+    space: DfsSpace<NodeIndex, <Cfg as petgraph::visit::Visitable>::Map>,
+}
+
+impl ReachabilityCache {
+    /// Create a new cache for the given CFG
+    ///
+    /// The cache can be reused for multiple queries on the same CFG.
+    pub fn new(cfg: &Cfg) -> Self {
+        Self {
+            space: DfsSpace::new(cfg),
+        }
+    }
+
+    /// Check if `from` can reach `to` using cached state
+    pub fn can_reach(&mut self, cfg: &Cfg, from: NodeIndex, to: NodeIndex) -> bool {
+        can_reach_cached(cfg, from, to, &mut self.space)
+    }
 }
 
 #[cfg(test)]

@@ -279,6 +279,11 @@ impl PathSummary {
     /// Create PathSummary with CFG data for source locations
     /// This provides actual terminator types and source range information
     pub fn from_with_cfg(path: crate::cfg::Path, cfg: &crate::cfg::Cfg) -> Self {
+        use crate::cfg::summarize_path;
+
+        // Generate natural language summary
+        let summary = Some(summarize_path(cfg, &path));
+
         // Build PathBlock list with actual terminator types from CFG
         let blocks: Vec<PathBlock> = path.blocks.iter().map(|&block_id| {
             // Find the node in the CFG
@@ -305,7 +310,7 @@ impl PathSummary {
             path_id: path.path_id,
             kind: format!("{:?}", path.kind),
             length,
-            summary: None,  // Filled in plan 07-04
+            summary,
             source_range,
             blocks,
         }

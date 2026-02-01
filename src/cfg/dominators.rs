@@ -198,6 +198,22 @@ impl DominatorTree {
         }
         depth
     }
+
+    /// Create DominatorTree from pre-computed parts
+    ///
+    /// This is used internally by PostDominatorTree to construct
+    /// a dominator tree on a reversed graph.
+    pub(crate) fn from_parts(
+        root: NodeIndex,
+        immediate_dominator: HashMap<NodeIndex, Option<NodeIndex>>,
+        children: HashMap<NodeIndex, Vec<NodeIndex>>,
+    ) -> Self {
+        Self {
+            root,
+            immediate_dominator,
+            children,
+        }
+    }
 }
 
 /// Iterator over a node's dominators (from node up to root)

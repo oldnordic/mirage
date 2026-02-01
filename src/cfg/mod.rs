@@ -8,11 +8,13 @@ pub mod export;
 pub mod loops;
 pub mod mir;
 pub mod patterns;
+pub mod post_dominators;
 pub mod reachability;
 pub mod source;
 
 pub use analysis::{find_entry, find_exits, is_exit_block};
 pub use dominators::{DominatorTree, compute_dominator_tree};
+pub use post_dominators::{PostDominatorTree, compute_post_dominator_tree};
 pub use ast::{ast_to_cfg, CFGBuilder};
 pub use edge::{EdgeType, classify_terminator};
 pub use export::{export_dot, export_json, CFGExport};

@@ -13,7 +13,7 @@ Mirage transforms code into verifiable graph artifacts. Starting from database s
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Database Foundation** - Extend Magellan schema with CFG tables ✓ Completed 2026-02-01
-- [ ] **Phase 2: CFG Construction** - Build control flow graphs from MIR and AST
+- [x] **Phase 2: CFG Construction** - Build control flow graphs from MIR and AST ✓ Completed 2026-02-01
 - [ ] **Phase 3: Reachability & Control Structure** - Analyze what code can execute
 - [ ] **Phase 4: Dominance Analysis** - Compute must-pass-through relationships
 - [ ] **Phase 5: Path Enumeration** - Enumerate and classify execution paths
@@ -63,15 +63,15 @@ Plans:
 7. MIR extraction works via Charon for Rust code
 8. AST-based CFG works as fallback for non-Rust code
 
-**Plans**: TBD
+**Plans**: 6 plans in 4 waves
 
 Plans:
-- [ ] 02-01: MIR extraction via Charon
-- [ ] 02-02: AST-based CFG construction
-- [ ] 02-03: Basic block and edge identification
-- [ ] 02-04: Entry/exit node detection
-- [ ] 02-05: Source location mapping
-- [ ] 02-06: DOT and JSON export
+- [x] 02-03 — Core CFG data structures (Cfg, BasicBlock, EdgeType) with petgraph
+- [x] 02-01 — MIR extraction via Charon (ULLBC parsing and conversion)
+- [x] 02-02 — AST-based CFG construction (tree-sitter, leader algorithm)
+- [x] 02-04 — Entry/exit node detection (analysis functions)
+- [x] 02-05 — Source location mapping (spans to line/column)
+- [x] 02-06 — DOT and JSON export (visualization and tool integration)
 
 ### Phase 3: Reachability & Control Structure
 
@@ -211,7 +211,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Database Foundation | 3/3 | ✓ Complete | 2026-02-01 |
-| 2. CFG Construction | 0/TBD | Not started | - |
+| 2. CFG Construction | 6/6 | ✓ Complete | 2026-02-01 |
 | 3. Reachability & Control Structure | 0/TBD | Not started | - |
 | 4. Dominance Analysis | 0/TBD | Not started | - |
 | 5. Path Enumeration | 0/TBD | Not started | - |

@@ -1154,6 +1154,154 @@ pub fn get_or_enumerate_paths(
     Ok(paths)
 }
 
+/// Enumerate paths with integrated caching and pre-computed context
+///
+/// This is the highest-level path enumeration function that combines:
+/// 1. Hash-based cache invalidation (via update_function_paths_if_changed)
+/// 2. Pre-computed enumeration context (avoid redundant analysis)
+/// 3. Optimized batch storage (via store_paths_batch)
+///
+/// **Use this when:**
+/// - You need the fastest path enumeration with caching
+/// - Performing multiple enumerations on the same CFG
+/// - You want automatic cache invalidation on function changes
+///
+/// **Algorithm:**
+/// 1. Check cache via hash comparison (update_function_paths_if_changed)
+/// 2. If cache hit: retrieve stored paths
+/// 3. If cache miss:
+///    - Create EnumerationContext
+///    - Enumerate paths with context
+///    - Store paths with batch insert
+/// 4. Return paths
+///
+/// **Performance:**
+/// - Cache hit: O(p) retrieval (p = stored path count)
+/// - Cache miss: O(v+e + n*l) where v=vertices, e=edges, n=paths, l=avg length
+/// - Subsequent calls with same CFG: O(v+e) for context only
+///
+/// # Arguments
+///
+/// * `cfg` - Control flow graph to analyze
+/// * `function_id` - Database ID of the function
+/// * `function_hash` - BLAKE3 hash of function content for cache validation
+/// * `limits` - Path enumeration limits
+/// * `db_conn` - Database connection for cache operations
+///
+/// # Returns
+///
+/// `Ok(Vec<Path>)` - Enumerated or cached paths
+/// `Err(String)` - Error message if operation fails
+///
+/// # Example
+///
+/// ```rust
+/// use mirage::cfg::{enumerate_paths_cached, PathLimits, EnumerationContext};
+///
+/// let hash = blake3::hash(&function_bytes).to_hex().to_string();
+/// let paths = enumerate_paths_cached(
+///     &cfg,
+///     function_id,
+///     &hash,
+///     &PathLimits::default(),
+///     &mut conn,
+/// )?;
+/// ```
+pub fn enumerate_paths_cached(
+    cfg: &Cfg,
+    function_id: i64,
+    function_hash: &str,
+    limits: &PathLimits,
+    db_conn: &mut rusqlite::Connection,
+) -> Result<Vec<Path>, String> {
+    use crate::storage::paths::{get_cached_paths, update_function_paths_if_changed};
+
+    // Try to get cached paths first
+    // update_function_paths_if_changed handles hash comparison and returns:
+    // - Ok(false) if hash matched (cache hit)
+    // - Ok(true) if paths were updated (cache miss)
+    let current_hash: Option<String> = db_conn.query_row(
+        "SELECT function_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
+        rusqlite::params![function_id],
+        |row| row.get(0),
+    ).unwrap_or(None);
+
+    // Check if we have a cache hit
+    if let Some(ref hash) = current_hash {
+        if hash == function_hash {
+            // Cache hit - retrieve stored paths
+            let paths = get_cached_paths(db_conn, function_id)
+                .map_err(|e| format!("Failed to retrieve cached paths: {}", e))?;
+            return Ok(paths);
+        }
+    }
+
+    // Cache miss - enumerate paths with pre-computed context
+    let ctx = EnumerationContext::new(cfg);
+    let paths = enumerate_paths_with_context(cfg, limits, &ctx);
+
+    // Store paths using batch insert for performance
+    update_function_paths_if_changed(db_conn, function_id, function_hash, &paths)
+        .map_err(|e| format!("Failed to store enumerated paths: {}", e))?;
+
+    Ok(paths)
+}
+
+/// Enumerate paths with external context and integrated caching
+///
+/// Similar to `enumerate_paths_cached` but allows you to provide a pre-computed
+/// EnumerationContext. Use this when performing multiple operations on the same CFG.
+///
+/// **Benefits over enumerate_paths_cached:**
+/// - Reuse context across multiple calls
+/// - Useful when you also need context for other analyses
+///
+/// # Arguments
+///
+/// * `cfg` - Control flow graph to analyze
+/// * `function_id` - Database ID of the function
+/// * `function_hash` - BLAKE3 hash of function content for cache validation
+/// * `limits` - Path enumeration limits
+/// * `ctx` - Pre-computed enumeration context
+/// * `db_conn` - Database connection for cache operations
+///
+/// # Returns
+///
+/// `Ok(Vec<Path>)` - Enumerated or cached paths
+/// `Err(String)` - Error message if operation fails
+pub fn enumerate_paths_cached_with_context(
+    cfg: &Cfg,
+    function_id: i64,
+    function_hash: &str,
+    limits: &PathLimits,
+    ctx: &EnumerationContext,
+    db_conn: &mut rusqlite::Connection,
+) -> Result<Vec<Path>, String> {
+    use crate::storage::paths::{get_cached_paths, update_function_paths_if_changed};
+
+    // Try cache first
+    let current_hash: Option<String> = db_conn.query_row(
+        "SELECT function_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
+        rusqlite::params![function_id],
+        |row| row.get(0),
+    ).unwrap_or(None);
+
+    if let Some(ref hash) = current_hash {
+        if hash == function_hash {
+            return get_cached_paths(db_conn, function_id)
+                .map_err(|e| format!("Failed to retrieve cached paths: {}", e));
+        }
+    }
+
+    // Cache miss - use provided context
+    let paths = enumerate_paths_with_context(cfg, limits, ctx);
+
+    update_function_paths_if_changed(db_conn, function_id, function_hash, &paths)
+        .map_err(|e| format!("Failed to store enumerated paths: {}", e))?;
+
+    Ok(paths)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3352,5 +3500,239 @@ mod tests {
 
         // Both should return the same paths (10 is enough for diamond)
         assert_eq!(paths1.len(), paths2.len());
+    }
+
+    // Task 05-06-3: enumerate_paths_cached tests
+
+    #[test]
+    fn test_enumerate_paths_cached_cache_miss_enumerates() {
+        use crate::storage::create_schema;
+        use super::super::enumerate_paths_cached;
+
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+
+        // Create Magellan tables
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, 4, 3, 0)",
+            [],
+        ).unwrap();
+
+        create_schema(&mut conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "test_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = 1;
+
+        let cfg = create_linear_cfg();
+        let function_hash = "test_hash_123";
+        let limits = PathLimits::default();
+
+        // First call should enumerate (cache miss)
+        let paths = enumerate_paths_cached(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
+
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].blocks, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn test_enumerate_paths_cached_cache_hit_retrieves() {
+        use crate::storage::create_schema;
+        use super::super::enumerate_paths_cached;
+
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+
+        // Create Magellan tables
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, 4, 3, 0)",
+            [],
+        ).unwrap();
+
+        create_schema(&mut conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "test_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = 1;
+
+        let cfg = create_linear_cfg();
+        let function_hash = "test_hash_456";
+        let limits = PathLimits::default();
+
+        // First call - cache miss, enumerates and stores
+        let paths1 = enumerate_paths_cached(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
+        assert_eq!(paths1.len(), 1);
+
+        // Second call with same hash - cache hit, retrieves without enumeration
+        let paths2 = enumerate_paths_cached(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
+        assert_eq!(paths2.len(), 1);
+        assert_eq!(paths2[0].blocks, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn test_enumerate_paths_cached_hash_change_invalidates() {
+        use crate::storage::create_schema;
+        use super::super::enumerate_paths_cached;
+
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+
+        // Create Magellan tables
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, 4, 3, 0)",
+            [],
+        ).unwrap();
+
+        create_schema(&mut conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "test_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = 1;
+
+        let cfg = create_linear_cfg();
+        let hash1 = "test_hash_v1";
+        let hash2 = "test_hash_v2";
+        let limits = PathLimits::default();
+
+        // Call with hash1 - stores paths
+        let paths1 = enumerate_paths_cached(&cfg, function_id, hash1, &limits, &mut conn).unwrap();
+        assert_eq!(paths1.len(), 1);
+
+        // Call with hash2 - should invalidate and re-enumerate
+        let paths2 = enumerate_paths_cached(&cfg, function_id, hash2, &limits, &mut conn).unwrap();
+        assert_eq!(paths2.len(), 1);
+
+        // Both should return the same path content (same CFG)
+        assert_eq!(paths1[0].blocks, paths2[0].blocks);
+    }
+
+    #[test]
+    fn test_enumerate_paths_cached_with_context() {
+        use crate::storage::create_schema;
+        use super::super::{enumerate_paths_cached_with_context, EnumerationContext};
+
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+
+        // Create Magellan tables
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, 4, 3, 0)",
+            [],
+        ).unwrap();
+
+        create_schema(&mut conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "test_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = 1;
+
+        let cfg = create_diamond_cfg();
+        let function_hash = "test_hash_ctx";
+        let limits = PathLimits::default();
+        let ctx = EnumerationContext::new(&cfg);
+
+        // First call - cache miss
+        let paths1 = enumerate_paths_cached_with_context(
+            &cfg, function_id, function_hash, &limits, &ctx, &mut conn
+        ).unwrap();
+        assert_eq!(paths1.len(), 2); // Diamond has 2 paths
+
+        // Second call - cache hit
+        let paths2 = enumerate_paths_cached_with_context(
+            &cfg, function_id, function_hash, &limits, &ctx, &mut conn
+        ).unwrap();
+        assert_eq!(paths2.len(), 2);
     }
 }

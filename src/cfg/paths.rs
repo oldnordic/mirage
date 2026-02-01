@@ -5,7 +5,7 @@
 //! to exit. Paths are discovered using depth-first search with cycle
 //! detection and loop bounding to prevent infinite recursion.
 
-use crate::cfg::{BlockId, Cfg};
+use crate::cfg::{BlockId, Cfg, Terminator};
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -89,6 +89,75 @@ pub enum PathKind {
 fn find_node_by_block_id(cfg: &Cfg, block_id: BlockId) -> Option<NodeIndex> {
     cfg.node_indices()
         .find(|&idx| cfg[idx].id == block_id)
+}
+
+/// Classify a path based on its terminators and reachability
+///
+/// **Classification rules (in priority order):**
+///
+/// 1. **Unreachable:** Any block in path is unreachable from entry
+/// 2. **Error:** Path contains error terminators (Abort, Call with unwind)
+/// 3. **Degenerate:** Path ends abnormally or has unreachable terminator
+/// 4. **Normal:** Default classification (entry -> return path)
+///
+/// # Arguments
+///
+/// * `cfg` - Control flow graph to analyze
+/// * `blocks` - Block IDs in execution order
+///
+/// # Returns
+///
+/// The classified PathKind for this path
+pub fn classify_path(cfg: &Cfg, blocks: &[BlockId]) -> PathKind {
+    use crate::cfg::reachability::is_reachable_from_entry;
+
+    // Empty path is degenerate
+    if blocks.is_empty() {
+        return PathKind::Degenerate;
+    }
+
+    // Check each block in the path
+    for &block_id in blocks {
+        let node_idx = match find_node_by_block_id(cfg, block_id) {
+            Some(idx) => idx,
+            None => return PathKind::Degenerate, // Block doesn't exist
+        };
+
+        // Priority 1: Check if block is unreachable from entry
+        if !is_reachable_from_entry(cfg, node_idx) {
+            return PathKind::Unreachable;
+        }
+
+        // Get the block's terminator
+        let terminator = &cfg[node_idx].terminator;
+
+        // Priority 2: Check for error terminators
+        match terminator {
+            Terminator::Abort(_) => return PathKind::Error,
+            Terminator::Call { unwind: Some(_), .. } => return PathKind::Error,
+            _ => {}
+        }
+
+        // Priority 3: Check for unreachable terminator (anywhere in path)
+        if matches!(terminator, Terminator::Unreachable) {
+            return PathKind::Degenerate;
+        }
+    }
+
+    // Check last block terminator - if not Return, it's degenerate
+    if let Some(&last_block_id) = blocks.last() {
+        if let Some(node_idx) = find_node_by_block_id(cfg, last_block_id) {
+            let terminator = &cfg[node_idx].terminator;
+            // Non-Return terminators at end are degenerate
+            if !matches!(terminator, Terminator::Return) {
+                // Already caught Unreachable above, so check other cases
+                return PathKind::Degenerate;
+            }
+        }
+    }
+
+    // Default: Normal path
+    PathKind::Normal
 }
 
 impl PathKind {
@@ -660,6 +729,199 @@ mod tests {
         // Empty CFG has no blocks
         let b0 = find_node_by_block_id(&cfg, 0);
         assert!(b0.is_none());
+    }
+
+    // classify_path tests
+
+    /// Create a CFG with an Abort terminator (error path)
+    fn create_error_cfg() -> Cfg {
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Abort("panic!".to_string()),
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+
+        g
+    }
+
+    /// Create a CFG with unreachable terminator (degenerate path)
+    fn create_unreachable_term_cfg() -> Cfg {
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Unreachable,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+
+        g
+    }
+
+    /// Create a CFG with an unreachable block (dead code)
+    fn create_dead_code_cfg() -> Cfg {
+        let mut g = DiGraph::new();
+
+        let _b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        // Block 1 is not reachable from entry
+        let _b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g
+    }
+
+    /// Create a CFG with Call that has unwind (error path)
+    fn create_call_unwind_cfg() -> Cfg {
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Call {
+                target: Some(1),
+                unwind: Some(2), // Has unwind -> Error path
+            },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        let _b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+
+        g
+    }
+
+    #[test]
+    fn test_classify_path_normal_return() {
+        let cfg = create_linear_cfg();
+        let path = vec![0, 1, 2];
+
+        let kind = classify_path(&cfg, &path);
+        assert_eq!(kind, PathKind::Normal);
+    }
+
+    #[test]
+    fn test_classify_path_error_abort() {
+        let cfg = create_error_cfg();
+        let path = vec![0, 1];
+
+        let kind = classify_path(&cfg, &path);
+        assert_eq!(kind, PathKind::Error);
+    }
+
+    #[test]
+    fn test_classify_path_degenerate_unreachable_terminator() {
+        let cfg = create_unreachable_term_cfg();
+        let path = vec![0, 1];
+
+        let kind = classify_path(&cfg, &path);
+        assert_eq!(kind, PathKind::Degenerate);
+    }
+
+    #[test]
+    fn test_classify_path_unreachable_block() {
+        let cfg = create_dead_code_cfg();
+        // Path includes unreachable block
+        let path = vec![1]; // Block 1 is not reachable from entry
+
+        let kind = classify_path(&cfg, &path);
+        assert_eq!(kind, PathKind::Unreachable);
+    }
+
+    #[test]
+    fn test_classify_path_error_call_unwind() {
+        let cfg = create_call_unwind_cfg();
+        let path = vec![0, 1]; // Goes through Call with unwind
+
+        let kind = classify_path(&cfg, &path);
+        assert_eq!(kind, PathKind::Error);
+    }
+
+    #[test]
+    fn test_classify_path_empty() {
+        let cfg = create_linear_cfg();
+        let path: Vec<BlockId> = vec![];
+
+        let kind = classify_path(&cfg, &path);
+        assert_eq!(kind, PathKind::Degenerate);
+    }
+
+    #[test]
+    fn test_classify_path_single_block() {
+        let mut g = DiGraph::new();
+
+        let _b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        let path = vec![0];
+        let kind = classify_path(&g, &path);
+        assert_eq!(kind, PathKind::Normal);
+    }
+
+    #[test]
+    fn test_classify_path_nonexistent_block() {
+        let cfg = create_linear_cfg();
+        let path = vec![0, 99]; // Block 99 doesn't exist
+
+        let kind = classify_path(&cfg, &path);
+        assert_eq!(kind, PathKind::Degenerate);
     }
 
     // enumerate_paths tests

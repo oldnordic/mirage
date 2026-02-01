@@ -5,30 +5,31 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 2: CFG Construction (in progress)
+**Current focus:** Phase 2: CFG Construction (complete)
+**Last focus:** Phase 3: Reachability & Control Structure (upcoming)
 
 ## Current Position
 
-Phase: 2 of 7 (CFG Construction) - In Progress
-Plan: 05 complete (of 6 in this phase)
-Status: Source location mapping integrated into BasicBlock for CFG-to-source traceability
-Last activity: 2026-02-01 - Completed 02-05: Source location mapping
+Phase: 2 of 7 (CFG Construction) - Complete
+Plan: 06 complete (of 6 in this phase)
+Status: CFG export complete with DOT and JSON formats, CLI integration wired
+Last activity: 2026-02-01 - Completed 02-06: DOT and JSON export
 
-Progress: [█████████░] 83% (Phase 2/7, Plan 5/6 in phase)
+Progress: [████████░░] 14% (Phase 2/7 complete, 6/6 plans in phase, 9 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 5 min
-- Total execution time: 0.7 hours
+- Total execution time: 0.8 hours
 
 **By Phase:**
 
 | Phase | Plans | Complete | Avg/Plan |
 |-------|-------|----------|----------|
 | 01-database-foundation | 3 | 3/3 | 4 min |
-| 02-cfg-construction | 6 | 5/6 | 5 min |
+| 02-cfg-construction | 6 | 6/6 | 5 min |
 
 **Recent Trend:**
 - Last 5 plans: 5 min
@@ -93,6 +94,13 @@ Recent decisions affecting current work:
 - SourceLocation::display() produces "file:line:col-line:col" format for IDE integration
 - overlaps() method for source range intersection (useful for coverage analysis)
 
+**From 02-06 (DOT and JSON Export):**
+- Manual DOT generation instead of petgraph::dot for more control over colors and labels
+- JSON export uses serde for easy tool integration
+- CLI uses test CFG for now - database loading comes in later plans
+- Export pattern: separate export_dot() and export_json() functions for different formats
+- CLI format handling: --format flag with fallback to global --output
+
 ### Pending Todos
 
 None yet.
@@ -105,5 +113,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 02-05: Source location mapping
+Stopped at: Completed 02-06: DOT and JSON export
 Resume file: None

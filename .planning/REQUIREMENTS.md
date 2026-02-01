@@ -1,7 +1,7 @@
 # Requirements: Mirage
 
 **Defined:** 2026-02-01
-**Core Value:** An agent may only speak if it can reference a graph artifact. No artifact → no output.
+**Core Value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
 
 ## v1 Requirements
 
@@ -57,7 +57,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **DB-02**: System extends Magellan database with cfg_edges table
 - [ ] **DB-03**: System extends Magellan database with cfg_paths table
 - [ ] **DB-04**: System extends Magellan database with cfg_dominators table
-- [ ] **DB-05**: System foreign keys cfg_blocks.function_id → graph_entities.id
+- [ ] **DB-05**: System foreign keys cfg_blocks.function_id -> graph_entities.id
 - [ ] **DB-06**: System supports incremental updates on code change
 
 ### CLI Interface
@@ -126,16 +126,67 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
+Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| All v1 requirements | TBD | Pending |
+| CFG-01 | Phase 2 | Pending |
+| CFG-02 | Phase 2 | Pending |
+| CFG-03 | Phase 2 | Pending |
+| CFG-04 | Phase 2 | Pending |
+| CFG-05 | Phase 2 | Pending |
+| CFG-06 | Phase 2 | Pending |
+| REACH-01 | Phase 3 | Pending |
+| REACH-02 | Phase 3 | Pending |
+| REACH-03 | Phase 3 | Pending |
+| DOM-01 | Phase 4 | Pending |
+| DOM-02 | Phase 4 | Pending |
+| DOM-03 | Phase 4 | Pending |
+| DOM-04 | Phase 4 | Pending |
+| CTRL-01 | Phase 3 | Pending |
+| CTRL-02 | Phase 3 | Pending |
+| CTRL-03 | Phase 3 | Pending |
+| CTRL-04 | Phase 3 | Pending |
+| PATH-01 | Phase 5 | Pending |
+| PATH-02 | Phase 5 | Pending |
+| PATH-03 | Phase 5 | Pending |
+| PATH-04 | Phase 5 | Pending |
+| PATH-05 | Phase 5 | Pending |
+| PATH-06 | Phase 5 | Pending |
+| MIR-01 | Phase 2 | Pending |
+| MIR-02 | Phase 2 | Pending |
+| MIR-03 | Phase 2 | Pending |
+| DB-01 | Phase 1 | Pending |
+| DB-02 | Phase 1 | Pending |
+| DB-03 | Phase 1 | Pending |
+| DB-04 | Phase 1 | Pending |
+| DB-05 | Phase 1 | Pending |
+| DB-06 | Phase 1 | Pending |
+| CLI-01 | Phase 6 | Pending |
+| CLI-02 | Phase 6 | Pending |
+| CLI-03 | Phase 6 | Pending |
+| CLI-04 | Phase 6 | Pending |
+| CLI-05 | Phase 6 | Pending |
+| CLI-06 | Phase 6 | Pending |
+| CLI-07 | Phase 6 | Pending |
+| CLI-08 | Phase 6 | Pending |
+| CLI-09 | Phase 6 | Pending |
+| CLI-10 | Phase 6 | Pending |
+| CLI-11 | Phase 6 | Pending |
+| CLI-12 | Phase 6 | Pending |
+| LLM-01 | Phase 7 | Pending |
+| LLM-02 | Phase 7 | Pending |
+| LLM-03 | Phase 7 | Pending |
+| LLM-04 | Phase 7 | Pending |
+| PERF-01 | Phase 5 | Pending |
+| PERF-02 | Phase 5 | Pending |
+| PERF-03 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 47 total
-- Mapped to phases: TBD
-- Unmapped: 47 ⚠
+- v1 requirements: 51 total
+- Mapped to phases: 51/51 (100%)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-01*
+*Roadmap created: 2026-02-01*

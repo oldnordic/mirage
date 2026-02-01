@@ -270,20 +270,125 @@ pub mod cmds {
         Ok(())
     }
 
-    pub fn paths(_args: PathsArgs) -> Result<()> {
-        // TODO: Implement M3 (Path Enumeration)
-        output::error("Path enumeration not yet implemented (Milestone 3)");
-        std::process::exit(1);
+    pub fn paths(args: PathsArgs, cli: &Cli) -> Result<()> {
+        use crate::cfg::{PathKind, PathLimits, enumerate_paths};
+        use crate::storage::MirageDb;
+
+        // Resolve database path
+        let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // Open database
+        let _db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
+            Err(e) => {
+                output::error(&format!("Failed to open database: {}", e));
+                output::info("Hint: Run 'mirage index' to create the database");
+                std::process::exit(output::EXIT_DATABASE);
+            }
+        };
+
+        // For now, create a test CFG since MIR extraction isn't complete
+        // TODO: Load CFG from database using args.function
+        let cfg = create_test_cfg();
+
+        // Build path limits based on args
+        let mut limits = PathLimits::default();
+        if let Some(max_length) = args.max_length {
+            limits = limits.with_max_length(max_length);
+        }
+
+        // Enumerate paths
+        let mut paths = enumerate_paths(&cfg, &limits);
+
+        // Filter to error paths if requested
+        if args.show_errors {
+            paths.retain(|p| p.kind == PathKind::Error);
+        }
+
+        // Count error paths for reporting
+        let error_count = paths.iter().filter(|p| p.kind == PathKind::Error).count();
+
+        // Format output based on cli.output
+        match cli.output {
+            OutputFormat::Human => {
+                // Human-readable text format
+                println!("Function: {}", args.function);
+                println!("Total paths: {}", paths.len());
+                if args.show_errors {
+                    println!("(Showing error paths only)");
+                } else {
+                    println!("Error paths: {}", error_count);
+                }
+                println!();
+
+                if paths.is_empty() {
+                    output::info("No paths found");
+                    return Ok(());
+                }
+
+                for (i, path) in paths.iter().enumerate() {
+                    println!("Path {}: {}", i + 1, path.path_id);
+                    println!("  Kind: {:?}", path.kind);
+                    println!("  Length: {} blocks", path.len());
+                    if args.with_blocks {
+                        println!("  Blocks: {}", path.blocks.iter()
+                            .map(|id| id.to_string())
+                            .collect::<Vec<_>>()
+                            .join(" -> "));
+                    }
+                    println!();
+                }
+            }
+            OutputFormat::Json => {
+                // Compact JSON
+                let response = PathsResponse {
+                    function: args.function.clone(),
+                    total_paths: paths.len(),
+                    error_paths: error_count,
+                    paths: paths.into_iter().map(PathSummary::from).collect(),
+                };
+                let wrapper = output::JsonResponse::new(response);
+                println!("{}", wrapper.to_json());
+            }
+            OutputFormat::Pretty => {
+                // Formatted JSON with indentation
+                let response = PathsResponse {
+                    function: args.function.clone(),
+                    total_paths: paths.len(),
+                    error_paths: error_count,
+                    paths: paths.into_iter().map(PathSummary::from).collect(),
+                };
+                let wrapper = output::JsonResponse::new(response);
+                println!("{}", wrapper.to_pretty_json());
+            }
+        }
+
+        Ok(())
     }
 
     pub fn cfg(args: &CfgArgs, cli: &Cli) -> Result<()> {
-        use crate::cfg::{export_dot, export_json};
+        use crate::cfg::{export_dot, export_json, CFGExport};
+        use crate::storage::MirageDb;
 
-        // For now, create a test CFG
-        // In future, we'll load from database
+        // Resolve database path
+        let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // Open database (follows status command pattern for error handling)
+        let _db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
+            Err(e) => {
+                output::error(&format!("Failed to open database: {}", e));
+                output::info("Hint: Run 'mirage index' to create the database");
+                std::process::exit(output::EXIT_DATABASE);
+            }
+        };
+
+        // TODO: Load CFG from database for the specified function.
+        // This requires MIR extraction (Phase 02-01) to be complete.
+        // For now, create a test CFG to demonstrate the export functionality.
         let cfg = create_test_cfg();
 
-        // Determine output format
+        // Determine output format (args.format overrides cli.output)
         let format = args.format.unwrap_or(match cli.output {
             OutputFormat::Human => CfgFormat::Human,
             OutputFormat::Json => CfgFormat::Json,
@@ -292,13 +397,20 @@ pub mod cmds {
 
         match format {
             CfgFormat::Human | CfgFormat::Dot => {
+                // Both Human and Dot use DOT format
                 let dot = export_dot(&cfg);
                 println!("{}", dot);
             }
             CfgFormat::Json => {
-                let export = export_json(&cfg, &args.function);
-                let json = serde_json::to_string_pretty(&export)?;
-                println!("{}", json);
+                // Export to JSON and wrap in JsonResponse for consistency
+                let export: CFGExport = export_json(&cfg, &args.function);
+                let response = output::JsonResponse::new(export);
+
+                match cli.output {
+                    OutputFormat::Json => println!("{}", response.to_json()),
+                    OutputFormat::Pretty => println!("{}", response.to_pretty_json()),
+                    OutputFormat::Human => println!("{}", response.to_pretty_json()),
+                }
             }
         }
 
@@ -309,7 +421,7 @@ pub mod cmds {
     ///
     /// This will be replaced with database loading in future plans
     /// when MIR extraction (02-01) is complete.
-    fn create_test_cfg() -> crate::cfg::Cfg {
+    pub(crate) fn create_test_cfg() -> crate::cfg::Cfg {
         use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
         use petgraph::graph::DiGraph;
         let mut g = DiGraph::new();
@@ -428,5 +540,180 @@ mod tests {
         let result = resolve_db_path(Some("/cli/path.db".to_string())).unwrap();
         assert_eq!(result, "/cli/path.db");
         std::env::remove_var("MIRAGE_DB");
+    }
+}
+
+// ============================================================================
+// cfg() Command Tests
+// ============================================================================
+
+#[cfg(test)]
+mod cfg_tests {
+    use super::*;
+    use crate::cfg::{export_dot, export_json};
+
+    /// Test that DOT format output contains expected Graphviz DOT syntax
+    #[test]
+    fn test_cfg_dot_format() {
+        let cfg = cmds::create_test_cfg();
+        let dot = export_dot(&cfg);
+
+        // Verify basic Graphviz DOT structure
+        assert!(dot.contains("digraph CFG"), "DOT output should contain 'digraph CFG'");
+        assert!(dot.contains("rankdir=TB"), "DOT output should contain rankdir attribute");
+        assert!(dot.contains("node [shape=box"), "DOT output should contain node shape attribute");
+        assert!(dot.contains("}"), "DOT output should end with closing brace");
+
+        // Verify edge syntax
+        assert!(dot.contains("->"), "DOT output should contain edge arrows");
+    }
+
+    /// Test that JSON format output is valid and contains expected structure
+    #[test]
+    fn test_cfg_json_format() {
+        let cfg = cmds::create_test_cfg();
+        let function_name = "test_function";
+        let export = export_json(&cfg, function_name);
+
+        // Verify function name is included
+        assert_eq!(export.function_name, function_name, "JSON export should include function name");
+
+        // Verify structure
+        assert!(export.entry.is_some(), "JSON export should have an entry block");
+        assert!(!export.exits.is_empty(), "JSON export should have exit blocks");
+        assert!(!export.blocks.is_empty(), "JSON export should have blocks");
+        assert!(!export.edges.is_empty(), "JSON export should have edges");
+
+        // Verify JSON can be serialized
+        let json_str = serde_json::to_string(&export);
+        assert!(json_str.is_ok(), "JSON export should be serializable to JSON");
+
+        // Verify JSON contains function name
+        let json = json_str.unwrap();
+        assert!(json.contains(function_name), "JSON output should contain function name");
+        assert!(json.contains("\"entry\""), "JSON output should contain entry field");
+        assert!(json.contains("\"exits\""), "JSON output should contain exits field");
+        assert!(json.contains("\"blocks\""), "JSON output should contain blocks field");
+        assert!(json.contains("\"edges\""), "JSON output should contain edges field");
+    }
+
+    /// Test that function name is correctly passed to export_json()
+    #[test]
+    fn test_cfg_function_name_in_export() {
+        let cfg = cmds::create_test_cfg();
+
+        // Test with different function names
+        let test_names = vec![
+            "my_function",
+            "TestFunc",
+            "module::submodule::function",
+        ];
+
+        for name in test_names {
+            let export = export_json(&cfg, name);
+            assert_eq!(export.function_name, name, "Function name should be preserved in export");
+        }
+    }
+
+    /// Test format fallback when args.format is None (should use cli.output)
+    #[test]
+    fn test_cfg_format_fallback() {
+        // Test that CfgFormat::Human is used when cli.output is Human
+        let cli_human = Cli {
+            db: None,
+            output: OutputFormat::Human,
+            command: Commands::Cfg(CfgArgs {
+                function: "test".to_string(),
+                format: None,
+            }),
+        };
+
+        let cfg_args = match &cli_human.command {
+            Commands::Cfg(args) => args,
+            _ => panic!("Expected Cfg command"),
+        };
+
+        // Simulate the format resolution logic from cfg()
+        let resolved_format = cfg_args.format.unwrap_or(match cli_human.output {
+            OutputFormat::Human => CfgFormat::Human,
+            OutputFormat::Json => CfgFormat::Json,
+            OutputFormat::Pretty => CfgFormat::Json,
+        });
+
+        assert_eq!(resolved_format, CfgFormat::Human, "Should fall back to Human format");
+
+        // Test that CfgFormat::Json is used when cli.output is Json
+        let cli_json = Cli {
+            db: None,
+            output: OutputFormat::Json,
+            command: Commands::Cfg(CfgArgs {
+                function: "test".to_string(),
+                format: None,
+            }),
+        };
+
+        let cfg_args_json = match &cli_json.command {
+            Commands::Cfg(args) => args,
+            _ => panic!("Expected Cfg command"),
+        };
+
+        let resolved_format_json = cfg_args_json.format.unwrap_or(match cli_json.output {
+            OutputFormat::Human => CfgFormat::Human,
+            OutputFormat::Json => CfgFormat::Json,
+            OutputFormat::Pretty => CfgFormat::Json,
+        });
+
+        assert_eq!(resolved_format_json, CfgFormat::Json, "Should fall back to Json format");
+    }
+
+    /// Test that JsonResponse wrapper wraps CFGExport correctly
+    #[test]
+    fn test_cfg_json_response_wrapper() {
+        use crate::output::JsonResponse;
+
+        let cfg = cmds::create_test_cfg();
+        let export = export_json(&cfg, "wrapped_function");
+        let response = JsonResponse::new(export);
+
+        // Verify JsonResponse structure
+        assert_eq!(response.schema_version, "1.0.0");
+        assert_eq!(response.tool, "mirage");
+        assert!(!response.execution_id.is_empty());
+        assert!(!response.timestamp.is_empty());
+
+        // Verify can be serialized
+        let json = response.to_json();
+        assert!(json.contains("\"schema_version\""));
+        assert!(json.contains("\"execution_id\""));
+        assert!(json.contains("\"tool\":\"mirage\""));
+        assert!(json.contains("\"data\""));
+        assert!(json.contains("wrapped_function"));
+    }
+
+    /// Test DOT format contains expected block information
+    #[test]
+    fn test_cfg_dot_block_info() {
+        let cfg = cmds::create_test_cfg();
+        let dot = export_dot(&cfg);
+
+        // Check for ENTRY block marker (green fill)
+        assert!(dot.contains("lightgreen"), "DOT should mark entry block with green");
+
+        // Check for EXIT block marker (coral fill)
+        assert!(dot.contains("lightcoral"), "DOT should mark exit blocks with coral");
+
+        // Check for block labels
+        assert!(dot.contains("Block"), "DOT should contain block labels");
+    }
+
+    /// Test DOT format contains expected edge information
+    #[test]
+    fn test_cfg_dot_edge_info() {
+        let cfg = cmds::create_test_cfg();
+        let dot = export_dot(&cfg);
+
+        // Check for edge colors (TrueBranch=green, FalseBranch=red)
+        assert!(dot.contains("color=green"), "DOT should show true branch edges in green");
+        assert!(dot.contains("color=red"), "DOT should show false branch edges in red");
     }
 }

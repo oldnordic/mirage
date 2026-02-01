@@ -114,12 +114,12 @@ Plans:
 3. System computes post-dominators
 4. System computes dominance frontiers
 
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 04-01: Dominator tree construction
-- [ ] 04-02: Post-dominator tree construction
-- [ ] 04-03: Dominance frontier computation
+- [ ] 04-01-PLAN.md — Dominator tree construction (DominatorTree wrapper with simple_fast)
+- [ ] 04-02-PLAN.md — Post-dominator tree construction (PostDominatorTree via Reversed adaptor)
+- [ ] 04-03-PLAN.md — Dominance frontier computation (DominanceFrontiers using Cytron et al. algorithm)
 
 ### Phase 5: Path Enumeration
 
@@ -215,7 +215,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 1. Database Foundation | 3/3 | ✓ Complete | 2026-02-01 |
 | 2. CFG Construction | 6/6 | ✓ Complete | 2026-02-01 |
 | 3. Reachability & Control Structure | 4/4 | ✓ Complete | 2026-02-01 |
-| 4. Dominance Analysis | 0/TBD | Not started | - |
+| 4. Dominance Analysis | 0/3 | Planned | - |
 | 5. Path Enumeration | 0/TBD | Not started | - |
 | 6. CLI Interface | 0/TBD | Not started | - |
 | 7. LLM Integration | 0/TBD | Not started | - |

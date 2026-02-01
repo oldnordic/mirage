@@ -437,8 +437,6 @@ impl<'a> CFGBuilder<'a> {
 mod tests {
     use super::*;
 
-    /// Helper to create a mock tree-sitter parser for testing
-    /// In real usage, callers provide the actual tree-sitter Parser
     #[test]
     fn test_cfg_builder_new() {
         let source = "fn test() { return; }";
@@ -450,31 +448,52 @@ mod tests {
     }
 
     #[test]
-    fn test_is_statement() {
-        let source = "fn test() { return; }";
-        let builder = CFGBuilder::new(source);
-
-        // Create a dummy node for testing (requires actual parser)
-        // This is a placeholder test - real tests need tree-sitter parser
-        assert!(true);
+    fn test_leader_detection_empty() {
+        let builder = CFGBuilder::new("");
+        assert!(builder.leaders.is_empty());
     }
 
     #[test]
-    fn test_classify_block_entry() {
-        let source = "";
-        let builder = CFGBuilder::new(source);
-
-        // Empty statements -> Normal kind (Entry set separately)
+    fn test_block_kind_classification() {
+        let builder = CFGBuilder::new("");
+        // Empty block is Normal
         assert_eq!(builder.classify_block(&[]), BlockKind::Normal);
     }
 
     #[test]
-    fn test_node_text() {
-        let source = "let x = 42;";
+    fn test_terminator_extraction_return() {
+        let builder = CFGBuilder::new("");
+        // Empty slice -> Return terminator (default for empty)
+        assert_eq!(builder.extract_terminator(&[]), Terminator::Return);
+    }
+
+    #[test]
+    fn test_find_block_containing_empty() {
+        let builder = CFGBuilder::new("");
+        // No blocks exist, should return default 0
+        assert_eq!(builder.find_block_containing(999), 0);
+    }
+
+    #[test]
+    fn test_find_block_for_node_none() {
+        let builder = CFGBuilder::new("");
+        // None node returns None
+        assert_eq!(builder.find_block_for_node(None), None);
+    }
+
+    #[test]
+    fn test_cfg_builder_state_initialization() {
+        let source = "fn example() { let x = 1; }";
         let builder = CFGBuilder::new(source);
 
-        // Test with empty slice (not a real node)
-        // Real tests need actual tree-sitter nodes
-        assert!(true);
+        // Verify initial state
+        assert_eq!(builder.source, source);
+        assert_eq!(builder.next_block_id, 0);
+        assert!(builder.leaders.is_empty());
+        assert!(builder.blocks.is_empty());
+        assert!(builder.node_to_block.is_empty());
+        assert!(builder.node_map.is_empty());
+        assert_eq!(builder.graph.node_count(), 0);
+        assert_eq!(builder.graph.edge_count(), 0);
     }
 }

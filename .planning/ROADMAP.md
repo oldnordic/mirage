@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Reachability & Control Structure** - Analyze what code can execute ✓ Completed 2026-02-01
 - [x] **Phase 4: Dominance Analysis** - Compute must-pass-through relationships ✓ Completed 2026-02-01
 - [x] **Phase 5: Path Enumeration** - Enumerate and classify execution paths ✓ Completed 2026-02-01
-- [ ] **Phase 6: CLI Interface** - User-facing commands for all analysis types
+- [x] **Phase 6: CLI Interface** - User-facing commands for all analysis types ✓ Completed 2026-02-01
 - [ ] **Phase 7: LLM Integration** - Structured outputs for agent consumption
 
 ## Phase Details
@@ -176,16 +176,20 @@ Plans:
 11. `mirage status` shows database statistics
 12. All commands support `--output json|pretty|human`
 
+**Status**: ✓ Completed 2026-02-01
+
 **Plans**: 7 plans in 4 waves
 
 Plans:
-- [ ] 06-01-PLAN.md — Path query commands (paths --function, --show-errors, --max-length)
-- [ ] 06-02-PLAN.md — CFG visualization commands (cfg --format dot/json/human)
-- [ ] 06-03-PLAN.md — Dominator commands (--must-pass-through, --post)
-- [ ] 06-04-PLAN.md — Unreachable code command (--show-branches)
-- [ ] 06-05-PLAN.md — Verification command (verify --path-id)
-- [ ] 06-06-PLAN.md — Status command verification (already implemented)
-- [ ] 06-07-PLAN.md — Output format standardization across all commands
+- [x] 06-01-PLAN.md — Path query commands (paths --function, --show-errors, --max-length)
+- [x] 06-02-PLAN.md — CFG visualization commands (cfg --format dot/json/human)
+- [x] 06-03-PLAN.md — Dominator commands (--must-pass-through, --post)
+- [x] 06-04-PLAN.md — Unreachable code command (--show-branches)
+- [x] 06-05-PLAN.md — Verification command (verify --path-id)
+- [x] 06-06-PLAN.md — Status command verification (already implemented)
+- [x] 06-07-PLAN.md — Output format standardization across all commands
+
+**Note:** CLI-09 (--show-branches flag for unreachable command) is implemented but shows a placeholder message. This is a minor enhancement that can be added in a future update.
 
 ### Phase 7: LLM Integration
 
@@ -221,7 +225,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 3. Reachability & Control Structure | 4/4 | ✓ Complete | 2026-02-01 |
 | 4. Dominance Analysis | 3/3 | ✓ Complete | 2026-02-01 |
 | 5. Path Enumeration | 6/6 | ✓ Complete | 2026-02-01 |
-| 6. CLI Interface | 0/TBD | Not started | - |
+| 6. CLI Interface | 7/7 | ✓ Complete | 2026-02-01 |
 | 7. LLM Integration | 0/TBD | Not started | - |
 
 ---

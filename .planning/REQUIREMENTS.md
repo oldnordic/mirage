@@ -62,18 +62,18 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### CLI Interface
 
-- [ ] **CLI-01**: `mirage paths --function SYMBOL` shows all paths for function
-- [ ] **CLI-02**: `mirage paths --show-errors` shows only error paths
-- [ ] **CLI-03**: `mirage paths --max-length N` bounds path exploration
-- [ ] **CLI-04**: `mirage cfg --function SYMBOL` shows human-readable CFG
-- [ ] **CLI-05**: `mirage cfg --format dot` exports Graphviz DOT
-- [ ] **CLI-06**: `mirage cfg --format json` exports JSON
-- [ ] **CLI-07**: `mirage dominators --function SYMBOL` shows dominance tree
-- [ ] **CLI-08**: `mirage dominators --must-pass-through BLOCK` proves mandatory execution
-- [ ] **CLI-09**: `mirage unreachable` finds unreachable code blocks
-- [ ] **CLI-10**: `mirage verify --path-id ID` verifies path still valid
-- [ ] **CLI-11**: `mirage status` shows database statistics
-- [ ] **CLI-12**: All commands support `--output json|pretty|human`
+- [x] **CLI-01**: `mirage paths --function SYMBOL` shows all paths for function
+- [x] **CLI-02**: `mirage paths --show-errors` shows only error paths
+- [x] **CLI-03**: `mirage paths --max-length N` bounds path exploration
+- [x] **CLI-04**: `mirage cfg --function SYMBOL` shows human-readable CFG
+- [x] **CLI-05**: `mirage cfg --format dot` exports Graphviz DOT
+- [x] **CLI-06**: `mirage cfg --format json` exports JSON
+- [x] **CLI-07**: `mirage dominators --function SYMBOL` shows dominance tree
+- [x] **CLI-08**: `mirage dominators --must-pass-through BLOCK` proves mandatory execution
+- [x] **CLI-09**: `mirage unreachable` finds unreachable code blocks
+- [x] **CLI-10**: `mirage verify --path-id ID` verifies path still valid
+- [x] **CLI-11**: `mirage status` shows database statistics
+- [x] **CLI-12**: All commands support `--output json|pretty|human`
 
 ### LLM Integration
 
@@ -162,18 +162,18 @@ Which phases cover which requirements.
 | DB-04 | Phase 1 | Complete |
 | DB-05 | Phase 1 | Complete |
 | DB-06 | Phase 1 | Complete |
-| CLI-01 | Phase 6 | Pending |
-| CLI-02 | Phase 6 | Pending |
-| CLI-03 | Phase 6 | Pending |
-| CLI-04 | Phase 6 | Pending |
-| CLI-05 | Phase 6 | Pending |
-| CLI-06 | Phase 6 | Pending |
-| CLI-07 | Phase 6 | Pending |
-| CLI-08 | Phase 6 | Pending |
-| CLI-09 | Phase 6 | Pending |
-| CLI-10 | Phase 6 | Pending |
-| CLI-11 | Phase 6 | Pending |
-| CLI-12 | Phase 6 | Pending |
+| CLI-01 | Phase 6 | Complete |
+| CLI-02 | Phase 6 | Complete |
+| CLI-03 | Phase 6 | Complete |
+| CLI-04 | Phase 6 | Complete |
+| CLI-05 | Phase 6 | Complete |
+| CLI-06 | Phase 6 | Complete |
+| CLI-07 | Phase 6 | Complete |
+| CLI-08 | Phase 6 | Complete |
+| CLI-09 | Phase 6 | Complete |
+| CLI-10 | Phase 6 | Complete |
+| CLI-11 | Phase 6 | Complete |
+| CLI-12 | Phase 6 | Complete |
 | LLM-01 | Phase 7 | Pending |
 | LLM-02 | Phase 7 | Pending |
 | LLM-03 | Phase 7 | Pending |

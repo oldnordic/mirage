@@ -211,6 +211,40 @@ pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
 }
 
 // ============================================================================
+// Response Structs for JSON Output
+// ============================================================================
+
+/// Response for paths command
+#[derive(serde::Serialize)]
+struct PathsResponse {
+    function: String,
+    total_paths: usize,
+    error_paths: usize,
+    paths: Vec<PathSummary>,
+}
+
+/// Summary of a single path for JSON output
+#[derive(serde::Serialize)]
+struct PathSummary {
+    path_id: String,
+    kind: String,
+    length: usize,
+    blocks: Vec<usize>,
+}
+
+impl From<crate::cfg::Path> for PathSummary {
+    fn from(path: crate::cfg::Path) -> Self {
+        let length = path.len();
+        Self {
+            path_id: path.path_id,
+            kind: format!("{:?}", path.kind),
+            length,
+            blocks: path.blocks,
+        }
+    }
+}
+
+// ============================================================================
 // Command Handlers (stubs for now)
 // ============================================================================
 
@@ -270,7 +304,7 @@ pub mod cmds {
         Ok(())
     }
 
-    pub fn paths(args: PathsArgs, cli: &Cli) -> Result<()> {
+    pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{PathKind, PathLimits, enumerate_paths};
         use crate::storage::MirageDb;
 

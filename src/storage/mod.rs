@@ -470,4 +470,77 @@ mod tests {
 
         assert_eq!(version, MIRAGE_SCHEMA_VERSION);
     }
+
+    #[test]
+    fn test_fk_constraint_cfg_blocks() {
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        // Enable foreign key enforcement (SQLite requires this)
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+
+        // Create Magellan tables
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, ?, ?, ?)",
+            params![REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, 0],
+        ).unwrap();
+
+        // Create Mirage schema
+        create_schema(&mut conn).unwrap();
+
+        // Insert a graph entity (function)
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "test_func", "test.rs", "{}"),
+        ).unwrap();
+
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Attempt to insert cfg_blocks with invalid function_id (should fail)
+        let invalid_result = conn.execute(
+            "INSERT INTO cfg_blocks (function_id, block_kind, byte_start, byte_end, terminator, function_hash) VALUES (?, ?, ?, ?, ?, ?)",
+            params!(9999, "entry", 0, 10, "ret", "abc123"),
+        );
+
+        // Should fail with foreign key constraint error
+        assert!(invalid_result.is_err(), "Insert with invalid function_id should fail");
+
+        // Insert valid cfg_blocks with correct function_id (should succeed)
+        let valid_result = conn.execute(
+            "INSERT INTO cfg_blocks (function_id, block_kind, byte_start, byte_end, terminator, function_hash) VALUES (?, ?, ?, ?, ?, ?)",
+            params!(function_id, "entry", 0, 10, "ret", "abc123"),
+        );
+
+        assert!(valid_result.is_ok(), "Insert with valid function_id should succeed");
+
+        // Verify the insert worked
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(count, 1, "Should have exactly one cfg_block entry");
+    }
 }

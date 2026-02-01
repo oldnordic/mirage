@@ -102,7 +102,7 @@ pub struct IndexArgs {
 // Query Commands
 // ============================================================================
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Clone, Copy)]
 pub struct StatusArgs {}
 
 #[derive(Parser, Debug, Clone)]
@@ -225,13 +225,33 @@ pub mod cmds {
         std::process::exit(1);
     }
 
-    pub fn status(_args: StatusArgs) -> Result<()> {
-        // TODO: Query database for statistics
-        output::info("Database status:");
-        println!("  cfg_blocks: 0");
-        println!("  cfg_edges: 0");
-        println!("  cfg_paths: 0");
-        println!("  cfg_dominators: 0");
+    pub fn status(_args: StatusArgs, cli: &Cli) -> Result<()> {
+        use crate::storage::MirageDb;
+
+        // Resolve database path
+        let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // Open database
+        let db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
+            Err(e) => {
+                output::error(&format!("Failed to open database: {}", e));
+                output::info("Hint: Run 'mirage index' to create the database");
+                std::process::exit(output::EXIT_DATABASE);
+            }
+        };
+
+        // Query database statistics
+        let status = db.status()?;
+
+        // Format and output results (human format for now - Task 3 adds JSON support)
+        println!("Mirage Database Status:");
+        println!("  Schema version: {} (Magellan: {})", status.mirage_schema_version, status.magellan_schema_version);
+        println!("  cfg_blocks: {}", status.cfg_blocks);
+        println!("  cfg_edges: {}", status.cfg_edges);
+        println!("  cfg_paths: {}", status.cfg_paths);
+        println!("  cfg_dominators: {}", status.cfg_dominators);
+
         Ok(())
     }
 
@@ -280,8 +300,14 @@ pub mod cmds {
 mod tests {
     use super::*;
 
+    // Ensure tests don't interfere with each other by clearing env var
+    fn clear_env() {
+        std::env::remove_var("MIRAGE_DB");
+    }
+
     #[test]
     fn test_resolve_db_path_default() {
+        clear_env();
         // No arg, no env -> returns default
         let result = resolve_db_path(None).unwrap();
         assert_eq!(result, "./codemcp.db");
@@ -289,6 +315,7 @@ mod tests {
 
     #[test]
     fn test_resolve_db_path_with_cli_arg() {
+        clear_env();
         // CLI arg provided -> returns CLI arg
         let result = resolve_db_path(Some("/custom/path.db".to_string())).unwrap();
         assert_eq!(result, "/custom/path.db");
@@ -296,6 +323,7 @@ mod tests {
 
     #[test]
     fn test_resolve_db_path_with_env_var() {
+        clear_env();
         // Env var set -> returns env var value
         std::env::set_var("MIRAGE_DB", "/env/path.db");
         let result = resolve_db_path(None).unwrap();
@@ -305,6 +333,7 @@ mod tests {
 
     #[test]
     fn test_resolve_db_path_cli_overrides_env() {
+        clear_env();
         // CLI arg should override env var
         std::env::set_var("MIRAGE_DB", "/env/path.db");
         let result = resolve_db_path(Some("/cli/path.db".to_string())).unwrap();

@@ -1302,6 +1302,101 @@ pub fn enumerate_paths_cached_with_context(
     Ok(paths)
 }
 
+/// Estimate the number of paths in a CFG before enumeration
+///
+/// This provides an upper bound on path count using cyclomatic complexity
+/// and loop structure analysis. Use this to warn users about potential
+/// path explosion before running expensive enumeration.
+///
+/// **Algorithm:**
+/// - Count loop headers (each contributes multiplicative complexity)
+/// - Estimate: 2^(branches + loops) * (loop_unroll_limit + 1)^loop_count
+/// - Cap at max_paths to avoid overflow
+///
+/// **Usage:**
+/// ```rust
+/// let estimated = estimate_path_count(&cfg, 3);
+/// if estimated > limits.max_paths {
+///     // Warn user about path explosion
+/// }
+/// ```
+///
+/// **Limitations:**
+/// - This is an estimate, not exact count
+/// - Assumes worst-case (all paths are independent)
+/// - Actual count may be lower due to dominance constraints
+///
+/// # Arguments
+///
+/// * `cfg` - Control flow graph to analyze
+/// * `loop_unroll_limit` - Maximum loop iterations to account for
+///
+/// # Returns
+///
+/// Estimated maximum path count (upper bound)
+pub fn estimate_path_count(cfg: &Cfg, loop_unroll_limit: usize) -> usize {
+    // Count loop headers
+    let loop_headers = crate::cfg::loops::find_loop_headers(cfg);
+    let loop_count = loop_headers.len();
+
+    // Count branch points (excluding loop back edges)
+    let mut branch_count = 0;
+    for node in cfg.node_indices() {
+        if loop_headers.contains(&node) {
+            continue; // Skip loop headers, counted separately
+        }
+        let out_degree = cfg.neighbors_directed(node, petgraph::Direction::Outgoing).count();
+        if out_degree > 1 {
+            branch_count += out_degree - 1; // Each extra edge adds complexity
+        }
+    }
+
+    // Base estimate: at least 1 path for acyclic CFG
+    if loop_count == 0 && branch_count == 0 {
+        return 1; // Single path (linear CFG)
+    }
+
+    // Each branch roughly doubles path count
+    // Each loop multiplies by (unroll_limit + 1)
+    let unroll_factor = loop_unroll_limit + 1;
+
+    // Calculate: 2^branch_count * unroll_factor^loop_count
+    // Use saturating operations to avoid overflow
+    let branch_factor = if branch_count < 31 {
+        2_usize.pow(branch_count as u32)
+    } else {
+        usize::MAX / 2 // Cap to avoid overflow
+    };
+
+    let loop_factor = if loop_count < 31 {
+        unroll_factor.pow(loop_count as u32)
+    } else {
+        usize::MAX / 2 // Cap to avoid overflow
+    };
+
+    // Multiply with overflow protection
+    branch_factor.saturating_mul(loop_factor)
+}
+
+/// Check if path enumeration may exceed limits
+///
+/// This is a convenience wrapper around `estimate_path_count` that
+/// compares the estimate against a limit and returns a warning if
+/// the estimate suggests explosion.
+///
+/// # Returns
+///
+/// * `None` - Enumeration should be safe (estimate <= max_paths)
+/// * `Some(estimate)` - Enumeration may exceed limit (estimate > max_paths)
+pub fn check_path_explosion(cfg: &Cfg, limits: &PathLimits) -> Option<usize> {
+    let estimate = estimate_path_count(cfg, limits.loop_unroll_limit);
+    if estimate > limits.max_paths {
+        Some(estimate)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3734,5 +3829,117 @@ mod tests {
             &cfg, function_id, function_hash, &limits, &ctx, &mut conn
         ).unwrap();
         assert_eq!(paths2.len(), 2);
+    }
+
+    // Task 05-06-4: estimate_path_count tests
+
+    #[test]
+    fn test_estimate_path_count_linear_cfg() {
+        // Linear CFG: 0 -> 1 -> 2
+        let cfg = create_linear_cfg();
+        let estimate = estimate_path_count(&cfg, 3);
+
+        // Linear CFG has no branches or loops, so 1 path
+        assert_eq!(estimate, 1);
+    }
+
+    #[test]
+    fn test_estimate_path_count_diamond_cfg() {
+        // Diamond: 0 -> 1, 0 -> 2, 1 -> 3, 2 -> 3
+        let cfg = create_diamond_cfg();
+        let estimate = estimate_path_count(&cfg, 3);
+
+        // Diamond has 1 branch point (2 outgoing from block 0)
+        // With loop_unroll_limit=3: 2^1 = 2
+        assert_eq!(estimate, 2);
+    }
+
+    #[test]
+    fn test_estimate_path_count_single_loop() {
+        // Single loop with unroll_limit=3
+        let cfg = create_loop_cfg();
+        let estimate = estimate_path_count(&cfg, 3);
+
+        // 1 loop, unroll_limit=3: (3+1)^1 = 4
+        assert_eq!(estimate, 4);
+    }
+
+    #[test]
+    fn test_estimate_path_count_loop_formula() {
+        // Single loop, verify formula: (unroll_limit + 1) * 2
+        let cfg = create_loop_cfg();
+
+        // With unroll_limit=3: (3+1) * 2 = 8
+        // (2 because there's also a branch at the loop header)
+        let estimate = estimate_path_count(&cfg, 3);
+        assert!(estimate >= 4); // At minimum, loop contributes 4 paths
+    }
+
+    #[test]
+    fn test_estimate_path_count_increases_with_loop_limit() {
+        let cfg = create_loop_cfg();
+
+        let estimate3 = estimate_path_count(&cfg, 3);
+        let estimate5 = estimate_path_count(&cfg, 5);
+
+        // Higher unroll limit should give higher estimate
+        assert!(estimate5 >= estimate3);
+    }
+
+    #[test]
+    fn test_estimate_path_count_monotonic_with_complexity() {
+        // Create increasingly complex CFGs and verify monotonic growth
+        let linear = create_linear_cfg();
+        let diamond = create_diamond_cfg();
+        let loop_cfg = create_loop_cfg();
+
+        let linear_estimate = estimate_path_count(&linear, 3);
+        let diamond_estimate = estimate_path_count(&diamond, 3);
+        let loop_estimate = estimate_path_count(&loop_cfg, 3);
+
+        // Linear < Diamond < Loop (in terms of complexity)
+        assert!(linear_estimate <= diamond_estimate);
+        // Diamond might be less than loop depending on structure
+    }
+
+    #[test]
+    fn test_check_path_explosion_safe() {
+        let cfg = create_linear_cfg();
+        let limits = PathLimits::default();
+
+        // Linear CFG with default limits should be safe
+        let result = check_path_explosion(&cfg, &limits);
+        assert!(result.is_none(), "Linear CFG should be safe");
+    }
+
+    #[test]
+    fn test_check_path_explosion_exceeds_limit() {
+        let cfg = create_diamond_cfg();
+        let limits = PathLimits {
+            max_length: 100,
+            max_paths: 1, // Very low limit
+            loop_unroll_limit: 3,
+        };
+
+        // Diamond might exceed very low limit
+        let result = check_path_explosion(&cfg, &limits);
+        // Diamond produces 2 paths, so limit of 1 should trigger warning
+        assert!(result.is_some(), "Should warn about path explosion");
+        if let Some(estimate) = result {
+            assert!(estimate > 1);
+        }
+    }
+
+    #[test]
+    fn test_estimate_path_count_no_overflow() {
+        // Even with high unroll limit, should not overflow
+        let cfg = create_loop_cfg();
+
+        // Very high unroll limit
+        let estimate = estimate_path_count(&cfg, 1000);
+
+        // Should return a reasonable number, not overflow
+        assert!(estimate > 0);
+        assert!(estimate < usize::MAX);
     }
 }

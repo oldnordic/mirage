@@ -387,44 +387,39 @@ pub fn classify_path_precomputed(
         return PathKind::Degenerate;
     }
 
-    // Check each block in the path
+    // Priority 1: Check if any block is unreachable (O(1) lookup)
+    for &block_id in blocks {
+        if !reachable_blocks.contains(&block_id) {
+            return PathKind::Unreachable;
+        }
+    }
+
+    // Priority 2: Check for error terminators in the path
     for &block_id in blocks {
         let node_idx = match find_node_by_block_id(cfg, block_id) {
             Some(idx) => idx,
             None => return PathKind::Degenerate, // Block doesn't exist
         };
 
-        // Priority 1: Check if block is reachable (O(1) lookup)
-        if !reachable_blocks.contains(&block_id) {
-            return PathKind::Unreachable;
-        }
-
-        // Get the block's terminator
         let terminator = &cfg[node_idx].terminator;
 
-        // Priority 2: Check for error terminators
+        // Check for error terminators
         match terminator {
             Terminator::Abort(_) => return PathKind::Error,
             Terminator::Call { unwind: Some(_), .. } => return PathKind::Error,
             _ => {}
         }
 
-        // Priority 3: Check for unreachable terminator (anywhere in path)
+        // Check for unreachable terminator (anywhere in path)
         if matches!(terminator, Terminator::Unreachable) {
             return PathKind::Degenerate;
         }
     }
 
-    // Check last block terminator - if not Return, it's degenerate
-    if let Some(&last_block_id) = blocks.last() {
-        if let Some(node_idx) = find_node_by_block_id(cfg, last_block_id) {
-            let terminator = &cfg[node_idx].terminator;
-            // Non-Return terminators at end are degenerate
-            if !matches!(terminator, Terminator::Return) {
-                // Already caught Unreachable above, so check other cases
-                return PathKind::Degenerate;
-            }
-        }
+    // Priority 3: Check static feasibility (dead-end detection)
+    // This identifies paths that end in Goto, SwitchInt, or other invalid terminators
+    if !is_feasible_path_precomputed(cfg, blocks, reachable_blocks) {
+        return PathKind::Degenerate;
     }
 
     // Default: Normal path
@@ -2343,5 +2338,152 @@ mod tests {
             !is_feasible_path_precomputed(&cfg_degen, &[0, 1], &reachable_degen),
             "Path ending in Unreachable should be infeasible"
         );
+    }
+
+    // Task 3: classify_with_feasibility tests
+
+    #[test]
+    fn test_classify_with_feasibility_dead_end() {
+        use crate::cfg::reachability::find_reachable;
+
+        let cfg = create_linear_cfg();
+        let reachable = find_reachable(&cfg)
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Path ending in Goto (dead end) should be Degenerate
+        let path = vec![0, 1]; // Block 1 has Goto to 2
+        let kind = classify_path_precomputed(&cfg, &path, &reachable);
+        assert_eq!(kind, PathKind::Degenerate,
+                   "Path ending in Goto should be Degenerate");
+    }
+
+    #[test]
+    fn test_classify_with_feasibility_valid_exit() {
+        use crate::cfg::reachability::find_reachable;
+
+        let cfg = create_linear_cfg();
+        let reachable = find_reachable(&cfg)
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Complete path with Return should be Normal
+        let path = vec![0, 1, 2];
+        let kind = classify_path_precomputed(&cfg, &path, &reachable);
+        assert_eq!(kind, PathKind::Normal,
+                   "Complete path with Return should be Normal");
+    }
+
+    #[test]
+    fn test_classify_with_feasibility_error_path() {
+        use crate::cfg::reachability::find_reachable;
+
+        let cfg = create_error_cfg();
+        let reachable = find_reachable(&cfg)
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Path ending in Abort should be Error (feasible but error path)
+        let path = vec![0, 1];
+        let kind = classify_path_precomputed(&cfg, &path, &reachable);
+        assert_eq!(kind, PathKind::Error,
+                   "Path ending in Abort should be Error");
+    }
+
+    #[test]
+    fn test_classify_with_feasibility_switch_int_dead_end() {
+        use crate::cfg::reachability::find_reachable;
+
+        let cfg = create_diamond_cfg();
+        let reachable = find_reachable(&cfg)
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Path ending in SwitchInt (dead end)
+        let path = vec![0]; // Block 0 has SwitchInt
+        let kind = classify_path_precomputed(&cfg, &path, &reachable);
+        assert_eq!(kind, PathKind::Degenerate,
+                   "Path ending in SwitchInt should be Degenerate");
+    }
+
+    #[test]
+    fn test_classify_with_feasibility_priority_order() {
+        use crate::cfg::reachability::find_reachable;
+
+        // Test that unreachable takes priority over feasibility
+        let cfg = create_dead_code_cfg();
+        let reachable = find_reachable(&cfg)
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Path with unreachable block
+        let path = vec![1];
+        let kind = classify_path_precomputed(&cfg, &path, &reachable);
+        assert_eq!(kind, PathKind::Unreachable,
+                   "Unreachable should be prioritized over feasibility");
+    }
+
+    #[test]
+    fn test_classify_with_feasibility_complete_paths() {
+        use crate::cfg::reachability::find_reachable;
+
+        let cfg = create_diamond_cfg();
+        let reachable = find_reachable(&cfg)
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Both complete paths should be Normal
+        let path1 = vec![0, 1, 3];
+        let path2 = vec![0, 2, 3];
+
+        assert_eq!(classify_path_precomputed(&cfg, &path1, &reachable), PathKind::Normal,
+                   "Complete diamond path 0->1->3 should be Normal");
+        assert_eq!(classify_path_precomputed(&cfg, &path2, &reachable), PathKind::Normal,
+                   "Complete diamond path 0->2->3 should be Normal");
+    }
+
+    #[test]
+    fn test_classify_with_feasibility_call_terminator() {
+        use crate::cfg::reachability::find_reachable;
+
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Call {
+                target: Some(1),
+                unwind: None,
+            },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+
+        let reachable = find_reachable(&g)
+            .iter()
+            .map(|&idx| g[idx].id)
+            .collect();
+
+        // Path ending in Call with target should be Normal (feasible)
+        let path = vec![0];
+        let kind = classify_path_precomputed(&g, &path, &reachable);
+        assert_eq!(kind, PathKind::Normal,
+                   "Path ending in Call with target should be Normal");
     }
 }

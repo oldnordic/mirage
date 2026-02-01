@@ -92,7 +92,7 @@ fn classify_ullbc_terminator(
             edges
         }
         crate::mir::UllbcTerminator::Call { target: None, unwind: Some(uw) } => {
-            vec![(**uw, EdgeType::Exception)]
+            vec![(*uw, EdgeType::Exception)]
         }
         crate::mir::UllbcTerminator::Call { target: None, unwind: None } => vec![],
         crate::mir::UllbcTerminator::Abort { .. } => vec![],
@@ -177,7 +177,7 @@ mod tests {
         // Check edge types
         let edges: Vec<_> = cfg
             .edge_indices()
-            .map(|e| cfg.edge_weight(e).unwrap())
+            .map(|e| *cfg.edge_weight(e).unwrap())
             .collect();
 
         assert!(edges.iter().any(|&e| e == EdgeType::Call));
@@ -223,13 +223,13 @@ mod tests {
         // Check edge types - 2 TrueBranch (targets) + 1 FalseBranch (otherwise)
         let edges: Vec<_> = cfg
             .edge_indices()
-            .map(|e| cfg.edge_weight(e).unwrap())
+            .map(|e| *cfg.edge_weight(e).unwrap())
             .collect();
 
-        let true_count = edges.iter().filter(|&&e| *e == EdgeType::TrueBranch).count();
+        let true_count = edges.iter().filter(|&&e| e == EdgeType::TrueBranch).count();
         let false_count = edges
             .iter()
-            .filter(|&&e| *e == EdgeType::FalseBranch)
+            .filter(|&&e| e == EdgeType::FalseBranch)
             .count();
 
         assert_eq!(true_count, 2, "Should have 2 TrueBranch edges");
@@ -257,7 +257,7 @@ mod tests {
 
         let edges: Vec<_> = cfg
             .edge_indices()
-            .map(|e| cfg.edge_weight(e).unwrap())
+            .map(|e| *cfg.edge_weight(e).unwrap())
             .collect();
 
         assert_eq!(edges.len(), 1);

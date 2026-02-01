@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 4: Dominance Analysis (in progress)
+**Current focus:** Phase 4: Dominance Analysis (complete)
 **Last focus:** Phase 3: Reachability & Control Structure (complete)
 
 ## Current Position
 
 Phase: 4 of 7 (Dominance Analysis) - Complete
-Plan: 02 complete (of 2 in this phase)
-Status: Post-dominator tree implementation complete
-Last activity: 2026-02-01 - Completed 04-02: Post-dominator tree with zero-copy graph reversal
+Plan: 03 complete (of 3 in this phase)
+Status: Dominance frontiers implementation complete
+Last activity: 2026-02-01 - Completed 04-03: Dominance frontiers using Cytron et al. algorithm
 
-Progress: [█████████████] 50% (Phase 4/7 complete, 15/15 plans total)
+Progress: [█████████████] 53% (Phase 4/7 complete, 16/30 plans total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
-- Average duration: 4.3 min
+- Total plans completed: 16
+- Average duration: 4.4 min
 - Total execution time: 1.2 hours
 
 **By Phase:**
@@ -31,7 +31,7 @@ Progress: [█████████████] 50% (Phase 4/7 complete, 15/
 | 01-database-foundation | 3 | 3/3 | 4 min |
 | 02-cfg-construction | 6 | 6/6 | 5 min |
 | 03-reachability-control | 4 | 4/4 | 4.5 min |
-| 04-dominance-analysis | 2 | 2/2 | 3 min |
+| 04-dominance-analysis | 3 | 3/3 | 3.7 min |
 
 **Recent Trend:**
 - Last 5 plans: 4 min
@@ -150,6 +150,12 @@ Recent decisions affecting current work:
 - Primary exit only (first Return node) - multiple exits noted as limitation
 - PostDominators iterator walks from node up to exit (mirror of Dominators)
 
+**From 04-03 (Dominance Frontiers):**
+- DominanceFrontiers implements Cytron et al. O(|V|²) algorithm with two rules
+- frontier() returns owned HashSet instead of reference to avoid lifetime issues with empty set
+- Self-frontier pattern (n in DF[n]) characterizes loop headers due to back edges
+- Corrected test expectations: entry node strictly dominates all nodes in diamond CFG, so DF[entry] is empty
+
 ### Pending Todos
 
 None yet.
@@ -162,5 +168,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 04-02: Post-dominator tree with zero-copy graph reversal
+Stopped at: Completed 04-03: Dominance frontiers using Cytron et al. algorithm
 Resume file: None

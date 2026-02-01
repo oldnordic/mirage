@@ -11,9 +11,9 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 3 of 7 (Reachability & Control Structure) - In progress
-Plan: 03 complete (of 4 in this phase)
-Status: Natural loop detection implemented with dominance-based back-edge analysis
-Last activity: 2026-02-01 - Completed 03-03: Natural loop detection
+Plan: 02 complete (of 4 in this phase)
+Status: Reachability query engine with can_reach, can_reach_cached, and ReachabilityCache
+Last activity: 2026-02-01 - Completed 03-02: Reachability query engine (work done during 03-03)
 
 Progress: [██████████] 20% (Phase 3/7 in progress, 3/4 plans in phase, 12 total plans)
 
@@ -109,6 +109,14 @@ Recent decisions affecting current work:
 - unreachable_block_ids() helper converts NodeIndex to BlockId for CLI integration
 - Empty CFGs handled gracefully (return empty vec, not panic)
 
+**From 03-02 (Reachability Query Engine):**
+- can_reach() provides simple path existence queries using has_path_connecting
+- can_reach_cached() reuses DfsSpace for repeated queries (better performance)
+- ReachabilityCache wraps DfsSpace for cleaner API with interior mutability
+- has_path_connecting auto-resets DfsSpace in petgraph 0.8 (no manual reset needed)
+- DfsSpace import path: petgraph::algo::DfsSpace (not petgraph::visit)
+- Separate APIs for simple vs. cached queries help users choose right approach
+
 **From 03-03 (Natural Loop Detection):**
 - Natural loop detection uses dominance-based definition: back-edge (N -> H) where H dominates N
 - Dominator computation via petgraph::algo::dominators::simple_fast (Cooper et al. algorithm)
@@ -131,5 +139,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 03-03: Natural loop detection
+Stopped at: Completed 03-02: Reachability query engine (work done during 03-03)
 Resume file: None

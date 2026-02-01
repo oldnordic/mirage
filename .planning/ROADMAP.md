@@ -36,12 +36,12 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. Code changes trigger function-level re-analysis (not whole-program)
 4. Schema version is tracked for future migrations
 
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 01-01: Database schema and migrations
-- [ ] 01-02: Incremental update tracking
-- [ ] 01-03: Database integration tests
+- [ ] 01-01-PLAN.md — Database schema and migrations (function_hash tracking, migration framework)
+- [ ] 01-02-PLAN.md — Wire up status command to database statistics
+- [ ] 01-03-PLAN.md — Database integration tests (foreign keys, incremental updates, migrations)
 
 ### Phase 2: CFG Construction
 
@@ -208,7 +208,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Database Foundation | 0/TBD | Not started | - |
+| 1. Database Foundation | 0/3 | Ready to execute | - |
 | 2. CFG Construction | 0/TBD | Not started | - |
 | 3. Reachability & Control Structure | 0/TBD | Not started | - |
 | 4. Dominance Analysis | 0/TBD | Not started | - |

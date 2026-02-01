@@ -90,13 +90,13 @@ Plans:
 6. If/else branching patterns are recovered
 7. Match/expression branching patterns are recovered
 
-**Plans**: TBD
+**Plans**: 4 plans in 2 waves
 
 Plans:
-- [ ] 03-01: Unreachable code detection
-- [ ] 03-02: Reachability query engine
-- [ ] 03-03: Natural loop detection
-- [ ] 03-04: Branching pattern recovery
+- [ ] 03-01-PLAN.md — Unreachable code detection (find_unreachable, find_reachable)
+- [ ] 03-02-PLAN.md — Reachability query engine (can_reach, ReachabilityCache)
+- [ ] 03-03-PLAN.md — Natural loop detection (detect_natural_loops, find_loop_headers)
+- [ ] 03-04-PLAN.md — Branching pattern recovery (detect_if_else, detect_match)
 
 ### Phase 4: Dominance Analysis
 

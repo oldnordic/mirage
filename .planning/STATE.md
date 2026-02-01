@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 
 ## Current Position
 
-Phase: 7 of 7 (LLM Integration) - Not started
-Plan: None - Ready to plan Phase 7
-Status: Phase 6 complete with 11/12 success criteria fully met. CLI Interface ready for use. Minor enhancement needed: --show-branches flag shows placeholder message (low priority).
-Last activity: 2026-02-01 - Completed Phase 6 verification
+Phase: 7 of 7 (LLM Integration) - In progress
+Plan: 01 of 4 - LLM-optimized JSON response structs
+Status: Plan 07-01 complete. Path queries return structured JSON with PathBlock structs containing block_id and terminator for LLM consumption.
+Last activity: 2026-02-01 - Completed 07-01: LLM-optimized JSON response structs
 
-Progress: [████████████████░] 86% (Phase 6 complete, 29/30 plans complete)
+Progress: [████████████████░] 87% (Phase 7: 1/4 complete, 30/31 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 29
+- Total plans completed: 30
 - Average duration: 4.9 min
-- Total execution time: 2.4 hours
+- Total execution time: 2.5 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [████████████████░] 86% (Phase 6 com
 | 04-dominance-analysis | 3 | 3/3 | 3.7 min |
 | 05-path-enumeration | 6 | 6/6 | 4.6 min |
 | 06-cli-interface | 7 | 7/7 | 5.6 min |
-| 07-llm-integration | TBD | 0/TBD | - |
+| 07-llm-integration | TBD | 1/TBD | 5.8 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -261,6 +261,14 @@ Recent decisions affecting current work:
 - Output format pattern: match cli.output { Human => println!, Json => JsonResponse.to_json(), Pretty => JsonResponse.to_pretty_json() }
 - Comprehensive test suite (12 tests) ensures output format consistency across all commands
 
+**From 07-02 (Source Location Inclusion in Path Output):**
+- from_with_cfg method signature takes Path by value, borrows CFG (needs CFG reference to look up terminators)
+- source_range is Option<SourceRange> for AST CFGs without source locations (graceful None handling)
+- PathBlock.terminator stores Debug-formatted string for JSON compatibility (not enum directly)
+- PathSummary::from_with_cfg provides actual terminator types (Goto, SwitchInt, Return) instead of "Unknown"
+- calculate_source_range helper derives path-level span from first and last block source locations
+- Metadata enrichment pattern: separate from_with_cfg method rather than replacing From trait
+
 ### Pending Todos
 
 None yet.
@@ -273,5 +281,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 06-07: Output format standardization with comprehensive tests
+Stopped at: Completed 07-02: Source location inclusion in path output
 Resume file: None

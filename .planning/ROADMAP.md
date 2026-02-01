@@ -205,13 +205,13 @@ Plans:
 3. Error responses include remediation suggestions
 4. System provides natural language summaries of control flow
 
-**Plans**: TBD
+**Plans**: 4 plans in 3 waves
 
 Plans:
-- [ ] 07-01: Structured JSON output format
-- [ ] 07-02: Source location inclusion
-- [ ] 07-03: Error remediation suggestions
-- [ ] 07-04: Control flow natural language summaries
+- [ ] 07-01-PLAN.md — Structured JSON output format (PathBlock, SourceRange structs)
+- [ ] 07-02-PLAN.md — Source location inclusion (from_with_cfg with terminator and range)
+- [ ] 07-03-PLAN.md — Error remediation suggestions (error codes, JsonError helpers)
+- [ ] 07-04-PLAN.md — Control flow natural language summaries (summarize_path, describe_block)
 
 ## Progress
 
@@ -226,7 +226,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Dominance Analysis | 3/3 | ✓ Complete | 2026-02-01 |
 | 5. Path Enumeration | 6/6 | ✓ Complete | 2026-02-01 |
 | 6. CLI Interface | 7/7 | ✓ Complete | 2026-02-01 |
-| 7. LLM Integration | 0/TBD | Not started | - |
+| 7. LLM Integration | 0/4 | Not started | - |
 
 ---
 

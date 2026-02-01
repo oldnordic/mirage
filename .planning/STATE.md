@@ -5,24 +5,24 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 4: Dominance Analysis (complete)
-**Last focus:** Phase 3: Reachability & Control Structure (complete)
+**Current focus:** Phase 5: Path Enumeration (Plan 1/6 complete)
+**Last focus:** Phase 4: Dominance Analysis (complete)
 
 ## Current Position
 
-Phase: 4 of 7 (Dominance Analysis) - Complete
-Plan: 03 complete (of 3 in this phase)
-Status: Dominance frontiers implementation complete
-Last activity: 2026-02-01 - Completed 04-03: Dominance frontiers using Cytron et al. algorithm
+Phase: 5 of 7 (Path Enumeration) - In progress
+Plan: 01 complete (of 6 in this phase)
+Status: DFS path enumeration core with cycle detection and loop bounding
+Last activity: 2026-02-01 - Completed 05-01: DFS-based path enumeration with BLAKE3 hashing
 
-Progress: [█████████████] 53% (Phase 4/7 complete, 16/30 plans total)
+Progress: [████████████░] 57% (Phase 5/7 in progress, 17/30 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 16
-- Average duration: 4.4 min
-- Total execution time: 1.2 hours
+- Total plans completed: 17
+- Average duration: 4.5 min
+- Total execution time: 1.3 hours
 
 **By Phase:**
 
@@ -32,9 +32,10 @@ Progress: [█████████████] 53% (Phase 4/7 complete, 16/
 | 02-cfg-construction | 6 | 6/6 | 5 min |
 | 03-reachability-control | 4 | 4/4 | 4.5 min |
 | 04-dominance-analysis | 3 | 3/3 | 3.7 min |
+| 05-path-enumeration | 6 | 1/6 | 6 min |
 
 **Recent Trend:**
-- Last 5 plans: 4 min
+- Last 5 plans: 4.2 min
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -156,6 +157,14 @@ Recent decisions affecting current work:
 - Self-frontier pattern (n in DF[n]) characterizes loop headers due to back edges
 - Corrected test expectations: entry node strictly dominates all nodes in diamond CFG, so DF[entry] is empty
 
+**From 05-01 (DFS Path Enumeration Core):**
+- Path struct with BLAKE3-based path_id for deterministic identification
+- hash_path() includes length in hash to prevent collision between [1,2,3] and [1,2,3,0]
+- DFS enumeration with visited set + backtracking for cycle detection
+- Loop headers exempt from visited check; back-edges bounded by loop_iterations counter
+- PathLimits default: max_length=1000, max_paths=10000, loop_unroll_limit=3
+- PathKind::Normal default; classification deferred to plan 05-02
+
 ### Pending Todos
 
 None yet.
@@ -168,5 +177,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 04-03: Dominance frontiers using Cytron et al. algorithm
+Stopped at: Completed 05-01: DFS path enumeration with BLAKE3 hashing
 Resume file: None

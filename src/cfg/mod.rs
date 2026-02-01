@@ -6,6 +6,7 @@ pub mod edge;
 pub mod export;
 pub mod loops;
 pub mod mir;
+pub mod patterns;
 pub mod reachability;
 pub mod source;
 
@@ -14,6 +15,7 @@ pub use ast::{ast_to_cfg, CFGBuilder};
 pub use edge::{EdgeType, classify_terminator};
 pub use export::{export_dot, export_json, CFGExport};
 pub use loops::{detect_natural_loops, find_loop_headers, is_loop_header, NaturalLoop};
+pub use patterns::{detect_if_else_patterns, detect_match_patterns, classify_branch, IfElsePattern, MatchPattern, BranchType, detect_all_patterns};
 pub use reachability::{find_unreachable, find_reachable, is_reachable_from_entry, can_reach, can_reach_cached, ReachabilityCache};
 pub use mir::ullbc_to_cfg;
 pub use source::{CharonSpan, SourceLocation};

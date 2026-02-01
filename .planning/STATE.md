@@ -5,24 +5,24 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 2: CFG Construction (complete)
-**Last focus:** Phase 3: Reachability & Control Structure (upcoming)
+**Current focus:** Phase 3: Reachability & Control Structure (in progress)
+**Last focus:** Phase 2: CFG Construction (complete)
 
 ## Current Position
 
-Phase: 2 of 7 (CFG Construction) - Complete
-Plan: 06 complete (of 6 in this phase)
-Status: CFG export complete with DOT and JSON formats, CLI integration wired
-Last activity: 2026-02-01 - Completed 02-06: DOT and JSON export
+Phase: 3 of 7 (Reachability & Control Structure) - In progress
+Plan: 01 complete (of 4 in this phase)
+Status: Unreachable code detection implemented with DFS traversal
+Last activity: 2026-02-01 - Completed 03-01: Unreachable code detection
 
-Progress: [████████░░] 14% (Phase 2/7 complete, 6/6 plans in phase, 9 total plans)
+Progress: [████████░░] 15% (Phase 3/7 in progress, 1/4 plans in phase, 10 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 5 min
-- Total execution time: 0.8 hours
+- Total execution time: 0.9 hours
 
 **By Phase:**
 
@@ -30,6 +30,7 @@ Progress: [████████░░] 14% (Phase 2/7 complete, 6/6 plans in
 |-------|-------|----------|----------|
 | 01-database-foundation | 3 | 3/3 | 4 min |
 | 02-cfg-construction | 6 | 6/6 | 5 min |
+| 03-reachability-control | 4 | 1/4 | 4 min |
 
 **Recent Trend:**
 - Last 5 plans: 5 min
@@ -101,6 +102,13 @@ Recent decisions affecting current work:
 - Export pattern: separate export_dot() and export_json() functions for different formats
 - CLI format handling: --format flag with fallback to global --output
 
+**From 03-01 (Unreachable Code Detection):**
+- Reachability analysis uses petgraph::visit::Dfs for traversal (reachable_from doesn't exist in petgraph 0.8)
+- Single-block reachability queries use petgraph::algo::has_path_connecting
+- find_unreachable returns all nodes not reachable from entry (dead code detection)
+- unreachable_block_ids() helper converts NodeIndex to BlockId for CLI integration
+- Empty CFGs handled gracefully (return empty vec, not panic)
+
 ### Pending Todos
 
 None yet.
@@ -113,5 +121,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 02-06: DOT and JSON export
+Stopped at: Completed 03-01: Unreachable code detection
 Resume file: None

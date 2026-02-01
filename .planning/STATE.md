@@ -165,6 +165,13 @@ Recent decisions affecting current work:
 - PathLimits default: max_length=1000, max_paths=10000, loop_unroll_limit=3
 - PathKind::Normal default; classification deferred to plan 05-02
 
+**From 05-02 (Path Classification):**
+- Helper function find_node_by_block_id for BlockId -> NodeIndex conversion
+- Classification priority: Unreachable (reachability) > Error (terminator) > Degenerate (abnormal exit) > Normal (default)
+- classify_path uses is_reachable_from_entry per block; classify_path_precomputed uses pre-computed HashSet for O(1) lookups
+- O(n) batch classification: 1000 paths classified in <10ms
+- enumerate_paths now uses classify_path_precomputed instead of hardcoding PathKind::Normal
+
 **From 05-03 (Configurable Path Bounding):**
 - Loop iteration counting: increment on header entry, decrement on backtrack
 - Loop iteration counter allows (limit-1) actual loop iterations due to increment on first visit

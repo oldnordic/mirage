@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 5: Path Enumeration (Plan 1/6 complete)
+**Current focus:** Phase 5: Path Enumeration (Plan 5/6 complete)
 **Last focus:** Phase 4: Dominance Analysis (complete)
 
 ## Current Position
 
 Phase: 5 of 7 (Path Enumeration) - In progress
-Plan: 04 complete (of 6 in this phase)
-Status: Static feasibility checking with terminator analysis and batch optimization
-Last activity: 2026-02-01 - Completed 05-04: Static feasibility checking
+Plan: 05 complete (of 6 in this phase)
+Status: Path caching with BLAKE3 content addressing and hash-based incremental updates
+Last activity: 2026-02-01 - Completed 05-05: Path caching with BLAKE3 content addressing
 
-Progress: [████████████░] 63% (Phase 5/7 in progress, 19/30 plans complete)
+Progress: [█████████████] 67% (Phase 5/7 in progress, 20/30 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: 4.5 min
 - Total execution time: 1.5 hours
 
@@ -32,10 +32,10 @@ Progress: [████████████░] 63% (Phase 5/7 in progress, 
 | 02-cfg-construction | 6 | 6/6 | 5 min |
 | 03-reachability-control | 4 | 4/4 | 4.5 min |
 | 04-dominance-analysis | 3 | 3/3 | 3.7 min |
-| 05-path-enumeration | 6 | 4/6 | 4.75 min |
+| 05-path-enumeration | 6 | 5/6 | 4.6 min |
 
 **Recent Trend:**
-- Last 5 plans: 4.2 min
+- Last 5 plans: 4.4 min
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -188,6 +188,15 @@ Recent decisions affecting current work:
 - Classification priority updated: Unreachable > Error > Feasibility > Normal
 - Limitations documented: Does NOT check conflicting conditions (x > 5 && x < 3), data-dependent constraints, runtime panics
 
+**From 05-05 (Path Caching with BLAKE3 Content Addressing):**
+- Path caching in database using BLAKE3 content-addressed IDs for automatic deduplication
+- Schema fix: Removed FK constraints from entry_block/exit_block/block_id to cfg_blocks(id)
+- These fields store conceptual BlockId values from CFG, not database primary keys
+- BLAKE3 path_id provides deduplication and integrity verification instead of FK
+- BEGIN IMMEDIATE TRANSACTION for atomic path storage operations
+- Hash-based incremental cache updates via function_hash comparison in cfg_blocks
+- get_or_enumerate_paths bridges caching layer to enumeration for cached path retrieval
+
 ### Pending Todos
 
 None yet.
@@ -200,5 +209,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 05-04: Static feasibility checking with terminator analysis
+Stopped at: Completed 05-05: Path caching with BLAKE3 content addressing
 Resume file: None

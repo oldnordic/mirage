@@ -414,10 +414,18 @@ pub mod cmds {
         // Open database
         let db = match MirageDb::open(&db_path) {
             Ok(db) => db,
-            Err(e) => {
-                output::error(&format!("Failed to open database: {}", e));
-                output::info("Hint: Run 'mirage index' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
+            Err(_e) => {
+                // JSON-aware error handling with remediation
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::database_not_found(&db_path);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", db_path));
+                    output::info("Hint: Run 'mirage index' to create the database");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
             }
         };
 
@@ -462,10 +470,18 @@ pub mod cmds {
         // Open database
         let _db = match MirageDb::open(&db_path) {
             Ok(db) => db,
-            Err(e) => {
-                output::error(&format!("Failed to open database: {}", e));
-                output::info("Hint: Run 'mirage index' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
+            Err(_e) => {
+                // JSON-aware error handling with remediation
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::database_not_found(&db_path);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", db_path));
+                    output::info("Hint: Run 'mirage index' to create the database");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
             }
         };
 
@@ -558,10 +574,18 @@ pub mod cmds {
         // Open database (follows status command pattern for error handling)
         let _db = match MirageDb::open(&db_path) {
             Ok(db) => db,
-            Err(e) => {
-                output::error(&format!("Failed to open database: {}", e));
-                output::info("Hint: Run 'mirage index' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
+            Err(_e) => {
+                // JSON-aware error handling with remediation
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::database_not_found(&db_path);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", db_path));
+                    output::info("Hint: Run 'mirage index' to create the database");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
             }
         };
 
@@ -660,10 +684,18 @@ pub mod cmds {
         // Open database (follows status command pattern for error handling)
         let _db = match MirageDb::open(&db_path) {
             Ok(db) => db,
-            Err(e) => {
-                output::error(&format!("Failed to open database: {}", e));
-                output::info("Hint: Run 'mirage index' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
+            Err(_e) => {
+                // JSON-aware error handling with remediation
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::database_not_found(&db_path);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", db_path));
+                    output::info("Hint: Run 'mirage index' to create the database");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
             }
         };
 
@@ -694,8 +726,15 @@ pub mod cmds {
                         let target_node = match target_node {
                             Some(node) => node,
                             None => {
-                                output::error(&format!("Block {} not found in CFG", block_id));
-                                std::process::exit(1);
+                                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                                    let error = output::JsonError::block_not_found(block_id);
+                                    let wrapper = output::JsonResponse::new(error);
+                                    println!("{}", wrapper.to_json());
+                                    std::process::exit(1);
+                                } else {
+                                    output::error(&format!("Block {} not found in CFG", block_id));
+                                    std::process::exit(1);
+                                }
                             }
                         };
 
@@ -814,8 +853,15 @@ pub mod cmds {
                         let target_node = match target_node {
                             Some(node) => node,
                             None => {
-                                output::error(&format!("Block {} not found in CFG", block_id));
-                                std::process::exit(1);
+                                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                                    let error = output::JsonError::block_not_found(block_id);
+                                    let wrapper = output::JsonResponse::new(error);
+                                    println!("{}", wrapper.to_json());
+                                    std::process::exit(1);
+                                } else {
+                                    output::error(&format!("Block {} not found in CFG", block_id));
+                                    std::process::exit(1);
+                                }
                             }
                         };
 
@@ -964,10 +1010,18 @@ pub mod cmds {
         // Open database (follows status command pattern for error handling)
         let _db = match MirageDb::open(&db_path) {
             Ok(db) => db,
-            Err(e) => {
-                output::error(&format!("Failed to open database: {}", e));
-                output::info("Hint: Run 'mirage index' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
+            Err(_e) => {
+                // JSON-aware error handling with remediation
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::database_not_found(&db_path);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", db_path));
+                    output::info("Hint: Run 'mirage index' to create the database");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
             }
         };
 
@@ -1088,10 +1142,18 @@ pub mod cmds {
         // Open database (follows status command pattern for error handling)
         let db = match MirageDb::open(&db_path) {
             Ok(db) => db,
-            Err(e) => {
-                output::error(&format!("Failed to open database: {}", e));
-                output::info("Hint: Run 'mirage index' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
+            Err(_e) => {
+                // JSON-aware error handling with remediation
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::database_not_found(&db_path);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", db_path));
+                    output::info("Hint: Run 'mirage index' to create the database");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
             }
         };
 

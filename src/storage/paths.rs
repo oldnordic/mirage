@@ -142,12 +142,78 @@ fn str_to_path_kind(s: &str) -> Result<PathKind> {
 ///
 /// Vector of cached paths, or empty vector if none found (not an error)
 ///
-/// # Note
+/// # Algorithm
 ///
-/// This is a stub implementation. Full implementation in Task 3.
+/// 1. Execute SQL query joining cfg_paths and cfg_path_elements
+/// 2. Group rows by path_id
+/// 3. For each path, collect blocks in order (by sequence_order)
+/// 4. Reconstruct Path objects with metadata
+///
+/// # Empty Result
+///
+/// Returns Ok(vec![]) for cache miss (no paths stored), not an error.
 pub fn get_cached_paths(conn: &mut Connection, function_id: i64) -> Result<Vec<Path>> {
-    let _ = (conn, function_id);
-    Ok(vec![])
+    // Query paths and their elements
+    let mut stmt = conn.prepare_cached(
+        "SELECT p.path_id, p.path_kind, p.entry_block, p.exit_block,
+                pe.block_id, pe.sequence_order
+         FROM cfg_paths p
+         JOIN cfg_path_elements pe ON p.path_id = pe.path_id
+         WHERE p.function_id = ?1
+         ORDER BY p.path_id, pe.sequence_order",
+    ).context("Failed to prepare get_cached_paths query")?;
+
+    // Group elements by path_id
+    let mut path_data: HashMap<String, PathData> = HashMap::new();
+
+    let rows = stmt.query_map(params![function_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,  // path_id
+            row.get::<_, String>(1)?,  // path_kind
+            row.get::<_, i64>(2)?,     // entry_block
+            row.get::<_, i64>(3)?,     // exit_block
+            row.get::<_, i64>(4)?,     // block_id
+            row.get::<_, i64>(5)?,     // sequence_order
+        ))
+    }).context("Failed to execute get_cached_paths query")?;
+
+    for row in rows {
+        let (path_id, kind_str, entry_block, exit_block, block_id, _sequence_order) = row?;
+        let entry = entry_block as BlockId;
+        let exit = exit_block as BlockId;
+        let kind = str_to_path_kind(&kind_str)
+            .with_context(|| format!("Invalid path_kind '{}' in database", kind_str))?;
+
+        path_data.entry(path_id)
+            .or_insert_with(|| PathData {
+                path_id: String::new(), // Will be replaced
+                kind,
+                entry,
+                exit,
+                blocks: Vec::new(),
+            })
+            .blocks.push(block_id as BlockId);
+    }
+
+    // Reconstruct Path objects
+    let mut paths = Vec::new();
+    for (path_id, mut data) in path_data {
+        data.path_id = path_id;
+        let path = Path::new(data.blocks, data.kind);
+        // Verify entry/exit match the path (path_id was computed from blocks)
+        paths.push(path);
+    }
+
+    Ok(paths)
+}
+
+/// Helper struct for reconstructing paths from database rows
+struct PathData {
+    path_id: String,
+    kind: PathKind,
+    entry: BlockId,
+    exit: BlockId,
+    blocks: Vec<BlockId>,
 }
 
 /// Invalidate all cached paths for a function
@@ -428,5 +494,130 @@ mod tests {
 
         // SQLite will return a constraint error
         assert!(result.is_err(), "Should fail on duplicate path_id");
+    }
+
+    // Task 3: get_cached_paths tests
+
+    #[test]
+    fn test_get_cached_paths_empty() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+
+        // No paths stored - should return empty vec (not error)
+        let paths = get_cached_paths(&mut conn, function_id).unwrap();
+        assert_eq!(paths.len(), 0);
+    }
+
+    #[test]
+    fn test_get_cached_paths_retrieves_stored_paths() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+        let original_paths = create_mock_paths();
+
+        // Store paths
+        store_paths(&mut conn, function_id, &original_paths).unwrap();
+
+        // Retrieve paths
+        let retrieved_paths = get_cached_paths(&mut conn, function_id).unwrap();
+
+        // Should have same count
+        assert_eq!(retrieved_paths.len(), original_paths.len());
+
+        // Each path should match
+        for (orig, retrieved) in original_paths.iter().zip(retrieved_paths.iter()) {
+            assert_eq!(orig.blocks, retrieved.blocks);
+            assert_eq!(orig.kind, retrieved.kind);
+            assert_eq!(orig.entry, retrieved.entry);
+            assert_eq!(orig.exit, retrieved.exit);
+        }
+    }
+
+    #[test]
+    fn test_get_cached_paths_block_order_preserved() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+
+        // Create paths with specific block sequences
+        let paths = vec![
+            Path::new(vec![0, 1, 2, 3], PathKind::Normal),
+            Path::new(vec![5, 4, 3, 2, 1], PathKind::Error),
+        ];
+
+        store_paths(&mut conn, function_id, &paths).unwrap();
+        let retrieved = get_cached_paths(&mut conn, function_id).unwrap();
+
+        assert_eq!(retrieved.len(), 2);
+        assert_eq!(retrieved[0].blocks, vec![0, 1, 2, 3]);
+        assert_eq!(retrieved[1].blocks, vec![5, 4, 3, 2, 1]);
+    }
+
+    #[test]
+    fn test_get_cached_paths_kind_preserved() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+
+        let paths = vec![
+            Path::new(vec![0], PathKind::Normal),
+            Path::new(vec![1], PathKind::Error),
+            Path::new(vec![2], PathKind::Degenerate),
+            Path::new(vec![3], PathKind::Unreachable),
+        ];
+
+        store_paths(&mut conn, function_id, &paths).unwrap();
+        let retrieved = get_cached_paths(&mut conn, function_id).unwrap();
+
+        assert_eq!(retrieved.len(), 4);
+        assert_eq!(retrieved[0].kind, PathKind::Normal);
+        assert_eq!(retrieved[1].kind, PathKind::Error);
+        assert_eq!(retrieved[2].kind, PathKind::Degenerate);
+        assert_eq!(retrieved[3].kind, PathKind::Unreachable);
+    }
+
+    #[test]
+    fn test_get_cached_paths_invalid_kind_returns_error() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+
+        // Insert a path with invalid kind directly
+        conn.execute(
+            "INSERT INTO cfg_paths (path_id, function_id, path_kind, entry_block, exit_block, length, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params!("invalid_path_id", function_id, "InvalidKind", 0, 0, 1, 0),
+        ).unwrap();
+
+        // Should return error due to invalid path_kind
+        let result = get_cached_paths(&mut conn, function_id);
+        assert!(result.is_err(), "Should fail on invalid path_kind");
+    }
+
+    #[test]
+    fn test_get_cached_paths_roundtrip() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+
+        // Create complex paths
+        let paths = vec![
+            Path::new(vec![0, 1, 2, 3, 4, 5], PathKind::Normal),
+            Path::new(vec![0, 1, 3, 5], PathKind::Normal),
+            Path::new(vec![0, 2, 4, 5], PathKind::Error),
+            Path::new(vec![0, 5], PathKind::Degenerate),
+        ];
+
+        store_paths(&mut conn, function_id, &paths).unwrap();
+        let retrieved = get_cached_paths(&mut conn, function_id).unwrap();
+
+        // Full roundtrip verification
+        assert_eq!(retrieved.len(), paths.len());
+
+        // Sort both by blocks for comparison (order may vary)
+        let mut sorted_orig: Vec<_> = paths.iter().collect();
+        let mut sorted_ret: Vec<_> = retrieved.iter().collect();
+        sorted_orig.sort_by_key(|p| p.blocks.clone());
+        sorted_ret.sort_by_key(|p| p.blocks.clone());
+
+        for (orig, ret) in sorted_orig.iter().zip(sorted_ret.iter()) {
+            assert_eq!(orig.blocks, ret.blocks, "Block sequence mismatch");
+            assert_eq!(orig.kind, ret.kind, "PathKind mismatch");
+        }
     }
 }

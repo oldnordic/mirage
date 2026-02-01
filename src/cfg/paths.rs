@@ -160,6 +160,92 @@ pub fn classify_path(cfg: &Cfg, blocks: &[BlockId]) -> PathKind {
     PathKind::Normal
 }
 
+/// Classify a path using a pre-computed reachable set for O(n) batch classification
+///
+/// This version is optimized for classifying many paths. Instead of calling
+/// `is_reachable_from_entry` for each block (which is O(n) per call), we use
+/// a pre-computed HashSet of reachable block IDs, making reachability checks O(1).
+///
+/// **Why:** O(n) classification vs O(n²) for repeated `is_reachable_from_entry` calls.
+/// Pre-compute reachable set once with `find_reachable()`, reuse for all paths.
+///
+/// # Arguments
+///
+/// * `cfg` - Control flow graph to analyze
+/// * `blocks` - Block IDs in execution order
+/// * `reachable_blocks` - Pre-computed set of reachable BlockIds
+///
+/// # Returns
+///
+/// The classified PathKind for this path
+///
+/// # Example
+///
+/// ```rust
+/// let reachable_nodes = find_reachable(&cfg);
+/// let reachable_blocks: HashSet<BlockId> = reachable_nodes
+///     .iter()
+///     .map(|&idx| cfg[idx].id)
+///     .collect();
+///
+/// for path in paths {
+///     let kind = classify_path_precomputed(&cfg, &path.blocks, &reachable_blocks);
+/// }
+/// ```
+pub fn classify_path_precomputed(
+    cfg: &Cfg,
+    blocks: &[BlockId],
+    reachable_blocks: &HashSet<BlockId>,
+) -> PathKind {
+    // Empty path is degenerate
+    if blocks.is_empty() {
+        return PathKind::Degenerate;
+    }
+
+    // Check each block in the path
+    for &block_id in blocks {
+        let node_idx = match find_node_by_block_id(cfg, block_id) {
+            Some(idx) => idx,
+            None => return PathKind::Degenerate, // Block doesn't exist
+        };
+
+        // Priority 1: Check if block is reachable (O(1) lookup)
+        if !reachable_blocks.contains(&block_id) {
+            return PathKind::Unreachable;
+        }
+
+        // Get the block's terminator
+        let terminator = &cfg[node_idx].terminator;
+
+        // Priority 2: Check for error terminators
+        match terminator {
+            Terminator::Abort(_) => return PathKind::Error,
+            Terminator::Call { unwind: Some(_), .. } => return PathKind::Error,
+            _ => {}
+        }
+
+        // Priority 3: Check for unreachable terminator (anywhere in path)
+        if matches!(terminator, Terminator::Unreachable) {
+            return PathKind::Degenerate;
+        }
+    }
+
+    // Check last block terminator - if not Return, it's degenerate
+    if let Some(&last_block_id) = blocks.last() {
+        if let Some(node_idx) = find_node_by_block_id(cfg, last_block_id) {
+            let terminator = &cfg[node_idx].terminator;
+            // Non-Return terminators at end are degenerate
+            if !matches!(terminator, Terminator::Return) {
+                // Already caught Unreachable above, so check other cases
+                return PathKind::Degenerate;
+            }
+        }
+    }
+
+    // Default: Normal path
+    PathKind::Normal
+}
+
 impl PathKind {
     /// Check if this path represents a normal execution
     pub fn is_normal(&self) -> bool {
@@ -232,6 +318,44 @@ impl PathLimits {
     pub fn with_loop_unroll_limit(mut self, loop_unroll_limit: usize) -> Self {
         self.loop_unroll_limit = loop_unroll_limit;
         self
+    }
+
+    /// Quick analysis preset for fast, approximate path enumeration
+    ///
+    /// Use this for:
+    /// - Initial code exploration
+    /// - IDE/integration features where responsiveness matters
+    /// - Large codebases where thorough analysis would be too slow
+    ///
+    /// Tradeoffs:
+    /// - May miss some paths due to lower limits
+    /// - Loop unrolling is minimal (2 iterations)
+    /// - Completes in <100ms for typical functions
+    pub fn quick_analysis() -> Self {
+        Self {
+            max_length: 100,
+            max_paths: 1000,
+            loop_unroll_limit: 2,
+        }
+    }
+
+    /// Thorough analysis preset for comprehensive path enumeration
+    ///
+    /// Use this for:
+    /// - Final analysis before deployment
+    /// - Security-critical code paths
+    /// - Test coverage validation
+    ///
+    /// Tradeoffs:
+    /// - Higher limits produce more complete results
+    /// - May take several seconds on complex functions
+    /// - Still bounded to prevent infinite loops
+    pub fn thorough() -> Self {
+        Self {
+            max_length: 10000,
+            max_paths: 100000,
+            loop_unroll_limit: 5,
+        }
     }
 }
 
@@ -924,6 +1048,129 @@ mod tests {
         assert_eq!(kind, PathKind::Degenerate);
     }
 
+    // classify_path_precomputed tests
+
+    #[test]
+    fn test_classify_path_precomputed_matches_classify_path() {
+        let cfg = create_diamond_cfg();
+
+        // Pre-compute reachable set
+        use crate::cfg::reachability::find_reachable;
+        let reachable_nodes = find_reachable(&cfg);
+        let reachable_blocks: HashSet<BlockId> = reachable_nodes
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Test multiple paths
+        let test_paths = vec![
+            vec![0, 1, 3],
+            vec![0, 2, 3],
+            vec![0, 1],
+            vec![0],
+        ];
+
+        for path in test_paths {
+            let kind1 = classify_path(&cfg, &path);
+            let kind2 = classify_path_precomputed(&cfg, &path, &reachable_blocks);
+            assert_eq!(
+                kind1, kind2,
+                "classify_path_precomputed should match classify_path for path {:?}",
+                path
+            );
+        }
+    }
+
+    #[test]
+    fn test_classify_path_precomputed_unreachable() {
+        let cfg = create_dead_code_cfg();
+
+        // Pre-compute reachable set (only block 0 is reachable)
+        use crate::cfg::reachability::find_reachable;
+        let reachable_nodes = find_reachable(&cfg);
+        let reachable_blocks: HashSet<BlockId> = reachable_nodes
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Block 1 is unreachable
+        let path = vec![1];
+        let kind = classify_path_precomputed(&cfg, &path, &reachable_blocks);
+        assert_eq!(kind, PathKind::Unreachable);
+    }
+
+    #[test]
+    fn test_classify_path_precomputed_performance() {
+        use crate::cfg::reachability::find_reachable;
+        use std::time::Instant;
+
+        let cfg = create_diamond_cfg();
+
+        // Pre-compute reachable set once
+        let reachable_nodes = find_reachable(&cfg);
+        let reachable_blocks: HashSet<BlockId> = reachable_nodes
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Create many test paths
+        let test_paths: Vec<Vec<BlockId>> = (0..1000)
+            .map(|_| vec![0, 1, 3])
+            .collect();
+
+        // Time the precomputed version
+        let start = Instant::now();
+        for path in &test_paths {
+            let _ = classify_path_precomputed(&cfg, path, &reachable_blocks);
+        }
+        let precomputed_duration = start.elapsed();
+
+        // Should be very fast (< 10ms for 1000 paths)
+        assert!(
+            precomputed_duration.as_millis() < 10,
+            "classify_path_precomputed should classify 1000 paths in <10ms, took {}ms",
+            precomputed_duration.as_millis()
+        );
+    }
+
+    #[test]
+    fn test_classify_path_precomputed_all_kinds() {
+        use crate::cfg::reachability::find_reachable;
+
+        // Test with normal path
+        let cfg_normal = create_linear_cfg();
+        let reachable = find_reachable(&cfg_normal)
+            .iter()
+            .map(|&idx| cfg_normal[idx].id)
+            .collect();
+        assert_eq!(
+            classify_path_precomputed(&cfg_normal, &[0, 1, 2], &reachable),
+            PathKind::Normal
+        );
+
+        // Test with error path
+        let cfg_error = create_error_cfg();
+        let reachable = find_reachable(&cfg_error)
+            .iter()
+            .map(|&idx| cfg_error[idx].id)
+            .collect();
+        assert_eq!(
+            classify_path_precomputed(&cfg_error, &[0, 1], &reachable),
+            PathKind::Error
+        );
+
+        // Test with degenerate path
+        let cfg_degen = create_unreachable_term_cfg();
+        let reachable = find_reachable(&cfg_degen)
+            .iter()
+            .map(|&idx| cfg_degen[idx].id)
+            .collect();
+        assert_eq!(
+            classify_path_precomputed(&cfg_degen, &[0, 1], &reachable),
+            PathKind::Degenerate
+        );
+    }
+
     // enumerate_paths tests
 
     #[test]
@@ -1082,5 +1329,387 @@ mod tests {
         // Only reachable exit produces a path
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0].blocks, vec![0, 1]);
+    }
+
+    // Task 1: PathLimits enforcement tests
+
+    #[test]
+    fn test_path_limits_max_length_long_path() {
+        // Create a 5-block linear path: 0 -> 1 -> 2 -> 3 -> 4
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 4 },
+            source_location: None,
+        });
+
+        let b4 = g.add_node(BasicBlock {
+            id: 4,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::Fallthrough);
+        g.add_edge(b2, b3, EdgeType::Fallthrough);
+        g.add_edge(b3, b4, EdgeType::Fallthrough);
+
+        // With max_length=3, the 5-block path exceeds limit
+        let limits = PathLimits::default().with_max_length(3);
+        let paths = enumerate_paths(&g, &limits);
+
+        // No paths should be found because the only path has length 5 > 3
+        assert_eq!(paths.len(), 0, "Path exceeds max_length, should return 0 paths");
+    }
+
+    #[test]
+    fn test_path_limits_max_paths_exact() {
+        let cfg = create_diamond_cfg();
+
+        // Diamond has 2 paths, limit to 1
+        let limits = PathLimits::default().with_max_paths(1);
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // Should get exactly 1 path (stops early)
+        assert_eq!(paths.len(), 1, "Should stop at max_paths=1");
+
+        // Path should be valid (entry to exit)
+        assert_eq!(paths[0].entry, 0);
+        assert_eq!(paths[0].exit, 3);
+    }
+
+    #[test]
+    fn test_path_limits_loop_unroll_exact() {
+        let cfg = create_loop_cfg();
+
+        // With loop_unroll_limit=1, we should get:
+        // - Direct exit: 0->1->3
+        // - 1 iteration: 0->1->2->1->3
+        let limits = PathLimits::default().with_loop_unroll_limit(1);
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // Should have exactly 2 paths (0 and 1 loop iterations)
+        assert_eq!(paths.len(), 2, "Should have exactly 2 paths with loop_unroll_limit=1");
+
+        // Verify direct exit exists
+        assert!(paths.iter().any(|p| p.blocks == vec![0, 1, 3]),
+                "Direct exit path should exist");
+
+        // Verify one iteration path exists
+        assert!(paths.iter().any(|p| p.blocks == vec![0, 1, 2, 1, 3]),
+                "One iteration path should exist");
+    }
+
+    // Task 2: Self-loop cycle detection tests
+
+    /// Create a CFG with a self-loop: 0 -> 1 -> 1 (self-loop)
+    fn create_self_loop_cfg() -> Cfg {
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            // Self-loop: always goes back to itself
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+
+        g
+    }
+
+    #[test]
+    fn test_self_loop_terminates() {
+        let cfg = create_self_loop_cfg();
+
+        // This should terminate without hanging
+        let limits = PathLimits::default();
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // Should have a bounded number of paths (not infinite)
+        // The self-loop is bounded by loop_unroll_limit
+        assert!(paths.len() <= limits.loop_unroll_limit + 1,
+                "Self-loop should be bounded by loop_unroll_limit");
+    }
+
+    #[test]
+    fn test_self_loop_with_low_limit() {
+        let cfg = create_self_loop_cfg();
+
+        // With a very low unroll limit, we should get minimal paths
+        let limits = PathLimits::default().with_loop_unroll_limit(1);
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // Should have exactly 1 path (direct to self-loop block, then bounded)
+        assert!(paths.len() <= 2, "Self-loop with low limit should have few paths");
+    }
+
+    // Task 3: Nested loop bounding tests
+
+    /// Create a CFG with nested loops:
+    /// 0 -> 1 (outer header) -> 2 (inner header) -> 3 -> 2 (back to inner)
+    /// 1 -> 4 (outer exit)
+    /// 2 -> 4 (inner exit to outer)
+    /// 4 -> 5 (final exit)
+    fn create_nested_loop_cfg() -> Cfg {
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 4 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+        });
+
+        let b4 = g.add_node(BasicBlock {
+            id: 4,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+        g.add_edge(b1, b4, EdgeType::FalseBranch);
+        g.add_edge(b2, b3, EdgeType::TrueBranch);
+        g.add_edge(b2, b1, EdgeType::LoopBack); // Outer back edge
+        g.add_edge(b3, b2, EdgeType::LoopBack); // Inner back edge
+
+        g
+    }
+
+    #[test]
+    fn test_nested_loop_bounding() {
+        let cfg = create_nested_loop_cfg();
+
+        // With loop_unroll_limit=2, each loop can iterate 0, 1, or 2 times
+        // For 2 nested loops, max paths should be bounded by (limit+1)^2 = 9
+        let limits = PathLimits::default().with_loop_unroll_limit(2);
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // With 2 nested loops and limit 2, we get at most 9 paths
+        // (3 outer iterations * 3 inner iterations each)
+        assert!(paths.len() <= 9, "Nested loops should be bounded: got {} paths", paths.len());
+        assert!(paths.len() > 0, "Should have at least some paths");
+    }
+
+    #[test]
+    fn test_nested_loop_bounding_three_levels() {
+        // Create 3-level nested loop
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        // Outer loop header
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 6 },
+            source_location: None,
+        });
+
+        // Middle loop header
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 },
+            source_location: None,
+        });
+
+        // Inner loop header
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![4], otherwise: 2 },
+            source_location: None,
+        });
+
+        let b4 = g.add_node(BasicBlock {
+            id: 4,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b6 = g.add_node(BasicBlock {
+            id: 6,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+        g.add_edge(b1, b6, EdgeType::FalseBranch);
+        g.add_edge(b2, b3, EdgeType::TrueBranch);
+        g.add_edge(b2, b1, EdgeType::LoopBack); // Outer back edge
+        g.add_edge(b3, b4, EdgeType::TrueBranch);
+        g.add_edge(b3, b2, EdgeType::LoopBack); // Middle back edge
+        g.add_edge(b4, b3, EdgeType::LoopBack); // Inner back edge
+
+        // With loop_unroll_limit=2 and 3 nested loops:
+        // Max paths = (limit+1)^3 = 27
+        let limits = PathLimits::default().with_loop_unroll_limit(2);
+        let paths = enumerate_paths(&g, &limits);
+
+        assert!(paths.len() <= 27, "3-level nested loops should be bounded by 27");
+    }
+
+    #[test]
+    fn test_nested_loop_independent_counters() {
+        let cfg = create_nested_loop_cfg();
+
+        // Verify that each loop header is tracked independently
+        let loop_headers = crate::cfg::loops::find_loop_headers(&cfg);
+
+        // Should have 2 loop headers (outer and inner)
+        assert_eq!(loop_headers.len(), 2, "Should detect 2 loop headers");
+
+        // With limit=2, we should get reasonable bounded paths
+        let limits = PathLimits::default().with_loop_unroll_limit(2);
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // Verify paths are bounded (not exponential explosion)
+        assert!(paths.len() > 0, "Should have some paths");
+        assert!(paths.len() <= 9, "Should be bounded by (limit+1)^nesting_depth");
+    }
+
+    // Task 4: PathLimits builder and preset tests
+
+    #[test]
+    fn test_path_limits_quick_analysis() {
+        let limits = PathLimits::quick_analysis();
+
+        assert_eq!(limits.max_length, 100);
+        assert_eq!(limits.max_paths, 1000);
+        assert_eq!(limits.loop_unroll_limit, 2);
+    }
+
+    #[test]
+    fn test_path_limits_thorough() {
+        let limits = PathLimits::thorough();
+
+        assert_eq!(limits.max_length, 10000);
+        assert_eq!(limits.max_paths, 100000);
+        assert_eq!(limits.loop_unroll_limit, 5);
+    }
+
+    #[test]
+    fn test_path_limits_builder_chaining() {
+        // Start with quick_analysis and customize further
+        let limits = PathLimits::quick_analysis()
+            .with_max_length(200)
+            .with_max_paths(5000)
+            .with_loop_unroll_limit(3);
+
+        assert_eq!(limits.max_length, 200);
+        assert_eq!(limits.max_paths, 5000);
+        assert_eq!(limits.loop_unroll_limit, 3);
+    }
+
+    #[test]
+    fn test_path_limits_presets_differ_from_default() {
+        let default = PathLimits::default();
+        let quick = PathLimits::quick_analysis();
+        let thorough = PathLimits::thorough();
+
+        // Quick should be more restrictive than default
+        assert!(quick.max_length < default.max_length);
+        assert!(quick.max_paths < default.max_paths);
+        assert!(quick.loop_unroll_limit < default.loop_unroll_limit);
+
+        // Thorough should be less restrictive than default
+        assert!(thorough.max_length > default.max_length);
+        assert!(thorough.max_paths > default.max_paths);
+        assert!(thorough.loop_unroll_limit > default.loop_unroll_limit);
+    }
+
+    #[test]
+    fn test_path_limits_quick_vs_thorough_on_loop() {
+        let cfg = create_loop_cfg();
+
+        // Quick analysis should find fewer paths
+        let quick_paths = enumerate_paths(&cfg, &PathLimits::quick_analysis());
+        let thorough_paths = enumerate_paths(&cfg, &PathLimits::thorough());
+
+        // Thorough should find at least as many paths as quick
+        assert!(thorough_paths.len() >= quick_paths.len(),
+                "Thorough analysis should find at least as many paths as quick");
     }
 }

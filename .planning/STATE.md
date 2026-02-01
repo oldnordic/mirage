@@ -34,7 +34,7 @@ Progress: [████████████████░] 87% (Phase 7: 1/
 | 04-dominance-analysis | 3 | 3/3 | 3.7 min |
 | 05-path-enumeration | 6 | 6/6 | 4.6 min |
 | 06-cli-interface | 7 | 7/7 | 5.6 min |
-| 07-llm-integration | TBD | 1/TBD | 5.8 min |
+| 07-llm-integration | 4 | 1/4 | 5.5 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -261,6 +261,15 @@ Recent decisions affecting current work:
 - Output format pattern: match cli.output { Human => println!, Json => JsonResponse.to_json(), Pretty => JsonResponse.to_pretty_json() }
 - Comprehensive test suite (12 tests) ensures output format consistency across all commands
 
+**From 07-01 (LLM-Optimized JSON Response Structs):**
+- PathBlock struct with block_id (usize) and terminator (String) for LLM-optimized path data
+- SourceRange struct with file_path, start_line, end_line for future source location integration
+- PathSummary.blocks changed from Vec<usize> to Vec<PathBlock> for explicit field names
+- Optional summary and source_range fields added to PathSummary (populated in future plans)
+- Explicit nulls in JSON output (no skip_serializing_if) helps LLMs distinguish missing vs empty data
+- String terminator field provides flexible text representation instead of enum
+- Placeholder "Unknown" terminator values in From impl; full data in from_with_cfg
+
 **From 07-02 (Source Location Inclusion in Path Output):**
 - from_with_cfg method signature takes Path by value, borrows CFG (needs CFG reference to look up terminators)
 - source_range is Option<SourceRange> for AST CFGs without source locations (graceful None handling)
@@ -281,5 +290,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 07-02: Source location inclusion in path output
+Stopped at: Completed 07-01: LLM-optimized JSON response structs
 Resume file: None

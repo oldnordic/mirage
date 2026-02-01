@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 2 of 7 (CFG Construction) - In Progress
-Plan: 02 complete (of 6 in this phase)
-Status: AST-based CFG construction complete, leader detection and edge handling implemented
-Last activity: 2026-02-01 - Completed 02-02: AST-based CFG construction
+Plan: 04 complete (of 6 in this phase)
+Status: CFG analysis utilities complete with entry/exit detection and graph traversal functions
+Last activity: 2026-02-01 - Completed 02-04: Entry/exit detection and CFG analysis
 
-Progress: [██████████░] 33% (Phase 2/7, Plan 3/6 in phase)
+Progress: [██████████░] 67% (Phase 2/7, Plan 4/6 in phase)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 5 min
+- Total plans completed: 7
+- Average duration: 4 min
 - Total execution time: 0.5 hours
 
 **By Phase:**
@@ -28,10 +28,10 @@ Progress: [██████████░] 33% (Phase 2/7, Plan 3/6 in phase)
 | Phase | Plans | Complete | Avg/Plan |
 |-------|-------|----------|----------|
 | 01-database-foundation | 3 | 3/3 | 4 min |
-| 02-cfg-construction | 6 | 3/6 | 6 min |
+| 02-cfg-construction | 6 | 4/6 | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 5 min
+- Last 5 plans: 4 min
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -79,6 +79,12 @@ Recent decisions affecting current work:
 - Edge types encode semantic meaning: TrueBranch/FalseBranch for conditionals, LoopBack/LoopExit for loops
 - CFGBuilder pattern: find_leaders → build_blocks → connect_edges
 
+**From 02-04 (Entry/Exit Detection and CFG Analysis):**
+- Exit blocks identified by terminator type: Return, Unreachable, Abort
+- Functions support multiple exits (early returns, panic paths, unwind paths)
+- Entry detection uses first-node query (id=0 always entry by construction)
+- Variable naming: avoid `cfg` as variable name (conflicts with Rust built-in macro)
+
 ### Pending Todos
 
 None yet.
@@ -91,5 +97,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 02-02: AST-based CFG construction
+Stopped at: Completed 02-04: Entry/exit detection and CFG analysis
 Resume file: None

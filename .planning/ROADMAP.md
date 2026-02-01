@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Database Foundation** - Extend Magellan schema with CFG tables ✓ Completed 2026-02-01
 - [x] **Phase 2: CFG Construction** - Build control flow graphs from MIR and AST ✓ Completed 2026-02-01
 - [x] **Phase 3: Reachability & Control Structure** - Analyze what code can execute ✓ Completed 2026-02-01
-- [ ] **Phase 4: Dominance Analysis** - Compute must-pass-through relationships
+- [x] **Phase 4: Dominance Analysis** - Compute must-pass-through relationships ✓ Completed 2026-02-01
 - [ ] **Phase 5: Path Enumeration** - Enumerate and classify execution paths
 - [ ] **Phase 6: CLI Interface** - User-facing commands for all analysis types
 - [ ] **Phase 7: LLM Integration** - Structured outputs for agent consumption
@@ -114,12 +114,14 @@ Plans:
 3. System computes post-dominators
 4. System computes dominance frontiers
 
+**Status**: ✓ Completed 2026-02-01
+
 **Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 04-01-PLAN.md — Dominator tree construction (DominatorTree wrapper with simple_fast)
-- [ ] 04-02-PLAN.md — Post-dominator tree construction (PostDominatorTree via Reversed adaptor)
-- [ ] 04-03-PLAN.md — Dominance frontier computation (DominanceFrontiers using Cytron et al. algorithm)
+- [x] 04-01 — Dominator tree construction (DominatorTree wrapper with simple_fast)
+- [x] 04-02 — Post-dominator tree construction (PostDominatorTree via Reversed adaptor)
+- [x] 04-03 — Dominance frontier computation (DominanceFrontiers using Cytron et al. algorithm)
 
 ### Phase 5: Path Enumeration
 
@@ -215,7 +217,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 1. Database Foundation | 3/3 | ✓ Complete | 2026-02-01 |
 | 2. CFG Construction | 6/6 | ✓ Complete | 2026-02-01 |
 | 3. Reachability & Control Structure | 4/4 | ✓ Complete | 2026-02-01 |
-| 4. Dominance Analysis | 0/3 | Planned | - |
+| 4. Dominance Analysis | 3/3 | ✓ Complete | 2026-02-01 |
 | 5. Path Enumeration | 0/TBD | Not started | - |
 | 6. CLI Interface | 0/TBD | Not started | - |
 | 7. LLM Integration | 0/TBD | Not started | - |

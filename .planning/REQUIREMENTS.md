@@ -24,10 +24,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Dominance Relationships
 
-- [ ] **DOM-01**: System computes immediate dominators for all nodes
-- [ ] **DOM-02**: System computes dominator tree
-- [ ] **DOM-03**: System computes post-dominators
-- [ ] **DOM-04**: System computes dominance frontiers
+- [x] **DOM-01**: System computes immediate dominators for all nodes
+- [x] **DOM-02**: System computes dominator tree
+- [x] **DOM-03**: System computes post-dominators
+- [x] **DOM-04**: System computes dominance frontiers
 
 ### Control Structure Recovery
 
@@ -139,10 +139,10 @@ Which phases cover which requirements.
 | REACH-01 | Phase 3 | Complete |
 | REACH-02 | Phase 3 | Complete |
 | REACH-03 | Phase 3 | Complete |
-| DOM-01 | Phase 4 | Pending |
-| DOM-02 | Phase 4 | Pending |
-| DOM-03 | Phase 4 | Pending |
-| DOM-04 | Phase 4 | Pending |
+| DOM-01 | Phase 4 | Complete |
+| DOM-02 | Phase 4 | Complete |
+| DOM-03 | Phase 4 | Complete |
+| DOM-04 | Phase 4 | Complete |
 | CTRL-01 | Phase 3 | Complete |
 | CTRL-02 | Phase 3 | Complete |
 | CTRL-03 | Phase 3 | Complete |

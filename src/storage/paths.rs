@@ -277,16 +277,70 @@ pub fn invalidate_function_paths(conn: &mut Connection, function_id: i64) -> Res
 /// * `Ok(false)` - No update needed (hash matched)
 /// * `Err(...)` - Database error
 ///
-/// # Note
+/// # Algorithm
 ///
-/// This is a stub implementation. Full implementation in Task 5.
+/// 1. Get current function_hash from cfg_blocks
+/// 2. If hash matches new_hash -> cache hit, return Ok(false)
+/// 3. If hash differs or not found -> cache miss:
+///    - Invalidate old paths via invalidate_function_paths
+///    - Store new paths via store_paths
+///    - Update cfg_blocks.function_hash = new_hash
+///    - Return Ok(true)
+///
+/// # Incremental Updates
+///
+/// This enables incremental updates - paths are only re-enumerated
+/// when function content changes.
 pub fn update_function_paths_if_changed(
     conn: &mut Connection,
     function_id: i64,
     new_hash: &str,
     paths: &[Path],
 ) -> Result<bool> {
-    let _ = (conn, function_id, new_hash, paths);
+    // Check current function_hash in cfg_blocks
+    let current_hash: Option<String> = conn.query_row(
+        "SELECT function_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
+        params![function_id],
+        |row| row.get(0),
+    ).unwrap_or(None);
+
+    // If hash matches, no update needed (cache hit)
+    if let Some(ref hash) = current_hash {
+        if hash == new_hash {
+            return Ok(false);
+        }
+    }
+
+    // Cache miss or hash changed - invalidate old paths
+    invalidate_function_paths(conn, function_id)?;
+
+    // Store new paths
+    store_paths(conn, function_id, paths)?;
+
+    // Update function_hash in cfg_blocks
+    // First check if a cfg_blocks entry exists for this function
+    let block_exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM cfg_blocks WHERE function_id = ?1)",
+        params![function_id],
+        |row| row.get(0),
+    ).unwrap_or(false);
+
+    if block_exists {
+        // Update existing entry
+        conn.execute(
+            "UPDATE cfg_blocks SET function_hash = ?1 WHERE function_id = ?2",
+            params![new_hash, function_id],
+        ).context("Failed to update function_hash")?;
+    } else {
+        // Insert a placeholder cfg_blocks entry for hash tracking
+        // This allows caching paths even before full CFG is stored
+        conn.execute(
+            "INSERT INTO cfg_blocks (function_id, block_kind, function_hash)
+             VALUES (?1, ?2, ?3)",
+            params![function_id, "placeholder", new_hash],
+        ).context("Failed to insert function_hash placeholder")?;
+    }
+
     Ok(true)
 }
 
@@ -794,5 +848,215 @@ mod tests {
             |row| row.get(0),
         ).unwrap();
         assert_eq!(count_2_after, 3);
+    }
+
+    // Task 5: update_function_paths_if_changed tests
+
+    #[test]
+    fn test_update_function_paths_if_changed_first_call() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+        let paths = create_mock_paths();
+        let hash = "abc123";
+
+        // First call with no existing hash - should update
+        let updated = update_function_paths_if_changed(&mut conn, function_id, hash, &paths).unwrap();
+        assert!(updated, "First call should return true (updated)");
+
+        // Verify paths were stored
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 3);
+
+        // Verify hash was stored
+        let stored_hash: String = conn.query_row(
+            "SELECT function_hash FROM cfg_blocks WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(stored_hash, hash);
+    }
+
+    #[test]
+    fn test_update_function_paths_if_changed_same_hash() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+        let paths = create_mock_paths();
+        let hash = "abc123";
+
+        // First call - should update
+        let updated1 = update_function_paths_if_changed(&mut conn, function_id, hash, &paths).unwrap();
+        assert!(updated1);
+
+        // Second call with same hash - should NOT update
+        let updated2 = update_function_paths_if_changed(&mut conn, function_id, hash, &paths).unwrap();
+        assert!(!updated2, "Same hash should return false (no update)");
+    }
+
+    #[test]
+    fn test_update_function_paths_if_changed_different_hash() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+        let paths1 = create_mock_paths();
+        let paths2 = vec![
+            Path::new(vec![0, 1], PathKind::Normal),
+        ];
+
+        // First call with hash1
+        let updated1 = update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths1).unwrap();
+        assert!(updated1);
+
+        // Verify 3 paths from first call
+        let count1: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count1, 3);
+
+        // Second call with different hash - should update
+        let updated2 = update_function_paths_if_changed(&mut conn, function_id, "hash2", &paths2).unwrap();
+        assert!(updated2, "Different hash should return true (updated)");
+
+        // Verify paths were replaced (now only 1 path)
+        let count2: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count2, 1, "Old paths should be invalidated and replaced");
+
+        // Verify hash was updated
+        let stored_hash: String = conn.query_row(
+            "SELECT function_hash FROM cfg_blocks WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(stored_hash, "hash2");
+    }
+
+    #[test]
+    fn test_update_function_paths_if_changed_three_calls() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+        let paths = create_mock_paths();
+
+        // Call 1: new hash -> update
+        let u1 = update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths).unwrap();
+        assert!(u1);
+
+        // Call 2: same hash -> no update
+        let u2 = update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths).unwrap();
+        assert!(!u2);
+
+        // Call 3: different hash -> update
+        let u3 = update_function_paths_if_changed(&mut conn, function_id, "hash2", &paths).unwrap();
+        assert!(u3);
+
+        // Call 4: same hash again -> no update
+        let u4 = update_function_paths_if_changed(&mut conn, function_id, "hash2", &paths).unwrap();
+        assert!(!u4);
+    }
+
+    #[test]
+    fn test_update_function_paths_if_changed_with_existing_cfg_block() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+
+        // Insert a cfg_blocks entry first (simulating existing CFG)
+        conn.execute(
+            "INSERT INTO cfg_blocks (function_id, block_kind, function_hash)
+             VALUES (?, ?, ?)",
+            params![function_id, "entry", "old_hash"],
+        ).unwrap();
+
+        let paths = create_mock_paths();
+
+        // Update with new hash
+        let updated = update_function_paths_if_changed(&mut conn, function_id, "new_hash", &paths).unwrap();
+        assert!(updated);
+
+        // Verify hash was updated (not inserted as new row)
+        let hash: String = conn.query_row(
+            "SELECT function_hash FROM cfg_blocks WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(hash, "new_hash");
+
+        // Verify only one cfg_blocks entry exists
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 1, "Should update existing row, not insert new");
+    }
+
+    #[test]
+    fn test_update_function_paths_if_changed_creates_placeholder() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+        let paths = create_mock_paths();
+
+        // No cfg_blocks entry exists initially
+        let count_before: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_before, 0);
+
+        // Update paths
+        update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths).unwrap();
+
+        // Verify placeholder was created
+        let count_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_after, 1, "Should create placeholder cfg_blocks entry");
+
+        // Verify placeholder has correct hash
+        let hash: String = conn.query_row(
+            "SELECT function_hash FROM cfg_blocks WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(hash, "hash1");
+    }
+
+    #[test]
+    fn test_update_function_paths_if_changed_invalidates_old() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+
+        let paths1 = vec![
+            Path::new(vec![0, 1, 2], PathKind::Normal),
+            Path::new(vec![0, 1, 3], PathKind::Normal),
+        ];
+        let paths2 = vec![
+            Path::new(vec![0, 2], PathKind::Error),
+        ];
+
+        // Store first set
+        update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths1).unwrap();
+
+        // Verify first paths exist
+        let retrieved1 = get_cached_paths(&mut conn, function_id).unwrap();
+        assert_eq!(retrieved1.len(), 2);
+
+        // Update with different hash and new paths
+        update_function_paths_if_changed(&mut conn, function_id, "hash2", &paths2).unwrap();
+
+        // Verify only new paths exist (old ones invalidated)
+        let retrieved2 = get_cached_paths(&mut conn, function_id).unwrap();
+        assert_eq!(retrieved2.len(), 1);
+        assert_eq!(retrieved2[0].blocks, vec![0, 2]);
+        assert_eq!(retrieved2[0].kind, PathKind::Error);
     }
 }

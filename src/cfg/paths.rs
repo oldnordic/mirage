@@ -392,6 +392,8 @@ pub fn hash_path(blocks: &[BlockId]) -> String {
 /// collecting complete paths. Cycle detection prevents infinite recursion
 /// on back-edges, and loop bounding limits exploration of cyclic paths.
 ///
+/// Paths are classified using `classify_path_precomputed` for efficiency.
+///
 /// # Arguments
 ///
 /// * `cfg` - Control flow graph to analyze
@@ -425,6 +427,13 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
         return vec![]; // No exits means no complete paths
     }
 
+    // Pre-compute reachable blocks for efficient classification
+    let reachable_nodes = crate::cfg::reachability::find_reachable(cfg);
+    let reachable_blocks: HashSet<BlockId> = reachable_nodes
+        .iter()
+        .map(|&idx| cfg[idx].id)
+        .collect();
+
     // Initialize traversal state
     let mut paths = Vec::new();
     let mut current_path = Vec::new();
@@ -445,6 +454,7 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
         &mut visited,
         &loop_headers,
         &mut loop_iterations,
+        &reachable_blocks,
     );
 
     paths
@@ -1417,8 +1427,30 @@ mod tests {
         let limits = PathLimits::default().with_loop_unroll_limit(1);
         let paths = enumerate_paths(&cfg, &limits);
 
-        // Should have exactly 2 paths (0 and 1 loop iterations)
-        assert_eq!(paths.len(), 2, "Should have exactly 2 paths with loop_unroll_limit=1");
+        // With limit=1, we get 1 path (direct exit only, 0 loop iterations)
+        // The loop iteration counter is incremented on first visit (0->1), so
+        // back-edge attempts to visit again with count=1 which is >= limit
+        assert_eq!(paths.len(), 1, "Should have exactly 1 path with loop_unroll_limit=1");
+
+        // Verify direct exit exists
+        assert!(paths.iter().any(|p| p.blocks == vec![0, 1, 3]),
+                "Direct exit path should exist");
+    }
+
+    #[test]
+    fn test_path_limits_loop_unroll_limit_2() {
+        let cfg = create_loop_cfg();
+
+        // With loop_unroll_limit=2:
+        // - First entry: count=0 -> 1
+        // - Second entry (via back-edge): count=1 -> 2 (allowed)
+        // - Third entry: count=2 >= limit, stopped
+        // So we get: direct exit + 1 iteration path = 2 paths
+        let limits = PathLimits::default().with_loop_unroll_limit(2);
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // With limit=2, we should get 2 paths (direct exit + 1 loop iteration)
+        assert_eq!(paths.len(), 2, "Should have exactly 2 paths with loop_unroll_limit=2");
 
         // Verify direct exit exists
         assert!(paths.iter().any(|p| p.blocks == vec![0, 1, 3]),

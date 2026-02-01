@@ -227,12 +227,39 @@ struct PathData {
 ///
 /// Ok(()) on success, error on database failure
 ///
-/// # Note
+/// # Algorithm
 ///
-/// This is a stub implementation. Full implementation in Task 4.
+/// 1. Begin transaction
+/// 2. Delete path_elements first (FK dependency: elements reference paths)
+/// 3. Delete paths
+/// 4. Commit transaction
+///
+/// # Idempotent
+///
+/// Returns Ok(()) even if no paths exist for the function.
 pub fn invalidate_function_paths(conn: &mut Connection, function_id: i64) -> Result<()> {
-    let _ = (conn, function_id);
-    anyhow::bail!("invalidate_function_paths: not yet implemented");
+    // Begin transaction for atomicity
+    conn.execute("BEGIN IMMEDIATE TRANSACTION", [])
+        .context("Failed to begin transaction for invalidate_function_paths")?;
+
+    // Delete path_elements first (FK dependency)
+    conn.execute(
+        "DELETE FROM cfg_path_elements
+         WHERE path_id IN (SELECT path_id FROM cfg_paths WHERE function_id = ?1)",
+        params![function_id],
+    ).context("Failed to delete cfg_path_elements")?;
+
+    // Delete paths
+    conn.execute(
+        "DELETE FROM cfg_paths WHERE function_id = ?1",
+        params![function_id],
+    ).context("Failed to delete cfg_paths")?;
+
+    // Commit transaction
+    conn.execute("COMMIT", [])
+        .context("Failed to commit transaction for invalidate_function_paths")?;
+
+    Ok(())
 }
 
 /// Update function paths only if function hash has changed
@@ -619,5 +646,153 @@ mod tests {
             assert_eq!(orig.blocks, ret.blocks, "Block sequence mismatch");
             assert_eq!(orig.kind, ret.kind, "PathKind mismatch");
         }
+    }
+
+    // Task 4: invalidate_function_paths tests
+
+    #[test]
+    fn test_invalidate_function_paths_deletes_all_paths() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+        let paths = create_mock_paths();
+
+        // Store paths
+        store_paths(&mut conn, function_id, &paths).unwrap();
+
+        // Verify paths exist
+        let count_before: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_before, 3);
+
+        // Invalidate
+        invalidate_function_paths(&mut conn, function_id).unwrap();
+
+        // Verify paths deleted
+        let count_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_after, 0);
+    }
+
+    #[test]
+    fn test_invalidate_function_paths_deletes_elements() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+        let paths = create_mock_paths();
+
+        // Store paths
+        store_paths(&mut conn, function_id, &paths).unwrap();
+
+        // Verify elements exist
+        let count_before: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_path_elements",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert!(count_before > 0);
+
+        // Invalidate
+        invalidate_function_paths(&mut conn, function_id).unwrap();
+
+        // Verify elements deleted (via subquery)
+        let count_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_path_elements
+             WHERE path_id IN (SELECT path_id FROM cfg_paths WHERE function_id = ?)",
+            params![function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_after, 0);
+    }
+
+    #[test]
+    fn test_invalidate_function_paths_idempotent() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+
+        // Call invalidate with no paths stored - should succeed
+        invalidate_function_paths(&mut conn, function_id).unwrap();
+
+        // Call again - should still succeed (idempotent)
+        invalidate_function_paths(&mut conn, function_id).unwrap();
+    }
+
+    #[test]
+    fn test_invalidate_function_paths_then_retrieve_empty() {
+        let mut conn = create_test_db();
+        let function_id: i64 = 1;
+        let paths = create_mock_paths();
+
+        // Store and verify
+        store_paths(&mut conn, function_id, &paths).unwrap();
+        let before = get_cached_paths(&mut conn, function_id).unwrap();
+        assert_eq!(before.len(), 3);
+
+        // Invalidate
+        invalidate_function_paths(&mut conn, function_id).unwrap();
+
+        // Retrieve should return empty
+        let after = get_cached_paths(&mut conn, function_id).unwrap();
+        assert_eq!(after.len(), 0);
+    }
+
+    #[test]
+    fn test_invalidate_function_paths_only_target_function() {
+        let mut conn = create_test_db();
+
+        // Insert two functions
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "func1", "test.rs", "{}"),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "func2", "test.rs", "{}"),
+        ).unwrap();
+
+        let function_id_1: i64 = 1;
+        let function_id_2: i64 = 2;
+
+        // Store paths for both functions
+        let paths = create_mock_paths();
+        store_paths(&mut conn, function_id_1, &paths).unwrap();
+        store_paths(&mut conn, function_id_2, &paths).unwrap();
+
+        // Verify both have paths
+        let count_1_before: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            params![function_id_1],
+            |row| row.get(0),
+        ).unwrap();
+        let count_2_before: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            params![function_id_2],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_1_before, 3);
+        assert_eq!(count_2_before, 3);
+
+        // Invalidate only function 1
+        invalidate_function_paths(&mut conn, function_id_1).unwrap();
+
+        // Function 1 should be empty
+        let count_1_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            params![function_id_1],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_1_after, 0);
+
+        // Function 2 should still have paths
+        let count_2_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            params![function_id_2],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_2_after, 3);
     }
 }

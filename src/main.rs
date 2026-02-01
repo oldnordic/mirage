@@ -39,7 +39,7 @@ fn run_command(cli: Cli) -> Result<()> {
         Commands::Index(args) => cli::cmds::index(args)?,
         Commands::Status(args) => cli::cmds::status(args, &cli)?,
         Commands::Paths(args) => cli::cmds::paths(args)?,
-        Commands::Cfg(args) => cli::cmds::cfg(args)?,
+        Commands::Cfg(ref args) => cli::cmds::cfg(args, &cli)?,
         Commands::Dominators(args) => cli::cmds::dominators(args)?,
         Commands::Unreachable(args) => cli::cmds::unreachable(args)?,
         Commands::Verify(args) => cli::cmds::verify(args)?,

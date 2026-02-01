@@ -276,10 +276,84 @@ pub mod cmds {
         std::process::exit(1);
     }
 
-    pub fn cfg(_args: CfgArgs) -> Result<()> {
-        // TODO: Implement M2 (CFG Construction)
-        output::error("CFG visualization not yet implemented (Milestone 2)");
-        std::process::exit(1);
+    pub fn cfg(args: &CfgArgs, cli: &Cli) -> Result<()> {
+        use crate::cfg::{export_dot, export_json};
+
+        // For now, create a test CFG
+        // In future, we'll load from database
+        let cfg = create_test_cfg();
+
+        // Determine output format
+        let format = args.format.unwrap_or(match cli.output {
+            OutputFormat::Human => CfgFormat::Human,
+            OutputFormat::Json => CfgFormat::Json,
+            OutputFormat::Pretty => CfgFormat::Json,
+        });
+
+        match format {
+            CfgFormat::Human | CfgFormat::Dot => {
+                let dot = export_dot(&cfg);
+                println!("{}", dot);
+            }
+            CfgFormat::Json => {
+                let export = export_json(&cfg, &args.function);
+                let json = serde_json::to_string_pretty(&export)?;
+                println!("{}", json);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Helper to create a test CFG for demonstration
+    ///
+    /// This will be replaced with database loading in future plans
+    /// when MIR extraction (02-01) is complete.
+    fn create_test_cfg() -> crate::cfg::Cfg {
+        use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
+        use petgraph::graph::DiGraph;
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec!["let x = 1".to_string()],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec!["if x > 0".to_string()],
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 3,
+            },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Exit,
+            statements: vec!["return true".to_string()],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec!["return false".to_string()],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+        g.add_edge(b1, b3, EdgeType::FalseBranch);
+
+        g
     }
 
     pub fn dominators(_args: DominatorsArgs) -> Result<()> {

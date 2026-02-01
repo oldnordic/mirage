@@ -176,16 +176,16 @@ Plans:
 11. `mirage status` shows database statistics
 12. All commands support `--output json|pretty|human`
 
-**Plans**: TBD
+**Plans**: 7 plans in 4 waves
 
 Plans:
-- [ ] 06-01: Path query commands
-- [ ] 06-02: CFG visualization commands
-- [ ] 06-03: Dominator commands
-- [ ] 06-04: Unreachable code command
-- [ ] 06-05: Verification command
-- [ ] 06-06: Status command
-- [ ] 06-07: Output format standardization
+- [ ] 06-01-PLAN.md — Path query commands (paths --function, --show-errors, --max-length)
+- [ ] 06-02-PLAN.md — CFG visualization commands (cfg --format dot/json/human)
+- [ ] 06-03-PLAN.md — Dominator commands (--must-pass-through, --post)
+- [ ] 06-04-PLAN.md — Unreachable code command (--show-branches)
+- [ ] 06-05-PLAN.md — Verification command (verify --path-id)
+- [ ] 06-06-PLAN.md — Status command verification (already implemented)
+- [ ] 06-07-PLAN.md — Output format standardization across all commands
 
 ### Phase 7: LLM Integration
 

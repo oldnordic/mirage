@@ -40,6 +40,7 @@ use crate::cfg::{BlockId, Cfg, Terminator};
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 
 /// Execution path through a CFG
 ///
@@ -3895,7 +3896,7 @@ mod tests {
 
         let linear_estimate = estimate_path_count(&linear, 3);
         let diamond_estimate = estimate_path_count(&diamond, 3);
-        let loop_estimate = estimate_path_count(&loop_cfg, 3);
+        let _loop_estimate = estimate_path_count(&loop_cfg, 3);
 
         // Linear < Diamond < Loop (in terms of complexity)
         assert!(linear_estimate <= diamond_estimate);
@@ -3941,5 +3942,298 @@ mod tests {
         // Should return a reasonable number, not overflow
         assert!(estimate > 0);
         assert!(estimate < usize::MAX);
+    }
+
+    // Task 05-06-5: Performance benchmark tests
+
+    /// Create a large linear CFG (100 blocks)
+    fn create_large_linear_cfg(size: usize) -> Cfg {
+        let mut g = DiGraph::new();
+
+        for i in 0..size {
+            let kind = if i == 0 {
+                BlockKind::Entry
+            } else if i == size - 1 {
+                BlockKind::Exit
+            } else {
+                BlockKind::Normal
+            };
+
+            let terminator = if i == size - 1 {
+                Terminator::Return
+            } else {
+                Terminator::Goto { target: i + 1 }
+            };
+
+            let _node = g.add_node(BasicBlock {
+                id: i,
+                kind,
+                statements: vec![],
+                terminator,
+                source_location: None,
+            });
+        }
+
+        // Add edges
+        for i in 0..size - 1 {
+            let from = NodeIndex::new(i);
+            let to = NodeIndex::new(i + 1);
+            g.add_edge(from, to, EdgeType::Fallthrough);
+        }
+
+        g
+    }
+
+    /// Create a large diamond CFG (10 sequential branches)
+    fn create_large_diamond_cfg() -> Cfg {
+        let mut g = DiGraph::new();
+
+        // Create a chain of diamond patterns
+        let mut nodes = Vec::new();
+
+        for i in 0..21 {
+            let kind = if i == 0 {
+                BlockKind::Entry
+            } else if i % 2 == 0 && i > 0 {
+                // Merge points
+                BlockKind::Normal
+            } else if i == 20 {
+                BlockKind::Exit
+            } else {
+                BlockKind::Normal
+            };
+
+            let terminator = if i == 20 {
+                Terminator::Return
+            } else if i % 2 == 0 {
+                // Branch point (even numbers after 0)
+                let target1 = i + 1;
+                let target2 = i + 2;
+                Terminator::SwitchInt { targets: vec![target1], otherwise: target2 }
+            } else {
+                // Fallthrough to merge
+                let merge = i + 1;
+                Terminator::Goto { target: merge }
+            };
+
+            let node = g.add_node(BasicBlock {
+                id: i,
+                kind,
+                statements: vec![],
+                terminator,
+                source_location: None,
+            });
+            nodes.push(node);
+        }
+
+        // Add edges for branch points
+        for i in (0..20).step_by(2) {
+            let from = nodes[i];
+            let to1 = nodes[i + 1];
+            let to2 = nodes[i + 2];
+            g.add_edge(from, to1, EdgeType::TrueBranch);
+            g.add_edge(from, to2, EdgeType::FalseBranch);
+        }
+
+        // Add edges for fallthroughs
+        for i in (1..20).filter(|x| x % 2 == 1) {
+            let from = nodes[i];
+            let to = nodes[i + 1];
+            g.add_edge(from, to, EdgeType::Fallthrough);
+        }
+
+        g
+    }
+
+    #[test]
+    #[ignore = "benchmark test - run with cargo test -- --ignored"]
+    fn test_perf_linear_cfg_10_blocks() {
+        use std::time::Instant;
+
+        let cfg = create_large_linear_cfg(10);
+        let limits = PathLimits::default();
+
+        let start = Instant::now();
+        let paths = enumerate_paths(&cfg, &limits);
+        let duration = start.elapsed();
+
+        assert_eq!(paths.len(), 1);
+        assert!(duration < Duration::from_millis(10),
+                "Linear 10-block CFG should be <10ms, took {:?}", duration);
+        println!("Linear 10 blocks: {:?}", duration);
+    }
+
+    #[test]
+    #[ignore = "benchmark test - run with cargo test -- --ignored"]
+    fn test_perf_linear_cfg_100_blocks() {
+        use std::time::Instant;
+
+        let cfg = create_large_linear_cfg(100);
+        let limits = PathLimits::default();
+
+        let start = Instant::now();
+        let paths = enumerate_paths(&cfg, &limits);
+        let duration = start.elapsed();
+
+        assert_eq!(paths.len(), 1);
+        assert!(duration < Duration::from_millis(100),
+                "Linear 100-block CFG should be <100ms, took {:?}", duration);
+        println!("Linear 100 blocks: {:?}", duration);
+    }
+
+    #[test]
+    #[ignore = "benchmark test - run with cargo test -- --ignored"]
+    fn test_perf_diamond_cfg_10_branches() {
+        use std::time::Instant;
+
+        let cfg = create_large_diamond_cfg();
+        let limits = PathLimits::default();
+
+        let start = Instant::now();
+        let paths = enumerate_paths(&cfg, &limits);
+        let duration = start.elapsed();
+
+        // 10 branches = 2^10 = 1024 paths
+        assert!(paths.len() > 0);
+        assert!(duration < Duration::from_millis(50),
+                "Diamond CFG should be <50ms, took {:?}", duration);
+        println!("Diamond 10 branches: {} paths in {:?}", paths.len(), duration);
+    }
+
+    #[test]
+    #[ignore = "benchmark test - run with cargo test -- --ignored"]
+    fn test_perf_single_loop_unroll_3() {
+        use std::time::Instant;
+
+        let cfg = create_loop_cfg();
+        let limits = PathLimits::default().with_loop_unroll_limit(3);
+
+        let start = Instant::now();
+        let paths = enumerate_paths(&cfg, &limits);
+        let duration = start.elapsed();
+
+        assert!(paths.len() > 0);
+        assert!(duration < Duration::from_millis(100),
+                "Single loop should be <100ms, took {:?}", duration);
+        println!("Single loop (unroll=3): {} paths in {:?}", paths.len(), duration);
+    }
+
+    #[test]
+    #[ignore = "benchmark test - run with cargo test -- --ignored"]
+    fn test_perf_nested_loops() {
+        use std::time::Instant;
+        use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
+
+        let mut g = DiGraph::new();
+
+        // Create 2-level nested loop
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 5 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+        });
+
+        let b5 = g.add_node(BasicBlock {
+            id: 5,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+        g.add_edge(b1, b5, EdgeType::FalseBranch);
+        g.add_edge(b2, b3, EdgeType::TrueBranch);
+        g.add_edge(b2, b1, EdgeType::LoopBack);
+        g.add_edge(b3, b2, EdgeType::LoopBack);
+
+        let limits = PathLimits::default().with_loop_unroll_limit(2);
+
+        let start = Instant::now();
+        let paths = enumerate_paths(&g, &limits);
+        let duration = start.elapsed();
+
+        assert!(paths.len() > 0);
+        assert!(duration < Duration::from_millis(500),
+                "Nested loops should be <500ms, took {:?}", duration);
+        println!("Nested 2 loops (unroll=2): {} paths in {:?}", paths.len(), duration);
+    }
+
+    #[test]
+    #[ignore = "benchmark test - run with cargo test -- --ignored"]
+    fn test_perf_enumeration_context_reuse() {
+        use std::time::Instant;
+        use super::super::EnumerationContext;
+
+        let cfg = create_diamond_cfg();
+        let ctx = EnumerationContext::new(&cfg);
+
+        // Time multiple calls with same context
+        let limits = PathLimits::default();
+
+        let start = Instant::now();
+        for _ in 0..100 {
+            let _ = enumerate_paths_with_context(&cfg, &limits, &ctx);
+        }
+        let duration = start.elapsed();
+
+        println!("100 calls with context: {:?}", duration);
+        assert!(duration < Duration::from_millis(100),
+                "100 cached calls should be <100ms, took {:?}", duration);
+    }
+
+    #[test]
+    #[ignore = "benchmark test - run with cargo test -- --ignored"]
+    fn test_perf_estimation_vs_actual() {
+        use std::time::Instant;
+
+        let cfg = create_diamond_cfg();
+
+        // Time estimation
+        let start = Instant::now();
+        let estimate = estimate_path_count(&cfg, 3);
+        let est_duration = start.elapsed();
+
+        // Time actual enumeration
+        let start = Instant::now();
+        let limits = PathLimits::default();
+        let paths = enumerate_paths(&cfg, &limits);
+        let enum_duration = start.elapsed();
+
+        println!("Estimation: {} paths in {:?}", estimate, est_duration);
+        println!("Enumeration: {} paths in {:?}", paths.len(), enum_duration);
+
+        // Both should be fast for simple CFGs
+        assert!(est_duration.as_micros() < 1000,
+                "Estimation should be fast: {:?}", est_duration);
+        assert!(enum_duration.as_micros() < 1000,
+                "Enumeration should be fast: {:?}", enum_duration);
     }
 }

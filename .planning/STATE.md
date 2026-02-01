@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 
 ## Current Position
 
-Phase: 6 of 7 (CLI Interface) - Ready to start
-Plan: Next: 06-01 (Path query commands)
-Status: Phase 5 complete with all verification passed. Ready to begin CLI Interface phase.
-Last activity: 2026-02-01 - Completed Phase 5: Path Enumeration (all 6 plans, 4 waves)
+Phase: 6 of 7 (CLI Interface) - In progress
+Plan: 06-02 (CFG command) complete, next: 06-03
+Status: Working through CLI Interface phase. 2 of 7 plans complete.
+Last activity: 2026-02-01 - Completed 06-02: CFG command with database loading and export
 
-Progress: [████████████████░] 71% (Phase 5/7 complete, 22/30 plans complete)
+Progress: [████████████████░] 73% (Phase 6 in progress, 23/30 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22
-- Average duration: 4.8 min
-- Total execution time: 1.8 hours
+- Total plans completed: 23
+- Average duration: 4.9 min
+- Total execution time: 1.9 hours
 
 **By Phase:**
 
@@ -33,9 +33,10 @@ Progress: [████████████████░] 71% (Phase 5/7 c
 | 03-reachability-control | 4 | 4/4 | 4.5 min |
 | 04-dominance-analysis | 3 | 3/3 | 3.7 min |
 | 05-path-enumeration | 6 | 6/6 | 4.6 min |
+| 06-cli-interface | 7 | 2/7 | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 4.6 min
+- Last 5 plans: 4.4 min
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -206,6 +207,21 @@ Recent decisions affecting current work:
 - PRAGMA cache_size = -64000 (64MB) improves bulk insert performance
 - Context reuse enables 100 enumeration calls in <1ms
 
+**From 06-01 (Path Query Commands):**
+- paths() command uses test CFG until MIR extraction complete (consistent with other CLI commands)
+- PathSummary struct for JSON serialization with path_id, kind, length, blocks fields
+- Human format shows path count, error path count, and optional block sequences
+- Error path filtering via --show-errors flag with retention pattern
+- Format resolution: args.format overrides cli.output for consistency
+
+**From 06-02 (CFG Command):**
+- cfg() command connects to database with error handling following status command pattern
+- JsonResponse wrapper for JSON output ensures consistency across all commands
+- Format handling: CfgFormat::Human and CfgFormat::Dot both output DOT (same behavior)
+- CfgFormat::Json uses export_json() and wraps in JsonResponse
+- create_test_cfg() helper marked pub(crate) for test access
+- TODO comment points to Phase 02-01 MIR extraction for real CFG loading
+
 ### Pending Todos
 
 None yet.
@@ -218,5 +234,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 05-06: Performance optimization in path enumeration
+Stopped at: Completed 06-02: CFG command with database loading and export
 Resume file: None

@@ -40,8 +40,8 @@ fn run_command(cli: Cli) -> Result<()> {
         Commands::Status(args) => cli::cmds::status(args, &cli)?,
         Commands::Paths(ref args) => cli::cmds::paths(args, &cli)?,
         Commands::Cfg(ref args) => cli::cmds::cfg(args, &cli)?,
-        Commands::Dominators(args) => cli::cmds::dominators(args)?,
-        Commands::Unreachable(args) => cli::cmds::unreachable(args)?,
+        Commands::Dominators(ref args) => cli::cmds::dominators(args, &cli)?,
+        Commands::Unreachable(ref args) => cli::cmds::unreachable(args, &cli)?,
         Commands::Verify(args) => cli::cmds::verify(args)?,
         Commands::BlastZone(args) => cli::cmds::blast_zone(args)?,
     }

@@ -244,6 +244,50 @@ impl From<crate::cfg::Path> for PathSummary {
     }
 }
 
+/// Response for dominators command
+#[derive(serde::Serialize)]
+struct DominanceResponse {
+    function: String,
+    kind: String,  // "dominators" or "post-dominators"
+    root: Option<usize>,
+    dominance_tree: Vec<DominatorEntry>,
+    must_pass_through: Option<MustPassThroughResult>,
+}
+
+/// Entry in dominance tree for JSON output
+#[derive(serde::Serialize)]
+struct DominatorEntry {
+    block: usize,
+    immediate_dominator: Option<usize>,
+    dominated: Vec<usize>,
+}
+
+/// Result of must-pass-through query
+#[derive(serde::Serialize)]
+struct MustPassThroughResult {
+    block: usize,
+    must_pass: Vec<usize>,
+}
+
+/// Response for unreachable command
+#[derive(serde::Serialize)]
+struct UnreachableResponse {
+    function: String,
+    total_functions: usize,
+    functions_with_unreachable: usize,
+    unreachable_count: usize,
+    blocks: Vec<UnreachableBlock>,
+}
+
+/// Unreachable block details for JSON output
+#[derive(serde::Serialize)]
+struct UnreachableBlock {
+    block_id: usize,
+    kind: String,
+    statements: Vec<String>,
+    terminator: String,
+}
+
 // ============================================================================
 // Command Handlers (stubs for now)
 // ============================================================================
@@ -504,16 +548,431 @@ pub mod cmds {
         g
     }
 
-    pub fn dominators(_args: DominatorsArgs) -> Result<()> {
-        // TODO: Implement M4 (Dominance Analysis)
-        output::error("Dominance analysis not yet implemented (Milestone 4)");
-        std::process::exit(1);
+    pub fn dominators(args: &DominatorsArgs, cli: &Cli) -> Result<()> {
+        use crate::cfg::{DominatorTree, PostDominatorTree};
+        use crate::storage::MirageDb;
+
+        // Resolve database path
+        let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // Open database (follows status command pattern for error handling)
+        let _db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
+            Err(e) => {
+                output::error(&format!("Failed to open database: {}", e));
+                output::info("Hint: Run 'mirage index' to create the database");
+                std::process::exit(output::EXIT_DATABASE);
+            }
+        };
+
+        // TODO: Load CFG from database for the specified function.
+        // This requires MIR extraction (Phase 02-01) to be complete.
+        // For now, create a test CFG to demonstrate the dominance functionality.
+        let cfg = create_test_cfg();
+
+        // Compute dominator tree based on args.post flag
+        if args.post {
+            // Post-dominator analysis
+            let post_dom_tree = match PostDominatorTree::new(&cfg) {
+                Some(tree) => tree,
+                None => {
+                    output::error("Could not compute post-dominator tree (CFG may have no exit blocks)");
+                    std::process::exit(1);
+                }
+            };
+
+            // Handle must-pass-through query if specified
+            if let Some(ref block_id_str) = args.must_pass_through {
+                match block_id_str.parse::<usize>() {
+                    Ok(block_id) => {
+                        // Find NodeIndex for this block
+                        let target_node = cfg.node_indices()
+                            .find(|&n| cfg[n].id == block_id);
+
+                        let target_node = match target_node {
+                            Some(node) => node,
+                            None => {
+                                output::error(&format!("Block {} not found in CFG", block_id));
+                                std::process::exit(1);
+                            }
+                        };
+
+                        // Find all nodes post-dominated by this block
+                        let must_pass: Vec<usize> = cfg.node_indices()
+                            .filter(|&n| post_dom_tree.post_dominates(target_node, n))
+                            .map(|n| cfg[n].id)
+                            .collect();
+
+                        // Output based on format
+                        match cli.output {
+                            OutputFormat::Human => {
+                                println!("Function: {}", args.function);
+                                println!("Post-Dominator Query: Blocks post-dominated by {}", block_id);
+                                println!("Count: {}", must_pass.len());
+                                println!();
+                                if must_pass.is_empty() {
+                                    output::info("No blocks are post-dominated by this block");
+                                } else {
+                                    println!("Blocks that must pass through {}:", block_id);
+                                    for id in &must_pass {
+                                        println!("  - Block {}", id);
+                                    }
+                                }
+                            }
+                            OutputFormat::Json | OutputFormat::Pretty => {
+                                let response = DominanceResponse {
+                                    function: args.function.clone(),
+                                    kind: "post-dominators".to_string(),
+                                    root: Some(cfg[post_dom_tree.root()].id),
+                                    dominance_tree: vec![],
+                                    must_pass_through: Some(MustPassThroughResult {
+                                        block: block_id,
+                                        must_pass,
+                                    }),
+                                };
+                                let wrapper = output::JsonResponse::new(response);
+                                match cli.output {
+                                    OutputFormat::Json => println!("{}", wrapper.to_json()),
+                                    OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                                    _ => unreachable!(),
+                                }
+                            }
+                        }
+                        return Ok(());
+                    }
+                    Err(_) => {
+                        output::error(&format!("Invalid block ID: {}", block_id_str));
+                        std::process::exit(1);
+                    }
+                }
+            }
+
+            // Build dominance tree for output
+            let dominance_tree: Vec<DominatorEntry> = cfg.node_indices()
+                .map(|node| {
+                    let block = cfg[node].id;
+                    let immediate_dominator = post_dom_tree.immediate_post_dominator(node)
+                        .map(|n| cfg[n].id);
+                    let dominated: Vec<usize> = post_dom_tree.children(node)
+                        .iter()
+                        .map(|&n| cfg[n].id)
+                        .collect();
+                    DominatorEntry {
+                        block,
+                        immediate_dominator,
+                        dominated,
+                    }
+                })
+                .collect();
+
+            // Format output
+            match cli.output {
+                OutputFormat::Human => {
+                    println!("Function: {}", args.function);
+                    println!("Post-Dominator Tree (root: {})", cfg[post_dom_tree.root()].id);
+                    println!();
+
+                    // Print tree structure
+                    print_dominator_tree_human(&cfg, post_dom_tree.as_dominator_tree(), post_dom_tree.root(), 0, true);
+                }
+                OutputFormat::Json | OutputFormat::Pretty => {
+                    let response = DominanceResponse {
+                        function: args.function.clone(),
+                        kind: "post-dominators".to_string(),
+                        root: Some(cfg[post_dom_tree.root()].id),
+                        dominance_tree,
+                        must_pass_through: None,
+                    };
+                    let wrapper = output::JsonResponse::new(response);
+                    match cli.output {
+                        OutputFormat::Json => println!("{}", wrapper.to_json()),
+                        OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        } else {
+            // Regular dominator analysis
+            let dom_tree = match DominatorTree::new(&cfg) {
+                Some(tree) => tree,
+                None => {
+                    output::error("Could not compute dominator tree (CFG may have no entry block)");
+                    std::process::exit(1);
+                }
+            };
+
+            // Handle must-pass-through query if specified
+            if let Some(ref block_id_str) = args.must_pass_through {
+                match block_id_str.parse::<usize>() {
+                    Ok(block_id) => {
+                        // Find NodeIndex for this block
+                        let target_node = cfg.node_indices()
+                            .find(|&n| cfg[n].id == block_id);
+
+                        let target_node = match target_node {
+                            Some(node) => node,
+                            None => {
+                                output::error(&format!("Block {} not found in CFG", block_id));
+                                std::process::exit(1);
+                            }
+                        };
+
+                        // Find all nodes dominated by this block
+                        let must_pass: Vec<usize> = cfg.node_indices()
+                            .filter(|&n| dom_tree.dominates(target_node, n))
+                            .map(|n| cfg[n].id)
+                            .collect();
+
+                        // Output based on format
+                        match cli.output {
+                            OutputFormat::Human => {
+                                println!("Function: {}", args.function);
+                                println!("Dominator Query: Blocks dominated by {}", block_id);
+                                println!("Count: {}", must_pass.len());
+                                println!();
+                                if must_pass.is_empty() {
+                                    output::info("No blocks are dominated by this block");
+                                } else {
+                                    println!("Blocks that must pass through {}:", block_id);
+                                    for id in &must_pass {
+                                        println!("  - Block {}", id);
+                                    }
+                                }
+                            }
+                            OutputFormat::Json | OutputFormat::Pretty => {
+                                let response = DominanceResponse {
+                                    function: args.function.clone(),
+                                    kind: "dominators".to_string(),
+                                    root: Some(cfg[dom_tree.root()].id),
+                                    dominance_tree: vec![],
+                                    must_pass_through: Some(MustPassThroughResult {
+                                        block: block_id,
+                                        must_pass,
+                                    }),
+                                };
+                                let wrapper = output::JsonResponse::new(response);
+                                match cli.output {
+                                    OutputFormat::Json => println!("{}", wrapper.to_json()),
+                                    OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                                    _ => unreachable!(),
+                                }
+                            }
+                        }
+                        return Ok(());
+                    }
+                    Err(_) => {
+                        output::error(&format!("Invalid block ID: {}", block_id_str));
+                        std::process::exit(1);
+                    }
+                }
+            }
+
+            // Build dominance tree for output
+            let dominance_tree: Vec<DominatorEntry> = cfg.node_indices()
+                .map(|node| {
+                    let block = cfg[node].id;
+                    let immediate_dominator = dom_tree.immediate_dominator(node)
+                        .map(|n| cfg[n].id);
+                    let dominated: Vec<usize> = dom_tree.children(node)
+                        .iter()
+                        .map(|&n| cfg[n].id)
+                        .collect();
+                    DominatorEntry {
+                        block,
+                        immediate_dominator,
+                        dominated,
+                    }
+                })
+                .collect();
+
+            // Format output
+            match cli.output {
+                OutputFormat::Human => {
+                    println!("Function: {}", args.function);
+                    println!("Dominator Tree (root: {})", cfg[dom_tree.root()].id);
+                    println!();
+
+                    // Print tree structure
+                    print_dominator_tree_human(&cfg, &dom_tree, dom_tree.root(), 0, false);
+                }
+                OutputFormat::Json | OutputFormat::Pretty => {
+                    let response = DominanceResponse {
+                        function: args.function.clone(),
+                        kind: "dominators".to_string(),
+                        root: Some(cfg[dom_tree.root()].id),
+                        dominance_tree,
+                        must_pass_through: None,
+                    };
+                    let wrapper = output::JsonResponse::new(response);
+                    match cli.output {
+                        OutputFormat::Json => println!("{}", wrapper.to_json()),
+                        OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
-    pub fn unreachable(_args: UnreachableArgs) -> Result<()> {
-        // TODO: Implement M5 (Advanced Analysis)
-        output::error("Unreachable code detection not yet implemented (Milestone 5)");
-        std::process::exit(1);
+    /// Helper to print dominator tree in human-readable format
+    fn print_dominator_tree_human(
+        cfg: &crate::cfg::Cfg,
+        dom_tree: &crate::cfg::DominatorTree,
+        node: petgraph::graph::NodeIndex,
+        depth: usize,
+        is_post: bool,
+    ) {
+        let indent = "  ".repeat(depth);
+        let block_id = cfg[node].id;
+        let kind_label = if is_post { "post-dominator" } else { "dominator" };
+
+        println!("{}Block {} ({})", indent, block_id, kind_label);
+
+        for &child in dom_tree.children(node) {
+            print_dominator_tree_human(cfg, dom_tree, child, depth + 1, is_post);
+        }
+    }
+
+    /// Helper to print post-dominator tree in human-readable format
+    fn print_post_dominator_tree_human(
+        cfg: &crate::cfg::Cfg,
+        post_dom_tree: &crate::cfg::PostDominatorTree,
+        node: petgraph::graph::NodeIndex,
+        depth: usize,
+    ) {
+        let indent = "  ".repeat(depth);
+        let block_id = cfg[node].id;
+
+        println!("{}Block {} (post-dominator)", indent, block_id);
+
+        for &child in post_dom_tree.children(node) {
+            print_post_dominator_tree_human(cfg, post_dom_tree, child, depth + 1);
+        }
+    }
+
+    pub fn unreachable(args: &UnreachableArgs, cli: &Cli) -> Result<()> {
+        use crate::cfg::reachability::find_unreachable;
+        use crate::storage::MirageDb;
+
+        // Resolve database path
+        let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // Open database (follows status command pattern for error handling)
+        let _db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
+            Err(e) => {
+                output::error(&format!("Failed to open database: {}", e));
+                output::info("Hint: Run 'mirage index' to create the database");
+                std::process::exit(output::EXIT_DATABASE);
+            }
+        };
+
+        // For now, create a test CFG since MIR extraction isn't complete
+        // TODO: Load CFG from database using function filter when MIR extraction is complete
+        let cfg = create_test_cfg();
+
+        // Find unreachable blocks
+        let unreachable_indices = find_unreachable(&cfg);
+
+        // If no unreachable blocks found, display message and exit
+        if unreachable_indices.is_empty() {
+            match cli.output {
+                OutputFormat::Human => {
+                    output::info("No unreachable code found");
+                }
+                OutputFormat::Json | OutputFormat::Pretty => {
+                    let response = UnreachableResponse {
+                        function: "test".to_string(),
+                        total_functions: 1,
+                        functions_with_unreachable: 0,
+                        unreachable_count: 0,
+                        blocks: vec![],
+                    };
+                    let wrapper = output::JsonResponse::new(response);
+                    match cli.output {
+                        OutputFormat::Json => println!("{}", wrapper.to_json()),
+                        OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                        _ => {}
+                    }
+                }
+            }
+            return Ok(());
+        }
+
+        // Build UnreachableBlock structs from the NodeIndex results
+        let blocks: Vec<UnreachableBlock> = unreachable_indices
+            .iter()
+            .filter_map(|&idx| cfg.node_weight(idx))
+            .map(|block| {
+                let kind_str = format!("{:?}", block.kind);
+                let terminator_str = format!("{:?}", block.terminator);
+                UnreachableBlock {
+                    block_id: block.id,
+                    kind: kind_str,
+                    statements: block.statements.clone(),
+                    terminator: terminator_str,
+                }
+            })
+            .collect();
+
+        // Format output based on cli.output
+        match cli.output {
+            OutputFormat::Human => {
+                println!("Unreachable Code Blocks:");
+                println!("  Total blocks: {}", blocks.len());
+                println!();
+
+                if args.within_functions {
+                    // Group by function (for now, just one test function)
+                    println!("Function: test");
+                    for block in &blocks {
+                        println!("  Block {} ({})", block.block_id, block.kind);
+                        if !block.statements.is_empty() {
+                            for stmt in &block.statements {
+                                println!("    - {}", stmt);
+                            }
+                        }
+                        println!("    Terminator: {}", block.terminator);
+                        println!();
+                    }
+                } else {
+                    for block in &blocks {
+                        println!("  Block {} ({})", block.block_id, block.kind);
+                        if !block.statements.is_empty() {
+                            for stmt in &block.statements {
+                                println!("    - {}", stmt);
+                            }
+                        }
+                        println!("    Terminator: {}", block.terminator);
+                        println!();
+                    }
+                }
+
+                if args.show_branches {
+                    output::info("Branch details: Use --show-branches to see incoming edges (not yet implemented)");
+                }
+            }
+            OutputFormat::Json | OutputFormat::Pretty => {
+                let response = UnreachableResponse {
+                    function: "test".to_string(),
+                    total_functions: 1,
+                    functions_with_unreachable: if blocks.is_empty() { 0 } else { 1 },
+                    unreachable_count: blocks.len(),
+                    blocks,
+                };
+                let wrapper = output::JsonResponse::new(response);
+
+                match cli.output {
+                    OutputFormat::Json => println!("{}", wrapper.to_json()),
+                    OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn verify(_args: VerifyArgs) -> Result<()> {

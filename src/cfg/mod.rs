@@ -22,7 +22,7 @@ pub use ast::{ast_to_cfg, CFGBuilder};
 pub use edge::{EdgeType, classify_terminator};
 pub use export::{export_dot, export_json, CFGExport};
 pub use loops::{detect_natural_loops, find_loop_headers, is_loop_header, NaturalLoop};
-pub use paths::{Path, PathKind, PathLimits, enumerate_paths, hash_path, get_or_enumerate_paths};
+pub use paths::{Path, PathKind, PathLimits, enumerate_paths, enumerate_paths_with_context, EnumerationContext, hash_path, get_or_enumerate_paths};
 pub use patterns::{detect_if_else_patterns, detect_match_patterns, classify_branch, IfElsePattern, MatchPattern, BranchType, detect_all_patterns};
 pub use reachability::{find_unreachable, find_reachable, is_reachable_from_entry, can_reach, can_reach_cached, ReachabilityCache};
 pub use mir::ullbc_to_cfg;

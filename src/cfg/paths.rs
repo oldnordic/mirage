@@ -597,6 +597,267 @@ pub fn hash_path(blocks: &[BlockId]) -> String {
     hasher.finalize().to_hex().to_string()
 }
 
+/// Pre-computed context for path enumeration
+///
+/// Contains analysis results that are shared across all path enumerations.
+/// Computing this context once and reusing it is much more efficient than
+/// recomputing for each enumeration call.
+///
+/// **Benefits:**
+/// - Reachable blocks computed once: O(n) instead of O(n²) for n paths
+/// - Loop headers computed once: O(e) instead of O(e) per call
+/// - Exit nodes computed once: O(v) instead of O(v) per call
+///
+/// **Use case:**
+/// ```rust
+/// let ctx = EnumerationContext::new(&cfg);
+/// let paths1 = enumerate_paths_with_context(&cfg, &limits1, &ctx);
+/// let paths2 = enumerate_paths_with_context(&cfg, &limits2, &ctx);
+/// // No redundant analysis computations
+/// ```
+#[derive(Debug, Clone)]
+pub struct EnumerationContext {
+    /// Blocks reachable from the entry node
+    pub reachable_blocks: HashSet<BlockId>,
+    /// Loop header nodes (for bounding loop iterations)
+    pub loop_headers: HashSet<NodeIndex>,
+    /// Exit nodes (valid path termination points)
+    pub exits: HashSet<NodeIndex>,
+}
+
+impl EnumerationContext {
+    /// Create a new enumeration context by analyzing the CFG
+    ///
+    /// Performs three analyses:
+    /// 1. Reachability: Find all blocks reachable from entry
+    /// 2. Loop detection: Find all loop headers via dominance analysis
+    /// 3. Exit detection: Find all blocks with return/abort/unreachable terminators
+    ///
+    /// **Time complexity:** O(v + e) where v = vertices, e = edges
+    /// **Space complexity:** O(v) for storing the analysis results
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use mirage::cfg::paths::EnumerationContext;
+    ///
+    /// let ctx = EnumerationContext::new(&cfg);
+    /// println!("Found {} loop headers", ctx.loop_headers.len());
+    /// ```
+    pub fn new(cfg: &Cfg) -> Self {
+        // Compute reachable blocks
+        let reachable_nodes = crate::cfg::reachability::find_reachable(cfg);
+        let reachable_blocks: HashSet<BlockId> = reachable_nodes
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Compute loop headers
+        let loop_headers = crate::cfg::loops::find_loop_headers(cfg);
+
+        // Compute exit nodes
+        let exits = crate::cfg::analysis::find_exits(cfg)
+            .into_iter()
+            .collect();
+
+        Self {
+            reachable_blocks,
+            loop_headers,
+            exits,
+        }
+    }
+
+    /// Get the number of reachable blocks
+    pub fn reachable_count(&self) -> usize {
+        self.reachable_blocks.len()
+    }
+
+    /// Get the number of loop headers
+    pub fn loop_count(&self) -> usize {
+        self.loop_headers.len()
+    }
+
+    /// Get the number of exit nodes
+    pub fn exit_count(&self) -> usize {
+        self.exits.len()
+    }
+
+    /// Check if a block is reachable
+    pub fn is_reachable(&self, block_id: BlockId) -> bool {
+        self.reachable_blocks.contains(&block_id)
+    }
+
+    /// Check if a node is a loop header
+    pub fn is_loop_header(&self, node: NodeIndex) -> bool {
+        self.loop_headers.contains(&node)
+    }
+
+    /// Check if a node is an exit
+    pub fn is_exit(&self, node: NodeIndex) -> bool {
+        self.exits.contains(&node)
+    }
+}
+
+/// Enumerate all execution paths through a CFG using pre-computed context
+///
+/// This is an optimized version of `enumerate_paths` that uses pre-computed
+/// analysis results. Use this when:
+/// - Performing multiple enumerations on the same CFG
+/// - You need to avoid redundant analysis computations
+///
+/// **Performance:**
+/// - Context creation: O(v + e) - done once
+/// - Enumeration per call: O(p * l) where p = paths, l = avg length
+/// - Versus O(v + e + p * l) for enumerate_paths (redundant analysis)
+///
+/// # Arguments
+///
+/// * `cfg` - Control flow graph to analyze
+/// * `limits` - Path enumeration limits
+/// * `ctx` - Pre-computed enumeration context
+///
+/// # Returns
+///
+/// Vector of all enumerated execution paths
+///
+/// # Example
+///
+/// ```rust
+/// use mirage::cfg::{PathLimits, enumerate_paths_with_context, EnumerationContext};
+///
+/// let ctx = EnumerationContext::new(&cfg);
+/// let limits = PathLimits::default();
+/// let paths = enumerate_paths_with_context(&cfg, &limits, &ctx);
+/// ```
+pub fn enumerate_paths_with_context(
+    cfg: &Cfg,
+    limits: &PathLimits,
+    ctx: &EnumerationContext,
+) -> Vec<Path> {
+    // Get entry block
+    let entry = match crate::cfg::analysis::find_entry(cfg) {
+        Some(e) => e,
+        None => return vec![], // Empty CFG
+    };
+
+    if ctx.exits.is_empty() {
+        return vec![]; // No exits means no complete paths
+    }
+
+    // Initialize traversal state
+    let mut paths = Vec::new();
+    let mut current_path = Vec::new();
+    let mut visited = HashSet::new();
+    let mut loop_iterations: HashMap<NodeIndex, usize> = HashMap::new();
+
+    // Start DFS from entry
+    dfs_enumerate_with_context(
+        cfg,
+        entry,
+        limits,
+        &mut paths,
+        &mut current_path,
+        &mut visited,
+        ctx,
+        &mut loop_iterations,
+    );
+
+    paths
+}
+
+/// Recursive DFS helper for path enumeration with pre-computed context
+fn dfs_enumerate_with_context(
+    cfg: &Cfg,
+    current: NodeIndex,
+    limits: &PathLimits,
+    paths: &mut Vec<Path>,
+    current_path: &mut Vec<BlockId>,
+    visited: &mut HashSet<NodeIndex>,
+    ctx: &EnumerationContext,
+    loop_iterations: &mut HashMap<NodeIndex, usize>,
+) {
+    // Get current block ID
+    let block_id = match cfg.node_weight(current) {
+        Some(block) => block.id,
+        None => return,
+    };
+
+    // Add current block to path
+    current_path.push(block_id);
+
+    // Check path length limit
+    if current_path.len() > limits.max_length {
+        current_path.pop();
+        return;
+    }
+
+    // Check if we've reached an exit
+    if ctx.is_exit(current) {
+        // Classify the path using pre-computed reachable set
+        let kind = classify_path_precomputed(cfg, current_path, &ctx.reachable_blocks);
+        let path = Path::new(current_path.clone(), kind);
+        paths.push(path);
+        current_path.pop();
+        return;
+    }
+
+    // Check path count limit
+    if paths.len() >= limits.max_paths {
+        current_path.pop();
+        return;
+    }
+
+    // Check if already visited (cycle detection)
+    // Loop headers are exempt - we track loop iterations separately
+    if visited.contains(&current) && !ctx.is_loop_header(current) {
+        current_path.pop();
+        return;
+    }
+
+    // Mark as visited
+    visited.insert(current);
+
+    // Track loop iterations for loop headers
+    let is_loop_header = ctx.is_loop_header(current);
+    if is_loop_header {
+        let count = loop_iterations.entry(current).or_insert(0);
+        if *count >= limits.loop_unroll_limit {
+            visited.remove(&current);
+            current_path.pop();
+            return;
+        }
+        *count += 1;
+    }
+
+    // Explore neighbors
+    let neighbors: Vec<_> = cfg
+        .neighbors(current)
+        .collect();
+
+    for next in neighbors {
+        dfs_enumerate_with_context(
+            cfg,
+            next,
+            limits,
+            paths,
+            current_path,
+            visited,
+            ctx,
+            loop_iterations,
+        );
+    }
+
+    // Backtrack: decrement loop iteration count if this was a loop header
+    if is_loop_header {
+        if let Some(count) = loop_iterations.get_mut(&current) {
+            *count = count.saturating_sub(1);
+        }
+    }
+
+    visited.remove(&current);
+    current_path.pop();
+}
+
 /// Enumerate all execution paths through a CFG
 ///
 /// Performs depth-first search from the entry block to all exit blocks,
@@ -2897,5 +3158,199 @@ mod tests {
 
         // Both should return the same path content (same CFG)
         assert_eq!(paths1[0].blocks, paths2[0].blocks);
+    }
+
+    // Task 05-06-2: EnumerationContext tests
+
+    #[test]
+    fn test_enumeration_context_new() {
+        use super::super::EnumerationContext;
+
+        let cfg = create_linear_cfg();
+        let ctx = EnumerationContext::new(&cfg);
+
+        // Linear CFG: 3 blocks all reachable
+        assert_eq!(ctx.reachable_count(), 3);
+        assert_eq!(ctx.loop_count(), 0);
+        assert_eq!(ctx.exit_count(), 1);
+    }
+
+    #[test]
+    fn test_enumeration_context_with_loop() {
+        use super::super::EnumerationContext;
+
+        let cfg = create_loop_cfg();
+        let ctx = EnumerationContext::new(&cfg);
+
+        // Loop CFG: should have 1 loop header
+        assert_eq!(ctx.loop_count(), 1);
+        assert!(ctx.reachable_count() > 0);
+        assert!(ctx.exit_count() > 0);
+    }
+
+    #[test]
+    fn test_enumeration_context_diamond_cfg() {
+        use super::super::EnumerationContext;
+
+        let cfg = create_diamond_cfg();
+        let ctx = EnumerationContext::new(&cfg);
+
+        // Diamond CFG: no loops
+        assert_eq!(ctx.loop_count(), 0);
+        assert_eq!(ctx.reachable_count(), 4); // All 4 blocks reachable
+        assert_eq!(ctx.exit_count(), 1); // Single merge point exit
+    }
+
+    #[test]
+    fn test_enumeration_context_is_reachable() {
+        use super::super::EnumerationContext;
+
+        let cfg = create_dead_code_cfg();
+        let ctx = EnumerationContext::new(&cfg);
+
+        // Block 0 is reachable (entry)
+        assert!(ctx.is_reachable(0));
+        // Block 1 is not reachable (dead code)
+        assert!(!ctx.is_reachable(1));
+    }
+
+    #[test]
+    fn test_enumeration_context_is_loop_header() {
+        use super::super::EnumerationContext;
+        use petgraph::graph::NodeIndex;
+
+        let cfg = create_loop_cfg();
+        let ctx = EnumerationContext::new(&cfg);
+
+        // Block 1 is the loop header
+        assert!(ctx.is_loop_header(NodeIndex::new(1)));
+        // Block 0 is not a loop header
+        assert!(!ctx.is_loop_header(NodeIndex::new(0)));
+    }
+
+    #[test]
+    fn test_enumeration_context_is_exit() {
+        use super::super::EnumerationContext;
+        use petgraph::graph::NodeIndex;
+
+        let cfg = create_diamond_cfg();
+        let ctx = EnumerationContext::new(&cfg);
+
+        // Block 3 is the exit
+        assert!(ctx.is_exit(NodeIndex::new(3)));
+        // Block 0 is not an exit
+        assert!(!ctx.is_exit(NodeIndex::new(0)));
+    }
+
+    #[test]
+    fn test_enumerate_paths_with_context_matches_basic() {
+        use super::super::{enumerate_paths, enumerate_paths_with_context, EnumerationContext};
+
+        let cfg = create_diamond_cfg();
+        let limits = PathLimits::default();
+        let ctx = EnumerationContext::new(&cfg);
+
+        // Both methods should return same paths
+        let paths_basic = enumerate_paths(&cfg, &limits);
+        let paths_context = enumerate_paths_with_context(&cfg, &limits, &ctx);
+
+        assert_eq!(paths_basic.len(), paths_context.len());
+
+        // Sort and compare
+        let mut sorted_basic: Vec<_> = paths_basic.iter().collect();
+        let mut sorted_context: Vec<_> = paths_context.iter().collect();
+        sorted_basic.sort_by_key(|p| p.blocks.clone());
+        sorted_context.sort_by_key(|p| p.blocks.clone());
+
+        for (basic, context) in sorted_basic.iter().zip(sorted_context.iter()) {
+            assert_eq!(basic.blocks, context.blocks);
+            assert_eq!(basic.kind, context.kind);
+        }
+    }
+
+    #[test]
+    fn test_enumerate_paths_with_context_linear_cfg() {
+        use super::super::{enumerate_paths_with_context, EnumerationContext};
+
+        let cfg = create_linear_cfg();
+        let limits = PathLimits::default();
+        let ctx = EnumerationContext::new(&cfg);
+
+        let paths = enumerate_paths_with_context(&cfg, &limits, &ctx);
+
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].blocks, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn test_enumerate_paths_with_context_with_loop() {
+        use super::super::{enumerate_paths_with_context, EnumerationContext};
+
+        let cfg = create_loop_cfg();
+        let limits = PathLimits::default();
+        let ctx = EnumerationContext::new(&cfg);
+
+        let paths = enumerate_paths_with_context(&cfg, &limits, &ctx);
+
+        // With loop_unroll_limit=3, should have bounded paths
+        assert!(paths.len() > 0);
+        assert!(paths.len() <= 4); // Entry + up to 3 loop iterations
+    }
+
+    #[test]
+    fn test_enumerate_paths_with_context_performance() {
+        use super::super::{enumerate_paths, enumerate_paths_with_context, EnumerationContext};
+        use std::time::Instant;
+
+        let cfg = create_diamond_cfg();
+        let limits = PathLimits::default();
+
+        // Time basic enumeration
+        let start = Instant::now();
+        let _paths1 = enumerate_paths(&cfg, &limits);
+        let basic_time = start.elapsed();
+
+        // Create context and time context enumeration
+        let ctx_start = Instant::now();
+        let ctx = EnumerationContext::new(&cfg);
+        let ctx_creation_time = ctx_start.elapsed();
+
+        let start = Instant::now();
+        let _paths2 = enumerate_paths_with_context(&cfg, &limits, &ctx);
+        let context_time = start.elapsed();
+
+        // First call with context should be faster than basic
+        // (basic recomputes everything, context reuses)
+        // Note: This is a micro-benchmark and may vary
+        println!("Basic: {:?}, Context creation: {:?}, Context enum: {:?}",
+                 basic_time, ctx_creation_time, context_time);
+
+        // Second call with same context should be much faster
+        let start = Instant::now();
+        let _paths3 = enumerate_paths_with_context(&cfg, &limits, &ctx);
+        let context_time2 = start.elapsed();
+
+        println!("Second context call: {:?}", context_time2);
+
+        // Context enumeration should be complete
+        assert!(context_time2.as_millis() < 100);
+    }
+
+    #[test]
+    fn test_enumerate_paths_with_context_multiple_calls() {
+        use super::super::{enumerate_paths_with_context, EnumerationContext};
+
+        let cfg = create_diamond_cfg();
+        let ctx = EnumerationContext::new(&cfg);
+
+        // Multiple calls with different limits should reuse context
+        let limits1 = PathLimits::default().with_max_paths(10);
+        let limits2 = PathLimits::default().with_max_paths(100);
+
+        let paths1 = enumerate_paths_with_context(&cfg, &limits1, &ctx);
+        let paths2 = enumerate_paths_with_context(&cfg, &limits2, &ctx);
+
+        // Both should return the same paths (10 is enough for diamond)
+        assert_eq!(paths1.len(), paths2.len());
     }
 }

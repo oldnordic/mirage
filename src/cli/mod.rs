@@ -244,13 +244,28 @@ pub mod cmds {
         // Query database statistics
         let status = db.status()?;
 
-        // Format and output results (human format for now - Task 3 adds JSON support)
-        println!("Mirage Database Status:");
-        println!("  Schema version: {} (Magellan: {})", status.mirage_schema_version, status.magellan_schema_version);
-        println!("  cfg_blocks: {}", status.cfg_blocks);
-        println!("  cfg_edges: {}", status.cfg_edges);
-        println!("  cfg_paths: {}", status.cfg_paths);
-        println!("  cfg_dominators: {}", status.cfg_dominators);
+        // Output based on format
+        match cli.output {
+            OutputFormat::Human => {
+                // Human-readable text format
+                println!("Mirage Database Status:");
+                println!("  Schema version: {} (Magellan: {})", status.mirage_schema_version, status.magellan_schema_version);
+                println!("  cfg_blocks: {}", status.cfg_blocks);
+                println!("  cfg_edges: {}", status.cfg_edges);
+                println!("  cfg_paths: {}", status.cfg_paths);
+                println!("  cfg_dominators: {}", status.cfg_dominators);
+            }
+            OutputFormat::Json => {
+                // Compact JSON
+                let response = output::JsonResponse::new(status);
+                println!("{}", response.to_json());
+            }
+            OutputFormat::Pretty => {
+                // Formatted JSON with indentation
+                let response = output::JsonResponse::new(status);
+                println!("{}", response.to_pretty_json());
+            }
+        }
 
         Ok(())
     }

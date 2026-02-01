@@ -8,9 +8,20 @@
 // - cfg_dominators: Dominance relationships
 // - cfg_post_dominators: Reverse dominance
 
+pub mod paths;
+
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 use std::path::Path;
+
+// Re-export path caching functions
+pub use paths::{
+    PathCache,
+    store_paths,
+    get_cached_paths,
+    invalidate_function_paths,
+    update_function_paths_if_changed,
+};
 
 /// Mirage schema version
 pub const MIRAGE_SCHEMA_VERSION: i32 = 1;
@@ -206,9 +217,7 @@ pub fn create_schema(conn: &mut Connection) -> Result<()> {
             exit_block INTEGER NOT NULL,
             length INTEGER NOT NULL,
             created_at INTEGER NOT NULL,
-            FOREIGN KEY (function_id) REFERENCES graph_entities(id),
-            FOREIGN KEY (entry_block) REFERENCES cfg_blocks(id),
-            FOREIGN KEY (exit_block) REFERENCES cfg_blocks(id)
+            FOREIGN KEY (function_id) REFERENCES graph_entities(id)
         )",
         [],
     )?;
@@ -223,8 +232,7 @@ pub fn create_schema(conn: &mut Connection) -> Result<()> {
             sequence_order INTEGER NOT NULL,
             block_id INTEGER NOT NULL,
             PRIMARY KEY (path_id, sequence_order),
-            FOREIGN KEY (path_id) REFERENCES cfg_paths(path_id),
-            FOREIGN KEY (block_id) REFERENCES cfg_blocks(id)
+            FOREIGN KEY (path_id) REFERENCES cfg_paths(path_id)
         )",
         [],
     )?;

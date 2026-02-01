@@ -275,4 +275,162 @@ mod tests {
 
         assert!(find_unreachable(&g).is_empty());
     }
+
+    #[test]
+    fn test_can_reach_simple() {
+        let mut g = DiGraph::new();
+
+        // Create: 0 -> 1 -> 2
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::Fallthrough);
+
+        // All nodes can reach themselves
+        assert!(can_reach(&g, b0, b0));
+        assert!(can_reach(&g, b1, b1));
+        assert!(can_reach(&g, b2, b2));
+
+        // Forward reachability
+        assert!(can_reach(&g, b0, b1));
+        assert!(can_reach(&g, b0, b2));
+        assert!(can_reach(&g, b1, b2));
+
+        // No backward reachability
+        assert!(!can_reach(&g, b1, b0));
+        assert!(!can_reach(&g, b2, b0));
+        assert!(!can_reach(&g, b2, b1));
+    }
+
+    #[test]
+    fn test_can_reach_diamond() {
+        let mut g = DiGraph::new();
+
+        // Diamond: 0 -> 1, 0 -> 2, 1 -> 3, 2 -> 3
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::TrueBranch);
+        g.add_edge(b0, b2, EdgeType::FalseBranch);
+        g.add_edge(b1, b3, EdgeType::Fallthrough);
+        g.add_edge(b2, b3, EdgeType::Fallthrough);
+
+        // All nodes reachable from entry
+        assert!(can_reach(&g, b0, b1));
+        assert!(can_reach(&g, b0, b2));
+        assert!(can_reach(&g, b0, b3));
+
+        // Branches can't reach each other
+        assert!(!can_reach(&g, b1, b2));
+        assert!(!can_reach(&g, b2, b1));
+    }
+
+    #[test]
+    fn test_can_reach_cached() {
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+
+        let mut space = DfsSpace::new(&g);
+
+        // First query
+        assert!(can_reach_cached(&g, b0, b1, &mut space));
+
+        // Second query (space is reset internally by has_path_connecting)
+        assert!(!can_reach_cached(&g, b1, b0, &mut space));
+    }
+
+    #[test]
+    fn test_reachability_cache() {
+        let mut g = DiGraph::new();
+
+        // Create a linear chain: 0 -> 1 -> 2 -> 3
+        let nodes = (0..4).map(|i| {
+            g.add_node(BasicBlock {
+                id: i,
+                kind: if i == 0 { BlockKind::Entry } else if i == 3 { BlockKind::Exit } else { BlockKind::Normal },
+                statements: vec![],
+                terminator: if i < 3 { Terminator::Goto { target: i + 1 } } else { Terminator::Return },
+                source_location: None,
+            })
+        }).collect::<Vec<_>>();
+
+        for i in 0..3 {
+            g.add_edge(nodes[i], nodes[i + 1], EdgeType::Fallthrough);
+        }
+
+        let mut cache = ReachabilityCache::new(&g);
+
+        // Multiple queries using same cache
+        assert!(cache.can_reach(&g, nodes[0], nodes[3]));
+        assert!(cache.can_reach(&g, nodes[1], nodes[3]));
+        assert!(!cache.can_reach(&g, nodes[3], nodes[0]));
+    }
 }

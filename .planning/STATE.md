@@ -11,17 +11,17 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 3 of 7 (Reachability & Control Structure) - In progress
-Plan: 01 complete (of 4 in this phase)
-Status: Unreachable code detection implemented with DFS traversal
-Last activity: 2026-02-01 - Completed 03-01: Unreachable code detection
+Plan: 03 complete (of 4 in this phase)
+Status: Natural loop detection implemented with dominance-based back-edge analysis
+Last activity: 2026-02-01 - Completed 03-03: Natural loop detection
 
-Progress: [████████░░] 15% (Phase 3/7 in progress, 1/4 plans in phase, 10 total plans)
+Progress: [██████████] 20% (Phase 3/7 in progress, 3/4 plans in phase, 12 total plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 5 min
+- Total plans completed: 12
+- Average duration: 4.6 min
 - Total execution time: 0.9 hours
 
 **By Phase:**
@@ -30,7 +30,7 @@ Progress: [████████░░] 15% (Phase 3/7 in progress, 1/4 plans
 |-------|-------|----------|----------|
 | 01-database-foundation | 3 | 3/3 | 4 min |
 | 02-cfg-construction | 6 | 6/6 | 5 min |
-| 03-reachability-control | 4 | 1/4 | 4 min |
+| 03-reachability-control | 4 | 3/4 | 4 min |
 
 **Recent Trend:**
 - Last 5 plans: 5 min
@@ -109,6 +109,16 @@ Recent decisions affecting current work:
 - unreachable_block_ids() helper converts NodeIndex to BlockId for CLI integration
 - Empty CFGs handled gracefully (return empty vec, not panic)
 
+**From 03-03 (Natural Loop Detection):**
+- Natural loop detection uses dominance-based definition: back-edge (N -> H) where H dominates N
+- Dominator computation via petgraph::algo::dominators::simple_fast (Cooper et al. algorithm)
+- Loop body computed via predecessor traversal from tail until header (standard algorithm)
+- Iterator-based dominator query pattern: dominators.dominators(node).any(|d| d == target)
+- DfsSpace moved from petgraph::visit to petgraph::algo in petgraph 0.8 (API migration)
+- EdgeRef trait required in scope for edge.source()/edge.target() methods
+- Nested loops detected by checking if inner header is in outer loop body
+- Loop nesting level calculation via recursive header containment check
+
 ### Pending Todos
 
 None yet.
@@ -121,5 +131,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 03-01: Unreachable code detection
+Stopped at: Completed 03-03: Natural loop detection
 Resume file: None

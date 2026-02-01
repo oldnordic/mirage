@@ -5,17 +5,17 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 3: Reachability & Control Structure (in progress)
+**Current focus:** Phase 3: Reachability & Control Structure (complete)
 **Last focus:** Phase 2: CFG Construction (complete)
 
 ## Current Position
 
-Phase: 3 of 7 (Reachability & Control Structure) - In progress
+Phase: 3 of 7 (Reachability & Control Structure) - Complete
 Plan: 04 complete (of 4 in this phase)
-Status: Branching pattern recovery with if/else diamond detection and match/switch pattern detection
+Status: All reachability analysis, loop detection, and branching pattern recovery complete
 Last activity: 2026-02-01 - Completed 03-04: Branching pattern recovery
 
-Progress: [████████████░] 28% (Phase 3/7 complete, 4/4 plans in phase, 13 total plans)
+Progress: [████████████░] 42% (Phase 3/7 complete, 13/13 plans total)
 
 ## Performance Metrics
 

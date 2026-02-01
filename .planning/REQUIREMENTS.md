@@ -18,9 +18,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Reachability Analysis
 
-- [ ] **REACH-01**: System detects unreachable code blocks (no path from entry)
-- [ ] **REACH-02**: System answers reachability queries (can node A reach node B?)
-- [ ] **REACH-03**: System determines path existence between two points
+- [x] **REACH-01**: System detects unreachable code blocks (no path from entry)
+- [x] **REACH-02**: System answers reachability queries (can node A reach node B?)
+- [x] **REACH-03**: System determines path existence between two points
 
 ### Dominance Relationships
 
@@ -31,10 +31,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Control Structure Recovery
 
-- [ ] **CTRL-01**: System detects natural loops (back-edge where head dominates tail)
-- [ ] **CTRL-02**: System identifies loop header nodes
-- [ ] **CTRL-03**: System recovers if/else branching patterns
-- [ ] **CTRL-04**: System recovers match/expression branching patterns
+- [x] **CTRL-01**: System detects natural loops (back-edge where head dominates tail)
+- [x] **CTRL-02**: System identifies loop header nodes
+- [x] **CTRL-03**: System recovers if/else branching patterns
+- [x] **CTRL-04**: System recovers match/expression branching patterns
 
 ### Path Enumeration
 
@@ -136,17 +136,17 @@ Which phases cover which requirements.
 | CFG-04 | Phase 2 | Pending |
 | CFG-05 | Phase 2 | Pending |
 | CFG-06 | Phase 2 | Pending |
-| REACH-01 | Phase 3 | Pending |
-| REACH-02 | Phase 3 | Pending |
-| REACH-03 | Phase 3 | Pending |
+| REACH-01 | Phase 3 | Complete |
+| REACH-02 | Phase 3 | Complete |
+| REACH-03 | Phase 3 | Complete |
 | DOM-01 | Phase 4 | Pending |
 | DOM-02 | Phase 4 | Pending |
 | DOM-03 | Phase 4 | Pending |
 | DOM-04 | Phase 4 | Pending |
-| CTRL-01 | Phase 3 | Pending |
-| CTRL-02 | Phase 3 | Pending |
-| CTRL-03 | Phase 3 | Pending |
-| CTRL-04 | Phase 3 | Pending |
+| CTRL-01 | Phase 3 | Complete |
+| CTRL-02 | Phase 3 | Complete |
+| CTRL-03 | Phase 3 | Complete |
+| CTRL-04 | Phase 3 | Complete |
 | PATH-01 | Phase 5 | Pending |
 | PATH-02 | Phase 5 | Pending |
 | PATH-03 | Phase 5 | Pending |

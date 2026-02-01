@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Database Foundation** - Extend Magellan schema with CFG tables ✓ Completed 2026-02-01
 - [x] **Phase 2: CFG Construction** - Build control flow graphs from MIR and AST ✓ Completed 2026-02-01
-- [ ] **Phase 3: Reachability & Control Structure** - Analyze what code can execute
+- [x] **Phase 3: Reachability & Control Structure** - Analyze what code can execute ✓ Completed 2026-02-01
 - [ ] **Phase 4: Dominance Analysis** - Compute must-pass-through relationships
 - [ ] **Phase 5: Path Enumeration** - Enumerate and classify execution paths
 - [ ] **Phase 6: CLI Interface** - User-facing commands for all analysis types
@@ -93,10 +93,12 @@ Plans:
 **Plans**: 4 plans in 2 waves
 
 Plans:
-- [ ] 03-01-PLAN.md — Unreachable code detection (find_unreachable, find_reachable)
-- [ ] 03-02-PLAN.md — Reachability query engine (can_reach, ReachabilityCache)
-- [ ] 03-03-PLAN.md — Natural loop detection (detect_natural_loops, find_loop_headers)
-- [ ] 03-04-PLAN.md — Branching pattern recovery (detect_if_else, detect_match)
+- [x] 03-01 — Unreachable code detection (find_unreachable, find_reachable)
+- [x] 03-02 — Reachability query engine (can_reach, ReachabilityCache)
+- [x] 03-03 — Natural loop detection (detect_natural_loops, find_loop_headers)
+- [x] 03-04 — Branching pattern recovery (detect_if_else, detect_match)
+
+**Status**: ✓ Completed 2026-02-01
 
 ### Phase 4: Dominance Analysis
 
@@ -212,7 +214,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 |-------|----------------|--------|-----------|
 | 1. Database Foundation | 3/3 | ✓ Complete | 2026-02-01 |
 | 2. CFG Construction | 6/6 | ✓ Complete | 2026-02-01 |
-| 3. Reachability & Control Structure | 0/TBD | Not started | - |
+| 3. Reachability & Control Structure | 4/4 | ✓ Complete | 2026-02-01 |
 | 4. Dominance Analysis | 0/TBD | Not started | - |
 | 5. Path Enumeration | 0/TBD | Not started | - |
 | 6. CLI Interface | 0/TBD | Not started | - |

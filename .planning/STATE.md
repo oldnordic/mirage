@@ -11,16 +11,16 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 7 of 7 (LLM Integration) - In progress
-Plan: 03 of 4 - Error remediation suggestions for LLM guidance
-Status: Plan 07-03 complete. Error code constants (E001-E007) with remediation hints, centralized JsonError factory methods, and JSON-aware error handling across all CLI commands.
-Last activity: 2026-02-01 - Completed 07-03: Error remediation suggestions
+Plan: 04 of 4 - Control flow natural language summaries
+Status: Plan 07-04 complete. Template-based natural language generation for CFG paths with summarize_path(), describe_block(), and summarize_cfg() functions.
+Last activity: 2026-02-01 - Completed 07-04: Control flow natural language summaries
 
-Progress: [████████████████▓] 90% (Phase 7: 3/4 complete, 32/34 plans complete)
+Progress: [█████████████████] 94% (Phase 7: 4/4 complete, 33/34 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 32
+- Total plans completed: 33
 - Average duration: 4.8 min
 - Total execution time: 2.6 hours
 
@@ -34,7 +34,7 @@ Progress: [████████████████▓] 90% (Phase 7: 3/
 | 04-dominance-analysis | 3 | 3/3 | 3.7 min |
 | 05-path-enumeration | 6 | 6/6 | 4.6 min |
 | 06-cli-interface | 7 | 7/7 | 5.6 min |
-| 07-llm-integration | 4 | 3/4 | 4.5 min |
+| 07-llm-integration | 4 | 4/4 | 4.5 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -286,6 +286,13 @@ Recent decisions affecting current work:
 - JSON-aware error handling pattern: matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty)
 - Human mode retains colored output with separate info() calls for hints
 
+**From 07-04 (Control Flow Natural Language Summaries):**
+- Template-based NL generation chosen over external LLM API calls (zero dependency, always works)
+- Path truncation at 5 blocks keeps summaries concise for LLM consumption
+- Terminator descriptions use simple text format (e.g., "goto b1", "if b2|b3", "switch (3 targets)")
+- describe_block() made public for external tool/testing access
+- PathSummary.summary field now populated with natural language descriptions via summarize_path()
+
 ### Pending Todos
 
 None yet.
@@ -298,5 +305,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 07-03: Error remediation suggestions for LLM guidance
+Stopped at: Completed 07-04: Control flow natural language summaries
 Resume file: None

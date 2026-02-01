@@ -91,6 +91,94 @@ fn find_node_by_block_id(cfg: &Cfg, block_id: BlockId) -> Option<NodeIndex> {
         .find(|&idx| cfg[idx].id == block_id)
 }
 
+/// Check if a path is statically feasible
+///
+/// A path is feasible if it represents a viable execution path from entry to exit.
+/// This is a STATIC check based on terminator analysis only - it does NOT perform
+/// symbolic execution or data flow analysis.
+///
+/// **Feasibility criteria (all must pass):**
+///
+/// 1. **Non-empty:** Path must have at least one block
+/// 2. **Valid entry:** First block must be Entry kind
+/// 3. **Valid exit:** Last block must have valid exit terminator:
+///    - `Terminator::Return` -> feasible (normal exit)
+///    - `Terminator::Abort(_)` -> feasible (error path, but reachable)
+///    - `Terminator::Unreachable` -> infeasible (cannot execute)
+///    - `Terminator::Call { unwind: None, .. }` -> feasible (no unwind)
+///    - `Terminator::Call { unwind: Some(_), target: Some(_), .. }` -> feasible
+///    - `Terminator::Call { unwind: Some(_), target: None }` -> infeasible (always unwinds)
+///    - `Terminator::Goto` / `Terminator::SwitchInt` -> infeasible (dead end if last block)
+///
+/// 4. **All blocks exist:** Every block ID in the path must exist in the CFG
+///
+/// **What we DON'T check (requires symbolic execution):**
+/// - Conflicting branch conditions (e.g., `if x > 5 && x < 3`)
+/// - Data-dependent constraints (array bounds, divide by zero)
+/// - Runtime panic conditions
+///
+/// # Arguments
+///
+/// * `cfg` - Control flow graph to analyze
+/// * `blocks` - Block IDs in execution order
+///
+/// # Returns
+///
+/// `true` if the path is statically feasible, `false` otherwise
+///
+/// # Examples
+///
+/// ```rust
+/// let feasible = is_feasible_path(&cfg, &[0, 1, 2]);  // entry -> goto -> return
+/// let infeasible = is_feasible_path(&cfg, &[0, 1]);    // entry -> goto (dead end)
+/// ```
+pub fn is_feasible_path(cfg: &Cfg, blocks: &[BlockId]) -> bool {
+    use crate::cfg::BlockKind;
+
+    // Criterion 1: Path must be non-empty
+    if blocks.is_empty() {
+        return false;
+    }
+
+    // Criterion 2: First block must be Entry kind
+    let first_idx = match find_node_by_block_id(cfg, blocks[0]) {
+        Some(idx) => idx,
+        None => return false, // Block doesn't exist
+    };
+    if cfg[first_idx].kind != BlockKind::Entry {
+        return false;
+    }
+
+    // Criterion 3: Last block must have valid exit terminator
+    let last_idx = match find_node_by_block_id(cfg, *blocks.last().unwrap()) {
+        Some(idx) => idx,
+        None => return false, // Block doesn't exist
+    };
+
+    match &cfg[last_idx].terminator {
+        Terminator::Return => {}, // Feasible: normal exit
+        Terminator::Abort(_) => {}, // Feasible: error path but reachable
+        Terminator::Call { unwind: None, .. } => {}, // Feasible: no unwind
+        Terminator::Call { unwind: Some(_), target: Some(_) } => {}, // Feasible: has target
+        // Infeasible terminators (dead ends)
+        Terminator::Unreachable |
+        Terminator::Goto { .. } |
+        Terminator::SwitchInt { .. } |
+        Terminator::Call { unwind: Some(_), target: None } => {
+            return false;
+        }
+    }
+
+    // Criterion 4: All intermediate blocks must exist
+    for &block_id in blocks.iter().skip(1).take(blocks.len().saturating_sub(2)) {
+        if find_node_by_block_id(cfg, block_id).is_none() {
+            return false;
+        }
+    }
+
+    true
+}
+
 /// Classify a path based on its terminators and reachability
 ///
 /// **Classification rules (in priority order):**
@@ -1866,5 +1954,173 @@ mod tests {
         // Thorough should find at least as many paths as quick
         assert!(thorough_paths.len() >= quick_paths.len(),
                 "Thorough analysis should find at least as many paths as quick");
+    }
+
+    // Task 1: is_feasible_path tests
+
+    #[test]
+    fn test_is_feasible_path_empty_path() {
+        let cfg = create_linear_cfg();
+        let empty_path: Vec<BlockId> = vec![];
+
+        assert!(!is_feasible_path(&cfg, &empty_path),
+                "Empty path should be infeasible");
+    }
+
+    #[test]
+    fn test_is_feasible_path_non_entry_first_block() {
+        let cfg = create_diamond_cfg();
+        // Path starting from block 1 (not entry)
+        let path = vec![1, 3];
+
+        assert!(!is_feasible_path(&cfg, &path),
+                "Path starting from non-entry block should be infeasible");
+    }
+
+    #[test]
+    fn test_is_feasible_path_dead_end_goto() {
+        let cfg = create_linear_cfg();
+        // Path ending in Goto (dead end)
+        let path = vec![0, 1]; // Block 1 has Goto to 2
+
+        assert!(!is_feasible_path(&cfg, &path),
+                "Path ending in Goto should be infeasible (dead end)");
+    }
+
+    #[test]
+    fn test_is_feasible_path_valid_return() {
+        let cfg = create_linear_cfg();
+        // Complete path: entry -> goto -> return
+        let path = vec![0, 1, 2];
+
+        assert!(is_feasible_path(&cfg, &path),
+                "Complete path ending in Return should be feasible");
+    }
+
+    #[test]
+    fn test_is_feasible_path_abort_is_feasible() {
+        let cfg = create_error_cfg();
+        // Path ending in Abort (error but reachable)
+        let path = vec![0, 1];
+
+        assert!(is_feasible_path(&cfg, &path),
+                "Path ending in Abort should be feasible (error path but reachable)");
+    }
+
+    #[test]
+    fn test_is_feasible_path_unreachable_terminator() {
+        let cfg = create_unreachable_term_cfg();
+        // Path ending in Unreachable
+        let path = vec![0, 1];
+
+        assert!(!is_feasible_path(&cfg, &path),
+                "Path ending in Unreachable should be infeasible");
+    }
+
+    #[test]
+    fn test_is_feasible_path_nonexistent_block() {
+        let cfg = create_linear_cfg();
+        // Path with nonexistent block
+        let path = vec![0, 99]; // Block 99 doesn't exist
+
+        assert!(!is_feasible_path(&cfg, &path),
+                "Path with nonexistent block should be infeasible");
+    }
+
+    #[test]
+    fn test_is_feasible_path_switch_int_dead_end() {
+        let cfg = create_diamond_cfg();
+        // Path ending in SwitchInt (block 0)
+        let path = vec![0]; // Block 0 has SwitchInt
+
+        assert!(!is_feasible_path(&cfg, &path),
+                "Path ending in SwitchInt should be infeasible (dead end)");
+    }
+
+    #[test]
+    fn test_is_feasible_path_complete_diamond() {
+        let cfg = create_diamond_cfg();
+        // Complete path through diamond
+        let path1 = vec![0, 1, 3]; // Through true branch
+        let path2 = vec![0, 2, 3]; // Through false branch
+
+        assert!(is_feasible_path(&cfg, &path1),
+                "Complete diamond path 0->1->3 should be feasible");
+        assert!(is_feasible_path(&cfg, &path2),
+                "Complete diamond path 0->2->3 should be feasible");
+    }
+
+    #[test]
+    fn test_is_feasible_path_call_no_unwind() {
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Call {
+                target: Some(1),
+                unwind: None,
+            },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+
+        // Path ending in Call with no unwind
+        let path = vec![0];
+
+        assert!(is_feasible_path(&g, &path),
+                "Path ending in Call with no unwind should be feasible");
+    }
+
+    #[test]
+    fn test_is_feasible_path_call_with_unwind_and_target() {
+        let cfg = create_call_unwind_cfg();
+        // Path ending in Call with unwind and target
+        let path = vec![0]; // Block 0 has Call with unwind: Some(2), target: Some(1)
+
+        assert!(is_feasible_path(&cfg, &path),
+                "Path ending in Call with both unwind and target should be feasible");
+    }
+
+    #[test]
+    fn test_is_feasible_path_call_always_unwinds() {
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Call {
+                target: None, // No target - always unwinds
+                unwind: Some(1),
+            },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+
+        // Path ending in Call that always unwinds
+        let path = vec![0];
+
+        assert!(!is_feasible_path(&g, &path),
+                "Path ending in Call with only unwind (no target) should be infeasible");
     }
 }

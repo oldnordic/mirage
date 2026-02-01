@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 
 ## Current Position
 
-Phase: 4 of 7 (Dominance Analysis) - In progress
-Plan: 01 complete (of 2 in this phase)
-Status: Dominator tree implementation complete
-Last activity: 2026-02-01 - Completed 04-01: Dominator tree wrapper
+Phase: 4 of 7 (Dominance Analysis) - Complete
+Plan: 02 complete (of 2 in this phase)
+Status: Post-dominator tree implementation complete
+Last activity: 2026-02-01 - Completed 04-02: Post-dominator tree with zero-copy graph reversal
 
-Progress: [█████████████] 46% (Phase 4/7 in progress, 14/15 plans total)
+Progress: [█████████████] 50% (Phase 4/7 complete, 15/15 plans total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: 4.5 min
-- Total execution time: 1.1 hours
+- Total plans completed: 15
+- Average duration: 4.3 min
+- Total execution time: 1.2 hours
 
 **By Phase:**
 
@@ -31,7 +31,7 @@ Progress: [█████████████] 46% (Phase 4/7 in progress, 
 | 01-database-foundation | 3 | 3/3 | 4 min |
 | 02-cfg-construction | 6 | 6/6 | 5 min |
 | 03-reachability-control | 4 | 4/4 | 4.5 min |
-| 04-dominance-analysis | 1 | 1/2 | 2 min |
+| 04-dominance-analysis | 2 | 2/2 | 3 min |
 
 **Recent Trend:**
 - Last 5 plans: 4 min
@@ -143,6 +143,13 @@ Recent decisions affecting current work:
 - Dominators iterator provides ergonomic upward traversal from node to root
 - common_dominator() uses HashSet for O(min(|a|,|b|)) intersection finding
 
+**From 04-02 (Post-Dominator Tree):**
+- PostDominatorTree uses petgraph::visit::Reversed for zero-copy graph reversal instead of cloning
+- Post-dominance computed as dominance on reversed graph (dual relationship)
+- DominatorTree::from_parts() added as pub(crate) for internal construction by PostDominatorTree
+- Primary exit only (first Return node) - multiple exits noted as limitation
+- PostDominators iterator walks from node up to exit (mirror of Dominators)
+
 ### Pending Todos
 
 None yet.
@@ -155,5 +162,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 04-01: Dominator tree wrapper
+Stopped at: Completed 04-02: Post-dominator tree with zero-copy graph reversal
 Resume file: None

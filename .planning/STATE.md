@@ -5,33 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 2: CFG Construction (next)
+**Current focus:** Phase 2: CFG Construction (in progress)
 
 ## Current Position
 
-Phase: 1 of 7 (Database Foundation) ✓ COMPLETE
-Plan: 3/3 complete
-Status: Phase 1 verified and complete, ready for Phase 2
-Last activity: 2026-02-01 - Phase 1 execution verified (10/10 must-haves)
+Phase: 2 of 7 (CFG Construction) - In Progress
+Plan: 03 complete (of 6 in this phase)
+Status: Core CFG types defined, ready for builder implementation
+Last activity: 2026-02-01 - Completed 02-03: Core CFG data structures
 
-Progress: [██████████] 14% (Phase 1/7 complete)
+Progress: [██████████░] 19% (Phase 2/7, Plan 3/6 in phase)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 4 min
-- Total execution time: 0.2 hours
+- Total execution time: 0.3 hours
 
 **By Phase:**
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 01-database-foundation | 3 | TBD | 4 min |
+| Phase | Plans | Complete | Avg/Plan |
+|-------|-------|----------|----------|
+| 01-database-foundation | 3 | 3/3 | 4 min |
+| 02-cfg-construction | 6 | 1/6 | 5 min |
 
 **Recent Trend:**
 - Last 5 plans: 4 min
-- Trend: -
+- Trend: Consistent
 
 *Updated after each plan completion*
 
@@ -57,16 +58,23 @@ Recent decisions affecting current work:
 - OptionalExtension trait required for nullable query results in rusqlite
 - Error tests use if-let pattern matching to avoid Debug trait requirement on MirageDb
 
+**From 02-03 (Core CFG Data Structures):**
+- petgraph DiGraph as backing store for CFG (de facto standard for Rust graph algorithms)
+- Simplified Terminator enum for initial release, MIR-specific variants added later
+- EdgeType includes visualization metadata (dot_color, dot_label) for graphviz output
+- BlockId uses usize for simple integer indexing within functions
+- All domain types derive Serialize/Deserialize for JSON export capability
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-None yet.
+- **sccache corruption**: Build cache occasionally returns stale results. Workaround: `RUSTC_WRAPPER=""` env var to bypass. Not blocking but noted.
 
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 01-03: Database integration tests
+Stopped at: Completed 02-03: Core CFG data structures
 Resume file: None

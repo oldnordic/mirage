@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 5 of 7 (Path Enumeration) - In progress
-Plan: 03 complete (of 6 in this phase)
-Status: Path bounding enforcement with self-loop detection and nested loop bounding
-Last activity: 2026-02-01 - Completed 05-03: Configurable path bounding with presets
+Plan: 04 complete (of 6 in this phase)
+Status: Static feasibility checking with terminator analysis and batch optimization
+Last activity: 2026-02-01 - Completed 05-04: Static feasibility checking
 
-Progress: [████████████░] 60% (Phase 5/7 in progress, 18/30 plans complete)
+Progress: [████████████░] 63% (Phase 5/7 in progress, 19/30 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 18
+- Total plans completed: 19
 - Average duration: 4.5 min
-- Total execution time: 1.4 hours
+- Total execution time: 1.5 hours
 
 **By Phase:**
 
@@ -32,7 +32,7 @@ Progress: [████████████░] 60% (Phase 5/7 in progress, 
 | 02-cfg-construction | 6 | 6/6 | 5 min |
 | 03-reachability-control | 4 | 4/4 | 4.5 min |
 | 04-dominance-analysis | 3 | 3/3 | 3.7 min |
-| 05-path-enumeration | 6 | 3/6 | 5 min |
+| 05-path-enumeration | 6 | 4/6 | 4.75 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.2 min
@@ -180,6 +180,14 @@ Recent decisions affecting current work:
 - Self-loops handled via loop_headers check - bounded like regular back-edges
 - Builder pattern with method chaining for convenient PathLimits configuration
 
+**From 05-04 (Static Feasibility Checking):**
+- Static feasibility only: No symbolic execution (>100x slower, too complex for interactive use)
+- Feasibility criteria: Entry kind + Exit terminator + Reachability + No dead-ends
+- Valid exit terminators: Return, Abort, Call with target; Infeasible: Unreachable, Goto, SwitchInt, Call without target
+- Batch optimization: is_feasible_path_precomputed with pre-computed reachable HashSet for O(1) reachability
+- Classification priority updated: Unreachable > Error > Feasibility > Normal
+- Limitations documented: Does NOT check conflicting conditions (x > 5 && x < 3), data-dependent constraints, runtime panics
+
 ### Pending Todos
 
 None yet.
@@ -192,5 +200,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 05-03: Configurable path bounding with presets
+Stopped at: Completed 05-04: Static feasibility checking with terminator analysis
 Resume file: None

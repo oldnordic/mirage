@@ -464,6 +464,7 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
 ///
 /// Explores all paths from the current node to exit blocks, tracking
 /// visited nodes to prevent cycles and respecting loop unroll limits.
+/// Uses pre-computed reachable set for efficient path classification.
 fn dfs_enumerate(
     cfg: &Cfg,
     current: NodeIndex,
@@ -474,6 +475,7 @@ fn dfs_enumerate(
     visited: &mut HashSet<NodeIndex>,
     loop_headers: &HashSet<NodeIndex>,
     loop_iterations: &mut HashMap<NodeIndex, usize>,
+    reachable_blocks: &HashSet<BlockId>,
 ) {
     // Get current block ID
     let block_id = match cfg.node_weight(current) {
@@ -492,7 +494,9 @@ fn dfs_enumerate(
 
     // Check if we've reached an exit
     if exits.contains(&current) {
-        let path = Path::new(current_path.clone(), PathKind::Normal);
+        // Classify the path using pre-computed reachable set
+        let kind = classify_path_precomputed(cfg, current_path, reachable_blocks);
+        let path = Path::new(current_path.clone(), kind);
         paths.push(path);
         current_path.pop();
         return;
@@ -525,8 +529,9 @@ fn dfs_enumerate(
 
     if successors.is_empty() {
         // Dead end (not an exit but no successors)
-        // Record as degenerate path
-        let path = Path::new(current_path.clone(), PathKind::Degenerate);
+        // Use classification to determine path kind
+        let kind = classify_path_precomputed(cfg, current_path, reachable_blocks);
+        let path = Path::new(current_path.clone(), kind);
         paths.push(path);
     } else {
         for succ in successors {
@@ -556,6 +561,7 @@ fn dfs_enumerate(
                 visited,
                 loop_headers,
                 loop_iterations,
+                reachable_blocks,
             );
 
             // Check path count limit after each recursive call
@@ -1339,6 +1345,123 @@ mod tests {
         // Only reachable exit produces a path
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0].blocks, vec![0, 1]);
+    }
+
+    // enumerate_paths_classification integration tests
+
+    #[test]
+    fn test_enumerate_paths_classification_diamond() {
+        let cfg = create_diamond_cfg();
+        let paths = enumerate_paths(&cfg, &PathLimits::default());
+
+        // Diamond CFG: all paths should be Normal
+        assert_eq!(paths.len(), 2);
+        for path in &paths {
+            assert_eq!(
+                path.kind,
+                PathKind::Normal,
+                "Diamond CFG should only have Normal paths, got {:?} for {:?}",
+                path.kind,
+                path.blocks
+            );
+        }
+    }
+
+    #[test]
+    fn test_enumerate_paths_classification_with_error() {
+        // Create CFG with error path
+        let cfg = create_error_cfg();
+        let paths = enumerate_paths(&cfg, &PathLimits::default());
+
+        // Should have one path that ends in Abort (Error)
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].kind, PathKind::Error);
+        assert_eq!(paths[0].blocks, vec![0, 1]);
+    }
+
+    #[test]
+    fn test_enumerate_paths_classification_with_unreachable() {
+        // Create CFG with unreachable block
+        let cfg = create_dead_code_cfg();
+        let paths = enumerate_paths(&cfg, &PathLimits::default());
+
+        // Only the reachable path should be enumerated
+        assert_eq!(paths.len(), 1);
+        // The path goes through block 0 which is reachable
+        assert_eq!(paths[0].blocks, vec![0]);
+        assert_eq!(paths[0].kind, PathKind::Normal);
+    }
+
+    #[test]
+    fn test_enumerate_paths_classification_mixed() {
+        // Create a CFG with both normal and error paths
+        let mut g = DiGraph::new();
+
+        // Entry block with conditional
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 },
+            source_location: None,
+        });
+
+        // Normal branch
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        // Error branch (panic)
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Abort("panic!".to_string()),
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::TrueBranch);
+        g.add_edge(b0, b2, EdgeType::FalseBranch);
+
+        let paths = enumerate_paths(&g, &PathLimits::default());
+
+        // Should have 2 paths: one Normal, one Error
+        assert_eq!(paths.len(), 2);
+
+        let normal_count = paths.iter().filter(|p| p.kind == PathKind::Normal).count();
+        let error_count = paths.iter().filter(|p| p.kind == PathKind::Error).count();
+
+        assert_eq!(normal_count, 1, "Should have 1 Normal path");
+        assert_eq!(error_count, 1, "Should have 1 Error path");
+    }
+
+    #[test]
+    fn test_enumerate_paths_classification_correctness() {
+        // Verify that classification is correctly applied during enumeration
+        let cfg = create_diamond_cfg();
+        let paths = enumerate_paths(&cfg, &PathLimits::default());
+
+        // Use the same reachable set for manual classification
+        use crate::cfg::reachability::find_reachable;
+        let reachable_nodes = find_reachable(&cfg);
+        let reachable_blocks: HashSet<BlockId> = reachable_nodes
+            .iter()
+            .map(|&idx| cfg[idx].id)
+            .collect();
+
+        // Verify each path's kind matches manual classification
+        for path in &paths {
+            let expected_kind = classify_path_precomputed(&cfg, &path.blocks, &reachable_blocks);
+            assert_eq!(
+                path.kind, expected_kind,
+                "Path kind mismatch for {:?}: got {:?}, expected {:?}",
+                path.blocks, path.kind, expected_kind
+            );
+        }
     }
 
     // Task 1: PathLimits enforcement tests

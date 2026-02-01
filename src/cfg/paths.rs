@@ -82,6 +82,15 @@ pub enum PathKind {
     Unreachable,
 }
 
+/// Find the NodeIndex for a given BlockId
+///
+/// Helper function to convert BlockIds from paths to NodeIndices for CFG queries.
+/// Returns None if the block ID doesn't exist in the CFG.
+fn find_node_by_block_id(cfg: &Cfg, block_id: BlockId) -> Option<NodeIndex> {
+    cfg.node_indices()
+        .find(|&idx| cfg[idx].id == block_id)
+}
+
 impl PathKind {
     /// Check if this path represents a normal execution
     pub fn is_normal(&self) -> bool {
@@ -612,6 +621,45 @@ mod tests {
     fn test_path_kind_is_unreachable() {
         assert!(PathKind::Unreachable.is_unreachable());
         assert!(!PathKind::Normal.is_unreachable());
+    }
+
+    // find_node_by_block_id tests
+
+    #[test]
+    fn test_find_node_by_block_id_existing() {
+        let cfg = create_linear_cfg();
+
+        // Find existing blocks
+        let b0 = find_node_by_block_id(&cfg, 0);
+        let b1 = find_node_by_block_id(&cfg, 1);
+        let b2 = find_node_by_block_id(&cfg, 2);
+
+        assert!(b0.is_some());
+        assert!(b1.is_some());
+        assert!(b2.is_some());
+
+        // Verify the NodeIndices are correct
+        assert_eq!(b0.unwrap().index(), 0);
+        assert_eq!(b1.unwrap().index(), 1);
+        assert_eq!(b2.unwrap().index(), 2);
+    }
+
+    #[test]
+    fn test_find_node_by_block_id_nonexistent() {
+        let cfg = create_linear_cfg();
+
+        // Find non-existent block
+        let b99 = find_node_by_block_id(&cfg, 99);
+        assert!(b99.is_none());
+    }
+
+    #[test]
+    fn test_find_node_by_block_id_empty_cfg() {
+        let cfg: Cfg = DiGraph::new();
+
+        // Empty CFG has no blocks
+        let b0 = find_node_by_block_id(&cfg, 0);
+        assert!(b0.is_none());
     }
 
     // enumerate_paths tests

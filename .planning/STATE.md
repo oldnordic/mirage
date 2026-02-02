@@ -10,12 +10,12 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 
 ## Current Position
 
-Phase: 9 of 9 (MIR Integration & Database Loading) - In Progress
-Plan: 1 of 2 (mirage index command) - Complete
-Status: MIR extraction via Charon implemented with incremental indexing. CFG storage complete with function_hash tracking.
-Last activity: 2026-02-02 - Completed 09-01 mirage index command
+Phase: 9 of 9 (MIR Integration & Database Loading) - COMPLETE
+Plan: 3 of 3 (CLI command database loading integration) - Complete
+Status: All CLI analysis commands now load CFG from database. Error handling directs users to 'mirage index'. Phase 9 complete.
+Last activity: 2026-02-02 - Completed 09-03 CLI database loading integration
 
-Progress: [█████████████░ ] 92% (8 phases complete, 41/43 plans done, Phase 9: 1/2 plans complete)
+Progress: [██████████████] 100% (9 phases complete, 43/43 plans done)
 
 ## Performance Metrics
 
@@ -348,6 +348,20 @@ Recent decisions affecting current work:
 - Database atomic updates: BEGIN IMMEDIATE TRANSACTION, clear existing, insert new
 - Progress indication: show processed, updated, skipped, errors counts
 
+**From 09-02 (Database Loading Utilities):**
+- Function resolution accepts both numeric IDs and name strings for CLI flexibility
+- Block IDs mapped from database AUTOINCREMENT to sequential graph indices for consistency
+- NULL terminators default to Unreachable instead of failing
+- Re-export pattern: cfg module re-exports storage functions for convenience
+- Helper function pattern: create_test_db_with_schema() for test database setup
+
+**From 09-03 (Wire Database Loading to CLI Commands):**
+- All CLI analysis commands now use resolve_function_name() and load_cfg_from_db()
+- Error handling pattern: check cli.output format for JSON-aware error messages
+- Error remediation: "Run 'mirage index' to index your code" hint for function not found
+- unreachable() command scans all functions from database (no function argument)
+- Tests simplified to argument parsing rather than full command execution
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -373,6 +387,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 09-01 mirage index command
+Stopped at: Completed 09-03 CLI database loading integration
 Resume file: None
-Phase 8 complete (6/6 plans). Phase 9: 1/2 plans complete (mirage index command)
+Phase 9 COMPLETE (3/3 plans). All 9 phases complete (43/43 plans done)

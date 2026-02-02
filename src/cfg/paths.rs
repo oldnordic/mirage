@@ -160,9 +160,12 @@ fn find_node_by_block_id(cfg: &Cfg, block_id: BlockId) -> Option<NodeIndex> {
 ///
 /// # Examples
 ///
-/// ```rust
-/// let feasible = is_feasible_path(&cfg, &[0, 1, 2]);  // entry -> goto -> return
-/// let infeasible = is_feasible_path(&cfg, &[0, 1]);    // entry -> goto (dead end)
+/// ```rust,no_run
+/// # use mirage::cfg::paths::is_feasible_path;
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// let feasible = is_feasible_path(&graph, &[0, 1, 2]);  // entry -> goto -> return
+/// let infeasible = is_feasible_path(&graph, &[0, 1]);    // entry -> goto (dead end)
 /// ```
 pub fn is_feasible_path(cfg: &Cfg, blocks: &[BlockId]) -> bool {
     use crate::cfg::BlockKind;
@@ -237,17 +240,23 @@ pub fn is_feasible_path(cfg: &Cfg, blocks: &[BlockId]) -> bool {
 ///
 /// # Examples
 ///
-/// ```rust
-/// use mirage::cfg::reachability::find_reachable;
-///
-/// let reachable_nodes = find_reachable(&cfg);
+/// ```rust,no_run
+/// # use mirage::cfg::paths::is_feasible_path_precomputed;
+/// # use mirage::cfg::reachability::find_reachable;
+/// # use mirage::cfg::Cfg;
+/// # use std::collections::HashSet;
+/// # use mirage::cfg::BlockId;
+/// # use mirage::cfg::Path;
+/// # let graph: Cfg = unimplemented!();
+/// # let paths: Vec<Path> = vec![];
+/// let reachable_nodes = find_reachable(&graph);
 /// let reachable_blocks: HashSet<BlockId> = reachable_nodes
 ///     .iter()
-///     .map(|&idx| cfg[idx].id)
+///     .map(|&idx| graph[idx].id)
 ///     .collect();
 ///
 /// for path in paths {
-///     let feasible = is_feasible_path_precomputed(&cfg, &path.blocks, &reachable_blocks);
+///     let feasible = is_feasible_path_precomputed(&graph, &path.blocks, &reachable_blocks);
 /// }
 /// ```
 pub fn is_feasible_path_precomputed(
@@ -398,15 +407,23 @@ pub fn classify_path(cfg: &Cfg, blocks: &[BlockId]) -> PathKind {
 ///
 /// # Example
 ///
-/// ```rust
-/// let reachable_nodes = find_reachable(&cfg);
+/// ```rust,no_run
+/// # use mirage::cfg::paths::classify_path_precomputed;
+/// # use mirage::cfg::reachability::find_reachable;
+/// # use mirage::cfg::Cfg;
+/// # use std::collections::HashSet;
+/// # use mirage::cfg::BlockId;
+/// # use mirage::cfg::Path;
+/// # let graph: Cfg = unimplemented!();
+/// # let paths: Vec<Path> = vec![];
+/// let reachable_nodes = find_reachable(&graph);
 /// let reachable_blocks: HashSet<BlockId> = reachable_nodes
 ///     .iter()
-///     .map(|&idx| cfg[idx].id)
+///     .map(|&idx| graph[idx].id)
 ///     .collect();
 ///
 /// for path in paths {
-///     let kind = classify_path_precomputed(&cfg, &path.blocks, &reachable_blocks);
+///     let kind = classify_path_precomputed(&graph, &path.blocks, &reachable_blocks);
 /// }
 /// ```
 pub fn classify_path_precomputed(
@@ -610,10 +627,15 @@ pub fn hash_path(blocks: &[BlockId]) -> String {
 /// - Exit nodes computed once: O(v) instead of O(v) per call
 ///
 /// **Use case:**
-/// ```rust
-/// let ctx = EnumerationContext::new(&cfg);
-/// let paths1 = enumerate_paths_with_context(&cfg, &limits1, &ctx);
-/// let paths2 = enumerate_paths_with_context(&cfg, &limits2, &ctx);
+/// ```rust,no_run
+/// # use mirage::cfg::{PathLimits, enumerate_paths_with_context, EnumerationContext};
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// # let limits1 = PathLimits::default();
+/// # let limits2 = PathLimits::default();
+/// let ctx = EnumerationContext::new(&graph);
+/// let paths1 = enumerate_paths_with_context(&graph, &limits1, &ctx);
+/// let paths2 = enumerate_paths_with_context(&graph, &limits2, &ctx);
 /// // No redundant analysis computations
 /// ```
 #[derive(Debug, Clone)]
@@ -639,10 +661,11 @@ impl EnumerationContext {
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use mirage::cfg::paths::EnumerationContext;
-    ///
-    /// let ctx = EnumerationContext::new(&cfg);
+    /// ```rust,no_run
+    /// # use mirage::cfg::paths::EnumerationContext;
+    /// # use mirage::cfg::Cfg;
+    /// # let graph: Cfg = unimplemented!();
+    /// let ctx = EnumerationContext::new(&graph);
     /// println!("Found {} loop headers", ctx.loop_headers.len());
     /// ```
     pub fn new(cfg: &Cfg) -> Self {
@@ -723,12 +746,13 @@ impl EnumerationContext {
 ///
 /// # Example
 ///
-/// ```rust
-/// use mirage::cfg::{PathLimits, enumerate_paths_with_context, EnumerationContext};
-///
-/// let ctx = EnumerationContext::new(&cfg);
+/// ```rust,no_run
+/// # use mirage::cfg::{PathLimits, enumerate_paths_with_context, EnumerationContext};
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// let ctx = EnumerationContext::new(&graph);
 /// let limits = PathLimits::default();
-/// let paths = enumerate_paths_with_context(&cfg, &limits, &ctx);
+/// let paths = enumerate_paths_with_context(&graph, &limits, &ctx);
 /// ```
 pub fn enumerate_paths_with_context(
     cfg: &Cfg,
@@ -878,10 +902,11 @@ fn dfs_enumerate_with_context(
 ///
 /// # Examples
 ///
-/// ```rust
-/// use mirage::cfg::{enumerate_paths, PathLimits};
-///
-/// let paths = enumerate_paths(&cfg, &PathLimits::default());
+/// ```rust,no_run
+/// # use mirage::cfg::{enumerate_paths, PathLimits};
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// let paths = enumerate_paths(&graph, &PathLimits::default());
 /// println!("Found {} paths", paths.len());
 /// ```
 pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
@@ -1088,13 +1113,20 @@ fn dfs_enumerate(
 /// # Example
 ///
 /// ```rust,no_run
+/// # use mirage::cfg::paths::get_or_enumerate_paths;
+/// # use mirage::cfg::{PathLimits, Cfg};
+/// # let graph: Cfg = unimplemented!();
+/// # let function_id: i64 = 0;
+/// # let function_hash = "hash";
+/// # let mut conn = unimplemented!();
 /// let paths = get_or_enumerate_paths(
-///     &cfg,
+///     &graph,
 ///     function_id,
 ///     function_hash,
 ///     &PathLimits::default(),
 ///     &mut conn,
 /// )?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn get_or_enumerate_paths(
     cfg: &Cfg,
@@ -1196,17 +1228,22 @@ pub fn get_or_enumerate_paths(
 ///
 /// # Example
 ///
-/// ```rust
-/// use mirage::cfg::{enumerate_paths_cached, PathLimits, EnumerationContext};
-///
+/// ```rust,no_run
+/// # use mirage::cfg::{enumerate_paths_cached, PathLimits, EnumerationContext};
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// # let function_bytes: Vec<u8> = vec![];
+/// # let function_id: i64 = 0;
+/// # let mut conn = unimplemented!();
 /// let hash = blake3::hash(&function_bytes).to_hex().to_string();
 /// let paths = enumerate_paths_cached(
-///     &cfg,
+///     &graph,
 ///     function_id,
 ///     &hash,
 ///     &PathLimits::default(),
 ///     &mut conn,
 /// )?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn enumerate_paths_cached(
     cfg: &Cfg,
@@ -1315,8 +1352,13 @@ pub fn enumerate_paths_cached_with_context(
 /// - Cap at max_paths to avoid overflow
 ///
 /// **Usage:**
-/// ```rust
-/// let estimated = estimate_path_count(&cfg, 3);
+/// ```rust,no_run
+/// # use mirage::cfg::paths::estimate_path_count;
+/// # use mirage::cfg::Cfg;
+/// # use mirage::cfg::PathLimits;
+/// # let graph: Cfg = unimplemented!();
+/// # let limits = PathLimits::default();
+/// let estimated = estimate_path_count(&graph, 3);
 /// if estimated > limits.max_paths {
 ///     // Warn user about path explosion
 /// }

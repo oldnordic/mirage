@@ -18,8 +18,13 @@ use std::collections::HashMap;
 /// dominance checks, and dominator tree traversal.
 ///
 /// # Example
-/// ```rust
-/// let dom_tree = DominatorTree::new(&cfg)?;
+/// ```rust,no_run
+/// # use mirage::cfg::dominators::DominatorTree;
+/// # use mirage::cfg::Cfg;
+/// # use petgraph::graph::NodeIndex;
+/// # let graph: Cfg = unimplemented!();
+/// # let node = NodeIndex::new(0);
+/// let dom_tree = DominatorTree::new(&graph).unwrap();
 /// if let Some(idom) = dom_tree.immediate_dominator(node) {
 ///     println!("Node {:?} is dominated by {:?}", node, idom);
 /// }
@@ -88,7 +93,13 @@ impl DominatorTree {
     /// Returns None for the root node (which has no dominator).
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
+    /// # use petgraph::graph::NodeIndex;
+    /// # let graph: Cfg = unimplemented!();
+    /// # let dom_tree = DominatorTree::new(&graph).unwrap();
+    /// # let node = NodeIndex::new(0);
     /// if let Some(idom) = dom_tree.immediate_dominator(node) {
     ///     println!("Immediately dominated by {:?}", idom);
     /// } else {
@@ -105,7 +116,14 @@ impl DominatorTree {
     /// By definition, every node dominates itself.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
+    /// # use petgraph::graph::NodeIndex;
+    /// # let graph: Cfg = unimplemented!();
+    /// # let dom_tree = DominatorTree::new(&graph).unwrap();
+    /// # let entry = NodeIndex::new(0);
+    /// # let node = NodeIndex::new(1);
     /// if dom_tree.dominates(entry, node) {
     ///     println!("entry dominates node (always true for reachable nodes)");
     /// }
@@ -132,7 +150,13 @@ impl DominatorTree {
     /// Returns the children of `node` in the dominator tree.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
+    /// # use petgraph::graph::NodeIndex;
+    /// # let graph: Cfg = unimplemented!();
+    /// # let dom_tree = DominatorTree::new(&graph).unwrap();
+    /// # let node = NodeIndex::new(0);
     /// for child in dom_tree.children(node) {
     ///     println!("{:?} immediately dominates {:?}", node, child);
     /// }
@@ -153,7 +177,13 @@ impl DominatorTree {
     /// Returns iterator from node up to root.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
+    /// # use petgraph::graph::NodeIndex;
+    /// # let graph: Cfg = unimplemented!();
+    /// # let dom_tree = DominatorTree::new(&graph).unwrap();
+    /// # let node = NodeIndex::new(0);
     /// let doms: Vec<_> = dom_tree.dominators(node).collect();
     /// println!("Node {:?} has {} dominators", node, doms.len());
     /// ```
@@ -237,8 +267,11 @@ impl<'a> Iterator for Dominators<'a> {
 /// This is a shorthand for DominatorTree::new().
 ///
 /// # Example
-/// ```rust
-/// let dom_tree = compute_dominator_tree(&cfg)?;
+/// ```rust,no_run
+/// # use mirage::cfg::dominators::compute_dominator_tree;
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// let dom_tree = compute_dominator_tree(&graph).unwrap();
 /// ```
 pub fn compute_dominator_tree(cfg: &Cfg) -> Option<DominatorTree> {
     DominatorTree::new(cfg)

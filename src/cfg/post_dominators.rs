@@ -18,8 +18,13 @@ use std::collections::HashMap;
 /// The root is the exit node.
 ///
 /// # Example
-/// ```rust
-/// let post_dom_tree = PostDominatorTree::new(&cfg)?;
+/// ```rust,no_run
+/// # use mirage::cfg::post_dominators::PostDominatorTree;
+/// # use mirage::cfg::Cfg;
+/// # use petgraph::graph::NodeIndex;
+/// # let graph: Cfg = unimplemented!();
+/// # let node = NodeIndex::new(0);
+/// let post_dom_tree = PostDominatorTree::new(&graph).unwrap();
 /// if let Some(ipdom) = post_dom_tree.immediate_post_dominator(node) {
 ///     println!("Node {:?} is post-dominated by {:?}", node, ipdom);
 /// }
@@ -92,7 +97,13 @@ impl PostDominatorTree {
     /// Returns None for the exit node (which has no post-dominator).
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
+    /// # use mirage::cfg::post_dominators::PostDominatorTree;
+    /// # use mirage::cfg::Cfg;
+    /// # use petgraph::graph::NodeIndex;
+    /// # let graph: Cfg = unimplemented!();
+    /// # let post_dom_tree = PostDominatorTree::new(&graph).unwrap();
+    /// # let node = NodeIndex::new(0);
     /// if let Some(ipdom) = post_dom_tree.immediate_post_dominator(node) {
     ///     println!("Immediately post-dominated by {:?}", ipdom);
     /// } else {
@@ -109,7 +120,14 @@ impl PostDominatorTree {
     /// By definition, every node post-dominates itself.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
+    /// # use mirage::cfg::post_dominators::PostDominatorTree;
+    /// # use mirage::cfg::Cfg;
+    /// # use petgraph::graph::NodeIndex;
+    /// # let graph: Cfg = unimplemented!();
+    /// # let post_dom_tree = PostDominatorTree::new(&graph).unwrap();
+    /// # let exit = NodeIndex::new(0);
+    /// # let node = NodeIndex::new(1);
     /// if post_dom_tree.post_dominates(exit, node) {
     ///     println!("exit post-dominates node (always true for nodes that can reach exit)");
     /// }
@@ -197,8 +215,11 @@ impl<'a> Iterator for PostDominators<'a> {
 /// This is a shorthand for PostDominatorTree::new().
 ///
 /// # Example
-/// ```rust
-/// let post_dom_tree = compute_post_dominator_tree(&cfg)?;
+/// ```rust,no_run
+/// # use mirage::cfg::post_dominators::compute_post_dominator_tree;
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// let post_dom_tree = compute_post_dominator_tree(&graph).unwrap();
 /// ```
 pub fn compute_post_dominator_tree(cfg: &Cfg) -> Option<PostDominatorTree> {
     PostDominatorTree::new(cfg)

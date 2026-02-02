@@ -57,8 +57,10 @@ impl NaturalLoop {
 /// - No back-edges exist (no loops)
 ///
 /// # Example
-/// ```rust
-/// let loops = detect_natural_loops(&cfg);
+/// ```rust,no_run
+/// # use mirage::cfg::loops::detect_natural_loops;
+/// # let graph = unimplemented!();
+/// let loops = detect_natural_loops(&graph);
 /// for loop_ in &loops {
 ///     println!("Loop header: {:?}", loop_.header);
 ///     println!("Loop body size: {}", loop_.size());
@@ -139,8 +141,10 @@ fn compute_loop_body(cfg: &Cfg, header: NodeIndex, tail: NodeIndex) -> HashSet<N
 /// A node is a loop header if it's the target of a back-edge.
 ///
 /// # Example
-/// ```rust
-/// let headers = find_loop_headers(&cfg);
+/// ```rust,no_run
+/// # use mirage::cfg::loops::find_loop_headers;
+/// # let graph = unimplemented!();
+/// let headers = find_loop_headers(&graph);
 /// for header in headers {
 ///     println!("Node {:?} is a loop header", header);
 /// }

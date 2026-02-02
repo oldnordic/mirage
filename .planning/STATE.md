@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 9 of 9 (MIR Integration & Database Loading) - COMPLETE
-Plan: 3 of 3 (CLI command database loading integration) - Complete
-Status: All CLI analysis commands now load CFG from database. Error handling directs users to 'mirage index'. Phase 9 complete.
-Last activity: 2026-02-02 - Completed 09-03 CLI database loading integration
+Plan: 4 of 4 (blast-zone command) - Complete
+Status: All Phase 9 features complete - MIR extraction, database loading, and blast-zone impact analysis. Mirage v1.0 feature-complete.
+Last activity: 2026-02-02 - Completed 09-04 blast-zone command
 
-Progress: [██████████████] 100% (9 phases complete, 43/43 plans done)
+Progress: [██████████████] 100% (9 phases complete, 44/44 plans done)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 39
+- Total plans completed: 44
 - Average duration: 5.3 min
-- Total execution time: 3.4 hours
+- Total execution time: 3.9 hours
 
 **By Phase:**
 
@@ -36,6 +36,7 @@ Progress: [██████████████] 100% (9 phases complete, 
 | 06-cli-interface | 7 | 7/7 | 5.6 min |
 | 07-llm-integration | 4 | 4/4 | 4.5 min |
 | 08-drift-remediation | 6 | 6/6 | 11.3 min |
+| 09-mir-integration-database-loading | 4 | 4/4 | 5.5 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -362,6 +363,13 @@ Recent decisions affecting current work:
 - unreachable() command scans all functions from database (no function argument)
 - Tests simplified to argument parsing rather than full command execution
 
+**From 09-04 (blast-zone Command):**
+- BFS traversal with depth tracking instead of DFS for more predictable impact scope
+- Block-based and path-based analysis share same reachability core (find_reachable_from_block)
+- max_depth defaults to 100 (effectively unlimited) for practical use
+- Error path filtering via --include-errors flag for targeted analysis
+- BlockImpact and PathImpact structs for structured impact results
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -369,11 +377,11 @@ Recent decisions affecting current work:
 - Completed: Path caching, loops detection, patterns detection, dominance frontiers, doctest fixes, --show-branches flag
 - Deferred: `mirage index`, `mirage blast-zone` (moved to Phase 9)
 
-**Phase 9 added (2026-02-02):** MIR Integration & Database Loading
+**Phase 9 added (2026-02-02):** MIR Integration & Database Loading - COMPLETE
 - Trigger: Code drift analysis after Phase 8 completion
-- Stub commands to implement: `mirage index` (MIR extraction via Charon), `mirage blast-zone` (path-based impact analysis)
-- Database loading: 7 commands need database loading instead of test CFGs (paths, cfg, dominators, loops, unreachable, patterns, frontiers)
-- Requirements: MIR-01 (Charon integration), MIR-02 (ULLBC parsing), MIR-03 (CFG storage), CLI-DB-01 (load CFG from DB), CLI-DB-02 (function lookup), BLAST-01 (block impact), BLAST-02 (path impact)
+- Completed: `mirage index` (MIR extraction via Charon), `mirage blast-zone` (path-based impact analysis), database loading for all CLI commands
+- Database loading: All 7 analysis commands now load CFG from database (paths, cfg, dominators, loops, unreachable, patterns, frontiers)
+- Requirements delivered: MIR-01 (Charon integration), MIR-02 (ULLBC parsing), MIR-03 (CFG storage), CLI-DB-01 (load CFG from DB), CLI-DB-02 (function lookup), BLAST-01 (block impact), BLAST-02 (path impact)
 
 ### Pending Todos
 
@@ -387,6 +395,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 09-03 CLI database loading integration
+Stopped at: Completed 09-04 blast-zone command implementation
 Resume file: None
-Phase 9 COMPLETE (3/3 plans). All 9 phases complete (43/43 plans done)
+Phase 9 COMPLETE (4/4 plans). All 9 phases complete (44/44 plans done)

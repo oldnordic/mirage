@@ -5,24 +5,24 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** All phases complete - Milestone achieved
+**Current focus:** Phase 8: Drift Remediation - Wire unimplemented features
 **Last focus:** Phase 7: LLM Integration (complete)
 
 ## Current Position
 
-Phase: 7 of 7 (LLM Integration) - Complete
-Plan: All 7 phases complete with 33 plans executed
-Status: Project v1.0 complete. All 7 phases, 51 requirements satisfied. CLI ready with LLM-friendly JSON output, source location mapping, error remediation, and natural language summaries.
-Last activity: 2026-02-01 - Completed Phase 7 verification
+Phase: 8 of 8 (Drift Remediation) - In Progress
+Plan: 6 plans to wire unimplemented features and fix gaps
+Status: Executing Phase 8 to implement stub commands, wire path caching, add CLI commands for unused features, fix doctests, and implement --show-branches.
+Last activity: 2026-02-02 - Completed 08-04: Fix doctest variable names
 
-Progress: [█████████████████] 100% (All 7 phases complete, 33/33 plans done)
+Progress: [████████████████░] 89.7% (7 phases complete, 35/39 plans done, 4 remaining in Phase 8)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 33
-- Average duration: 4.8 min
-- Total execution time: 2.6 hours
+- Total plans completed: 35
+- Average duration: 4.9 min
+- Total execution time: 2.9 hours
 
 **By Phase:**
 
@@ -35,6 +35,7 @@ Progress: [█████████████████] 100% (All 7 phas
 | 05-path-enumeration | 6 | 6/6 | 4.6 min |
 | 06-cli-interface | 7 | 7/7 | 5.6 min |
 | 07-llm-integration | 4 | 4/4 | 4.5 min |
+| 08-drift-remediation | 6 | 2/6 | 10.5 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -293,6 +294,21 @@ Recent decisions affecting current work:
 - describe_block() made public for external tool/testing access
 - PathSummary.summary field now populated with natural language descriptions via summarize_path()
 
+**From 08-04 (Fix Doctest Variable Names):**
+- Use no_run flag for incomplete documentation examples instead of full executable code
+- Rename cfg variable to graph in all doctests to avoid collision with Rust's built-in cfg! macro
+- Provide complete imports and type annotations in doctest examples for self-contained documentation
+- Fixed all 34 failing doctests across 7 files (loops, patterns, dominance_frontiers, reachability, paths, dominators, post_dominators)
+
+### Roadmap Evolution
+
+**Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
+- Trigger: Code drift analysis found 6 categories of gaps
+- Stub commands: `mirage index`, `mirage blast-zone`
+- Unused features: Path caching, loops detection, patterns detection, dominance frontiers
+- Doc test failures: 34 failing due to cfg! macro collision (FIXED in 08-04)
+- Placeholder: --show-branches shows placeholder message
+
 ### Pending Todos
 
 None yet.
@@ -304,6 +320,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-01
-Stopped at: Completed 07-04: Control flow natural language summaries
+Last session: 2026-02-02
+Stopped at: Completed 08-04: Fix doctest variable names
 Resume file: None

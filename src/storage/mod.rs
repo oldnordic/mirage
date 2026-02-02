@@ -731,6 +731,88 @@ pub fn get_function_hash(conn: &Connection, function_id: i64) -> Option<String> 
     ).optional().ok().flatten()
 }
 
+/// Get the function name for a given block ID
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `function_id` - ID of the function
+///
+/// # Returns
+///
+/// * `Some(name)` - The function name if found
+/// * `None` - Function not found
+pub fn get_function_name(conn: &Connection, function_id: i64) -> Option<String> {
+    conn.query_row(
+        "SELECT name FROM graph_entities WHERE id = ?",
+        params![function_id],
+        |row| row.get(0)
+    ).optional().ok().flatten()
+}
+
+/// Get path elements (blocks in order) for a given path_id
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `path_id` - The path ID to query
+///
+/// # Returns
+///
+/// * `Ok(Vec<BlockId>)` - Ordered list of block IDs in the path
+/// * `Err(...)` - Error if query fails or path not found
+pub fn get_path_elements(conn: &Connection, path_id: &str) -> Result<Vec<crate::cfg::BlockId>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT block_id FROM cfg_path_elements
+         WHERE path_id = ?
+         ORDER BY sequence_order ASC",
+    ).context("Failed to prepare path elements query")?;
+
+    let blocks: Vec<crate::cfg::BlockId> = stmt
+        .query_map(params![path_id], |row| {
+            Ok(row.get::<_, i64>(0)? as usize)
+        })
+        .context("Failed to execute path elements query")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Failed to collect path elements")?;
+
+    if blocks.is_empty() {
+        anyhow::bail!("Path '{}' not found in cache", path_id);
+    }
+
+    Ok(blocks)
+}
+
+/// Compute path impact from the database
+///
+/// This loads the path's blocks from the database and computes
+/// the impact by aggregating reachable blocks from each path block.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `path_id` - The path ID to analyze
+/// * `cfg` - The control flow graph
+/// * `max_depth` - Maximum depth for impact analysis
+///
+/// # Returns
+///
+/// * `Ok(PathImpact)` - Aggregated impact data
+/// * `Err(...)` - Error if path not found or computation fails
+pub fn compute_path_impact_from_db(
+    conn: &Connection,
+    path_id: &str,
+    cfg: &crate::cfg::Cfg,
+    max_depth: Option<usize>,
+) -> Result<crate::cfg::PathImpact> {
+    let path_blocks = get_path_elements(conn, path_id)?;
+
+    let mut impact = crate::cfg::compute_path_impact(cfg, &path_blocks, max_depth);
+    impact.path_id = path_id.to_string();
+
+    Ok(impact)
+}
+
 /// Create a minimal Magellan-compatible database at the given path
 ///
 /// This creates a new database with the minimal Magellan schema required
@@ -1475,5 +1557,142 @@ mod tests {
         assert!(edges.contains(&(0, 2, EdgeType::FalseBranch)));
         assert!(edges.contains(&(1, 3, EdgeType::Fallthrough)));
         assert!(edges.contains(&(2, 3, EdgeType::Call)));
+    }
+
+    #[test]
+    fn test_get_function_name() {
+        let conn = create_test_db_with_schema();
+
+        // Insert a test function
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "my_test_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Get function name
+        let name = get_function_name(&conn, function_id);
+        assert_eq!(name, Some("my_test_func".to_string()));
+
+        // Non-existent function
+        let name = get_function_name(&conn, 9999);
+        assert_eq!(name, None);
+    }
+
+    #[test]
+    fn test_get_path_elements() {
+        let conn = create_test_db_with_schema();
+
+        // Insert a test function and path
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "path_test_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Insert a path
+        conn.execute(
+            "INSERT INTO cfg_paths (path_id, function_id, path_kind, entry_block, exit_block, length, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params!("test_path_abc123", function_id, "normal", 0, 2, 3, 1000),
+        ).unwrap();
+
+        // Insert path elements
+        conn.execute(
+            "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
+            params!("test_path_abc123", 0, 0),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
+            params!("test_path_abc123", 1, 1),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
+            params!("test_path_abc123", 2, 2),
+        ).unwrap();
+
+        // Get path elements
+        let blocks = get_path_elements(&conn, "test_path_abc123").unwrap();
+        assert_eq!(blocks, vec![0, 1, 2]);
+
+        // Non-existent path
+        let result = get_path_elements(&conn, "nonexistent_path");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_compute_path_impact_from_db() {
+        use crate::cfg::{BasicBlock, BlockKind, Terminator};
+
+        let conn = create_test_db_with_schema();
+
+        // Insert a test function
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "impact_test_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Create a simple CFG: 0 -> 1 -> 2 -> 3
+        let mut cfg = crate::cfg::Cfg::new();
+        let b0 = cfg.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+        let b1 = cfg.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+        });
+        let b2 = cfg.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+        let b3 = cfg.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+        cfg.add_edge(b0, b1, crate::cfg::EdgeType::Fallthrough);
+        cfg.add_edge(b1, b2, crate::cfg::EdgeType::Fallthrough);
+        cfg.add_edge(b2, b3, crate::cfg::EdgeType::Fallthrough);
+
+        // Insert a path: 0 -> 1 -> 3
+        conn.execute(
+            "INSERT INTO cfg_paths (path_id, function_id, path_kind, entry_block, exit_block, length, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params!("impact_test_path", function_id, "normal", 0, 3, 3, 1000),
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
+            params!("impact_test_path", 0, 0),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
+            params!("impact_test_path", 1, 1),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
+            params!("impact_test_path", 2, 3),
+        ).unwrap();
+
+        // Compute impact
+        let impact = compute_path_impact_from_db(&conn, "impact_test_path", &cfg, None).unwrap();
+
+        assert_eq!(impact.path_id, "impact_test_path");
+        assert_eq!(impact.path_length, 3);
+        // Block 2 is not in the path but is reachable from block 1
+        assert!(impact.unique_blocks_affected.contains(&2));
     }
 }

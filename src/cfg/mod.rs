@@ -26,7 +26,7 @@ pub use export::{export_dot, export_json, CFGExport};
 pub use loops::{detect_natural_loops, find_loop_headers, is_loop_header, NaturalLoop};
 pub use paths::{Path, PathKind, PathLimits, check_path_explosion, enumerate_paths, enumerate_paths_cached, enumerate_paths_cached_with_context, enumerate_paths_with_context, estimate_path_count, EnumerationContext, hash_path, get_or_enumerate_paths};
 pub use patterns::{detect_if_else_patterns, detect_match_patterns, classify_branch, IfElsePattern, MatchPattern, BranchType, detect_all_patterns};
-pub use reachability::{find_unreachable, find_reachable, is_reachable_from_entry, can_reach, can_reach_cached, ReachabilityCache, unreachable_block_ids};
+pub use reachability::{find_unreachable, find_reachable, is_reachable_from_entry, can_reach, can_reach_cached, ReachabilityCache, unreachable_block_ids, find_reachable_from_block, compute_path_impact, BlockImpact, PathImpact};
 pub use summary::{summarize_path, describe_block, summarize_cfg};
 pub use mir::ullbc_to_cfg;
 pub use source::{CharonSpan, SourceLocation};

@@ -220,12 +220,20 @@ pub struct VerifyArgs {
 
 #[derive(Parser, Debug, Clone)]
 pub struct BlastZoneArgs {
-    /// Symbol ID or name
+    /// Function symbol ID or name (for block-based analysis)
     #[arg(long)]
-    pub symbol: String,
+    pub function: Option<String>,
+
+    /// Block ID to analyze impact from (default: entry block 0)
+    #[arg(long)]
+    pub block_id: Option<usize>,
+
+    /// Path ID to analyze impact for
+    #[arg(long)]
+    pub path_id: Option<String>,
 
     /// Maximum depth to traverse
-    #[arg(long, default_value_t = 3)]
+    #[arg(long, default_value_t = 100)]
     pub max_depth: usize,
 
     /// Include error paths in analysis
@@ -521,6 +529,26 @@ struct NodeFrontier {
 struct IteratedFrontierResponse {
     function: String,
     iterated_frontier: Vec<usize>,
+}
+
+/// Response for block impact analysis (blast zone)
+#[derive(serde::Serialize)]
+struct BlockImpactResponse {
+    function: String,
+    block_id: usize,
+    reachable_blocks: Vec<usize>,
+    reachable_count: usize,
+    max_depth: usize,
+    has_cycles: bool,
+}
+
+/// Response for path impact analysis (blast zone)
+#[derive(serde::Serialize)]
+struct PathImpactResponse {
+    path_id: String,
+    path_length: usize,
+    unique_blocks_affected: Vec<usize>,
+    impact_count: usize,
 }
 
 // ============================================================================
@@ -2119,10 +2147,294 @@ pub mod cmds {
         Ok(())
     }
 
-    pub fn blast_zone(_args: BlastZoneArgs) -> Result<()> {
-        // TODO: Implement path-based impact analysis
-        output::error("Blast zone analysis not yet implemented");
-        std::process::exit(1);
+    pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
+        use crate::cfg::{find_reachable_from_block, load_cfg_from_db, resolve_function_name};
+        use crate::storage::{compute_path_impact_from_db, get_function_name, MirageDb};
+        use rusqlite::OptionalExtension;
+
+        // Resolve database path
+        let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // Open database (follows status command pattern for error handling)
+        let db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
+            Err(_e) => {
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::database_not_found(&db_path);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", db_path));
+                    output::info("Hint: Run 'mirage index' to create the database");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
+            }
+        };
+
+        // Determine query type: path-based or block-based
+        if let Some(ref path_id) = args.path_id {
+            // Path-based impact analysis
+            let path_id_trimmed = path_id.trim();
+
+            // Validate path_id format (basic BLAKE3 hex check)
+            if path_id_trimmed.len() < 10 {
+                let msg = format!("Invalid path_id format: '{}'", path_id_trimmed);
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::new("InvalidInput", &msg, output::E_INVALID_INPUT);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_USAGE);
+                } else {
+                    output::error(&msg);
+                    output::info("Path ID should be a BLAKE3 hash (64 hex characters)");
+                    std::process::exit(output::EXIT_USAGE);
+                }
+            }
+
+            // Get path metadata to find function_id
+            let (function_id, path_kind): (i64, String) = match db.conn().query_row(
+                "SELECT function_id, path_kind FROM cfg_paths WHERE path_id = ?1",
+                rusqlite::params![path_id_trimmed],
+                |row| Ok((row.get(0)?, row.get(1)?))
+            ).optional() {
+                Ok(Some(data)) => data,
+                Ok(None) => {
+                    let msg = format!("Path '{}' not found in cache", path_id_trimmed);
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::new("PathNotFound", &msg, output::E_PATH_NOT_FOUND);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_FILE_NOT_FOUND);
+                    } else {
+                        output::error(&msg);
+                        output::info("Hint: Run 'mirage paths' to enumerate paths first");
+                        std::process::exit(output::EXIT_FILE_NOT_FOUND);
+                    }
+                }
+                Err(e) => {
+                    let msg = format!("Failed to query path: {}", e);
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::new("DatabaseError", &msg, output::E_DATABASE_NOT_FOUND);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&msg);
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
+                }
+            };
+
+            // Filter by path_kind if include_errors is false
+            if !args.include_errors && path_kind == "error" {
+                let msg = format!("Path '{}' is an error path (use --include-errors to analyze)", path_id_trimmed);
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::new("ErrorPathExcluded", &msg, output::E_INVALID_INPUT);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_USAGE);
+                } else {
+                    output::error(&msg);
+                    output::info("Use --include-errors to include error paths in analysis");
+                    std::process::exit(output::EXIT_USAGE);
+                }
+            }
+
+            // Load CFG for the function
+            let cfg = match load_cfg_from_db(db.conn(), function_id) {
+                Ok(cfg) => cfg,
+                Err(_e) => {
+                    let msg = format!("Failed to load CFG for function_id {}", function_id);
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::new("CgfLoadError", &msg, output::E_CFG_ERROR);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&msg);
+                        output::info("The function may be corrupted. Try re-running 'mirage index'");
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
+                }
+            };
+
+            // Get function name for display
+            let function_name = get_function_name(db.conn(), function_id)
+                .unwrap_or_else(|| format!("<function_{}>", function_id));
+
+            // Compute path impact
+            let max_depth = if args.max_depth == 100 { None } else { Some(args.max_depth) };
+            let impact = match compute_path_impact_from_db(db.conn(), path_id_trimmed, &cfg, max_depth) {
+                Ok(impact) => impact,
+                Err(e) => {
+                    let msg = format!("Failed to compute path impact: {}", e);
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::new("ImpactError", &msg, output::E_CFG_ERROR);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_ERROR);
+                    } else {
+                        output::error(&msg);
+                        std::process::exit(output::EXIT_ERROR);
+                    }
+                }
+            };
+
+            // Output
+            match cli.output {
+                OutputFormat::Human => {
+                    println!("Path Impact Analysis");
+                    println!();
+                    println!("Path ID: {}", impact.path_id);
+                    println!("Function: {}", function_name);
+                    println!("Path kind: {}", path_kind);
+                    println!("Path length: {} blocks", impact.path_length);
+                    println!();
+                    println!("Impact Scope:");
+                    println!("  Unique blocks affected: {}", impact.impact_count);
+                    if impact.impact_count > 0 {
+                        println!("  Affected blocks: {:?}", impact.unique_blocks_affected);
+                    } else {
+                        println!("  Affected blocks: (none - path has no downstream impact)");
+                    }
+                    if let Some(depth) = max_depth {
+                        println!("  Max depth: {}", depth);
+                    } else {
+                        println!("  Max depth: unlimited");
+                    }
+                }
+                OutputFormat::Json | OutputFormat::Pretty => {
+                    let response = PathImpactResponse {
+                        path_id: impact.path_id.clone(),
+                        path_length: impact.path_length,
+                        unique_blocks_affected: impact.unique_blocks_affected,
+                        impact_count: impact.impact_count,
+                    };
+                    let wrapper = output::JsonResponse::new(response);
+                    match cli.output {
+                        OutputFormat::Json => println!("{}", wrapper.to_json()),
+                        OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+
+        } else {
+            // Block-based impact analysis
+            // Get function from args
+            let function_ref = args.function.as_ref().expect("--function is required for block-based analysis");
+
+            // Resolve function name/ID to function_id
+            let function_id = match resolve_function_name(db.conn(), function_ref) {
+                Ok(id) => id,
+                Err(_e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::function_not_found(function_ref);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!("Function '{}' not found in database", function_ref));
+                        output::info("Hint: Run 'mirage index' to index your code");
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
+                }
+            };
+
+            // Get function name for display
+            let function_name = get_function_name(db.conn(), function_id)
+                .unwrap_or_else(|| format!("<function_{}>", function_id));
+
+            // Load CFG from database
+            let cfg = match load_cfg_from_db(db.conn(), function_id) {
+                Ok(cfg) => cfg,
+                Err(_e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::new(
+                            "CgfLoadError",
+                            &format!("Failed to load CFG for function '{}'", function_ref),
+                            output::E_CFG_ERROR,
+                        );
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!("Failed to load CFG for function '{}'", function_ref));
+                        output::info("The function may be corrupted. Try re-running 'mirage index'");
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
+                }
+            };
+
+            // Determine block ID (default to entry block 0)
+            let block_id = args.block_id.unwrap_or(0);
+
+            // Validate block_id exists in CFG
+            let block_exists = cfg.node_indices().any(|n| cfg[n].id == block_id);
+            if !block_exists {
+                let valid_blocks: Vec<usize> = cfg.node_indices()
+                    .map(|n| cfg[n].id)
+                    .collect();
+                let msg = format!("Block {} not found in function '{}'. Valid blocks: {:?}", block_id, function_ref, valid_blocks);
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::new("BlockNotFound", &msg, output::E_BLOCK_NOT_FOUND);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_VALIDATION);
+                } else {
+                    output::error(&msg);
+                    std::process::exit(output::EXIT_VALIDATION);
+                }
+            }
+
+            // Compute block impact
+            let max_depth = if args.max_depth == 100 { None } else { Some(args.max_depth) };
+            let impact = find_reachable_from_block(&cfg, block_id, max_depth);
+
+            // Output
+            match cli.output {
+                OutputFormat::Human => {
+                    println!("Block Impact Analysis (Blast Zone)");
+                    println!();
+                    println!("Function: {}", function_name);
+                    println!("Source block: {}", impact.source_block_id);
+                    println!();
+                    println!("Impact Scope:");
+                    println!("  Reachable blocks: {}", impact.reachable_count);
+                    if impact.reachable_count > 0 {
+                        println!("  Affected blocks: {:?}", impact.reachable_blocks);
+                    } else {
+                        println!("  Affected blocks: (none - block has no downstream impact)");
+                    }
+                    println!("  Max depth reached: {}", impact.max_depth_reached);
+                    println!("  Contains cycles: {}", if impact.has_cycles { "yes (loop detected)" } else { "no" });
+                    if let Some(depth) = max_depth {
+                        println!("  Depth limit: {}", depth);
+                    } else {
+                        println!("  Depth limit: unlimited");
+                    }
+                }
+                OutputFormat::Json | OutputFormat::Pretty => {
+                    let response = BlockImpactResponse {
+                        function: function_name,
+                        block_id: impact.source_block_id,
+                        reachable_blocks: impact.reachable_blocks,
+                        reachable_count: impact.reachable_count,
+                        max_depth: impact.max_depth_reached,
+                        has_cycles: impact.has_cycles,
+                    };
+                    let wrapper = output::JsonResponse::new(response);
+                    match cli.output {
+                        OutputFormat::Json => println!("{}", wrapper.to_json()),
+                        OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn patterns(args: &PatternsArgs, cli: &Cli) -> Result<()> {

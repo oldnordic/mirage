@@ -176,6 +176,181 @@ impl ReachabilityCache {
     }
 }
 
+/// Result of block impact analysis
+///
+/// Describes the "blast zone" - all blocks reachable from a given source block.
+/// This is useful for understanding the impact scope of code changes.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BlockImpact {
+    /// The source block from which impact was analyzed
+    pub source_block_id: BlockId,
+    /// All blocks reachable from the source (by BlockId, not NodeIndex)
+    pub reachable_blocks: Vec<BlockId>,
+    /// Total count of reachable blocks
+    pub reachable_count: usize,
+    /// Maximum traversal depth reached during analysis
+    pub max_depth_reached: usize,
+    /// Whether the impact contains cycles (loops)
+    pub has_cycles: bool,
+}
+
+/// Find all blocks reachable from a specific starting block
+///
+/// Unlike `find_reachable` which starts from entry, this starts from any block.
+/// Useful for impact analysis: "what happens if I change this block?"
+///
+/// # Arguments
+///
+/// * `cfg` - The control flow graph
+/// * `start_block_id` - The BlockId (not NodeIndex) to start from
+/// * `max_depth` - Maximum depth to traverse (None for unlimited)
+///
+/// # Returns
+///
+/// * `BlockImpact` struct with all reachable blocks and metadata
+///
+/// # Example
+/// ```rust,no_run
+/// # use mirage::cfg::reachability::find_reachable_from_block;
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// let impact = find_reachable_from_block(&graph, 5, Some(10));
+/// println!("Block 5 affects {} blocks", impact.reachable_count);
+/// ```
+pub fn find_reachable_from_block(
+    cfg: &Cfg,
+    start_block_id: BlockId,
+    max_depth: Option<usize>,
+) -> BlockImpact {
+    use std::collections::{HashSet, VecDeque};
+
+    // Find the NodeIndex for the start BlockId
+    let start_node = match cfg.node_indices().find(|&n| cfg[n].id == start_block_id) {
+        Some(n) => n,
+        None => {
+            // Block not found in CFG - return empty impact
+            return BlockImpact {
+                source_block_id: start_block_id,
+                reachable_blocks: vec![],
+                reachable_count: 0,
+                max_depth_reached: 0,
+                has_cycles: false,
+            };
+        }
+    };
+
+    let max_depth = max_depth.unwrap_or(usize::MAX);
+
+    // BFS traversal with depth tracking
+    let mut visited: HashSet<NodeIndex> = HashSet::new();
+    let mut queue: VecDeque<(NodeIndex, usize)> = VecDeque::new();
+    let mut reachable_blocks = Vec::new();
+    let mut max_depth_reached = 0;
+    let mut has_cycles = false;
+
+    queue.push_back((start_node, 0));
+    visited.insert(start_node);
+
+    while let Some((node, depth)) = queue.pop_front() {
+        max_depth_reached = max_depth_reached.max(depth);
+
+        // Add the block's ID to reachable blocks
+        let block_id = cfg[node].id;
+        reachable_blocks.push(block_id);
+
+        // Stop at max_depth
+        if depth >= max_depth {
+            continue;
+        }
+
+        // Explore neighbors
+        for neighbor in cfg.neighbors(node) {
+            if visited.contains(&neighbor) {
+                // We've seen this node before - indicates a cycle
+                has_cycles = true;
+            } else {
+                visited.insert(neighbor);
+                queue.push_back((neighbor, depth + 1));
+            }
+        }
+    }
+
+    // Remove the source block from reachable blocks (it's not "impact", it's the source)
+    reachable_blocks.retain(|&id| id != start_block_id);
+
+    let reachable_count = reachable_blocks.len();
+
+    BlockImpact {
+        source_block_id: start_block_id,
+        reachable_blocks,
+        reachable_count,
+        max_depth_reached,
+        has_cycles,
+    }
+}
+
+/// Result of path impact analysis
+///
+/// Aggregates impact across all blocks in a path.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PathImpact {
+    /// The path ID analyzed
+    pub path_id: String,
+    /// Number of blocks in the path
+    pub path_length: usize,
+    /// Unique blocks affected by this path (union of all block blast zones)
+    pub unique_blocks_affected: Vec<BlockId>,
+    /// Count of unique blocks affected
+    pub impact_count: usize,
+}
+
+/// Compute impact analysis for a path by aggregating block impacts
+///
+/// This function computes the union of all blocks reachable from any block
+/// in the given path. This represents the full "blast zone" of the path.
+///
+/// # Arguments
+///
+/// * `cfg` - The control flow graph
+/// * `path_block_ids` - BlockIds in the path (in order)
+/// * `max_depth` - Maximum depth to traverse from each block
+///
+/// # Returns
+///
+/// * `PathImpact` struct with aggregated impact data
+pub fn compute_path_impact(
+    cfg: &Cfg,
+    path_block_ids: &[BlockId],
+    max_depth: Option<usize>,
+) -> PathImpact {
+    use std::collections::HashSet;
+
+    let mut all_affected: HashSet<BlockId> = HashSet::new();
+
+    // For each block in the path, compute its impact
+    for &block_id in path_block_ids {
+        let impact = find_reachable_from_block(cfg, block_id, max_depth);
+        all_affected.extend(impact.reachable_blocks);
+    }
+
+    // Remove path blocks themselves from affected (they're the source)
+    for &block_id in path_block_ids {
+        all_affected.remove(&block_id);
+    }
+
+    let mut affected_vec: Vec<BlockId> = all_affected.into_iter().collect();
+    affected_vec.sort();
+
+    let impact_count = affected_vec.len();
+
+    PathImpact {
+        path_id: "[computed]".to_string(), // Will be set by caller
+        path_length: path_block_ids.len(),
+        unique_blocks_affected: affected_vec,
+        impact_count,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -451,5 +626,271 @@ mod tests {
         assert!(cache.can_reach(&g, nodes[0], nodes[3]));
         assert!(cache.can_reach(&g, nodes[1], nodes[3]));
         assert!(!cache.can_reach(&g, nodes[3], nodes[0]));
+    }
+
+    #[test]
+    fn test_find_reachable_from_block_linear() {
+        let mut g = DiGraph::new();
+
+        // Create: 0 -> 1 -> 2 -> 3
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::Fallthrough);
+        g.add_edge(b2, b3, EdgeType::Fallthrough);
+
+        // From block 0, can reach 1, 2, 3
+        let impact = find_reachable_from_block(&g, 0, None);
+        assert_eq!(impact.source_block_id, 0);
+        assert_eq!(impact.reachable_count, 3);
+        assert!(impact.reachable_blocks.contains(&1));
+        assert!(impact.reachable_blocks.contains(&2));
+        assert!(impact.reachable_blocks.contains(&3));
+        assert!(!impact.has_cycles);
+    }
+
+    #[test]
+    fn test_find_reachable_from_block_diamond() {
+        let mut g = DiGraph::new();
+
+        // Diamond: 0 -> 1, 0 -> 2, 1 -> 3, 2 -> 3
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::TrueBranch);
+        g.add_edge(b0, b2, EdgeType::FalseBranch);
+        g.add_edge(b1, b3, EdgeType::Fallthrough);
+        g.add_edge(b2, b3, EdgeType::Fallthrough);
+
+        // From block 0, can reach 1, 2, 3
+        let impact = find_reachable_from_block(&g, 0, None);
+        assert_eq!(impact.source_block_id, 0);
+        assert_eq!(impact.reachable_count, 3);
+        assert!(impact.reachable_blocks.contains(&1));
+        assert!(impact.reachable_blocks.contains(&2));
+        assert!(impact.reachable_blocks.contains(&3));
+    }
+
+    #[test]
+    fn test_find_reachable_from_block_max_depth() {
+        let mut g = DiGraph::new();
+
+        // Create: 0 -> 1 -> 2 -> 3
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::Fallthrough);
+        g.add_edge(b2, b3, EdgeType::Fallthrough);
+
+        // With max_depth=1, from block 0 can only reach block 1
+        let impact = find_reachable_from_block(&g, 0, Some(1));
+        assert_eq!(impact.source_block_id, 0);
+        assert_eq!(impact.reachable_count, 1);
+        assert!(impact.reachable_blocks.contains(&1));
+        assert!(!impact.reachable_blocks.contains(&2));
+        assert!(!impact.reachable_blocks.contains(&3));
+        assert_eq!(impact.max_depth_reached, 1);
+    }
+
+    #[test]
+    fn test_find_reachable_from_block_not_found() {
+        let g = DiGraph::new();
+
+        // Block 99 doesn't exist
+        let impact = find_reachable_from_block(&g, 99, None);
+        assert_eq!(impact.source_block_id, 99);
+        assert_eq!(impact.reachable_count, 0);
+        assert!(impact.reachable_blocks.is_empty());
+    }
+
+    #[test]
+    fn test_find_reachable_from_block_with_loop() {
+        let mut g = DiGraph::new();
+
+        // Create a loop: 0 -> 1 -> 2 -> 1 (back edge)
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 3 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::Fallthrough);
+        g.add_edge(b2, b1, EdgeType::LoopBack);  // Back edge
+        g.add_edge(b2, b3, EdgeType::LoopExit);
+
+        // From block 1, should detect cycle
+        let impact = find_reachable_from_block(&g, 1, Some(10));
+        assert_eq!(impact.source_block_id, 1);
+        assert!(impact.has_cycles);
+    }
+
+    #[test]
+    fn test_compute_path_impact() {
+        let mut g = DiGraph::new();
+
+        // Diamond: 0 -> 1, 0 -> 2, 1 -> 3, 2 -> 3
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::TrueBranch);
+        g.add_edge(b0, b2, EdgeType::FalseBranch);
+        g.add_edge(b1, b3, EdgeType::Fallthrough);
+        g.add_edge(b2, b3, EdgeType::Fallthrough);
+
+        // Path: 0 -> 1 -> 3
+        // From 0: reaches 1, 2, 3
+        // From 1: reaches 3
+        // From 3: reaches nothing (exit)
+        // Combined impact: {1, 2, 3} U {3} U {} = {1, 2, 3}
+        // Minus path blocks {0, 1, 3} = {2}
+        let impact = compute_path_impact(&g, &[0, 1, 3], None);
+        assert_eq!(impact.path_length, 3);
+        // Block 2 is the only block not in the path but reachable from it
+        assert!(impact.unique_blocks_affected.contains(&2));
     }
 }

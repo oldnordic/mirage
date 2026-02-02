@@ -13,16 +13,16 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 Phase: 8 of 8 (Drift Remediation) - In Progress
 Plan: 6 plans to wire unimplemented features and fix gaps
 Status: Executing Phase 8 to implement stub commands, wire path caching, add CLI commands for unused features, fix doctests, and implement --show-branches.
-Last activity: 2026-02-02 - Completed 08-03: Wire dominance frontiers command
+Last activity: 2026-02-02 - Completed 08-02: Wire branching patterns command
 
-Progress: [████████████████░] 92.3% (7 phases complete, 36/39 plans done, 3 remaining in Phase 8)
+Progress: [████████████████░] 94.9% (7 phases complete, 37/39 plans done, 2 remaining in Phase 8)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 36
+- Total plans completed: 37
 - Average duration: 5.0 min
-- Total execution time: 3.0 hours
+- Total execution time: 3.1 hours
 
 **By Phase:**
 
@@ -35,7 +35,7 @@ Progress: [████████████████░] 92.3% (7 phases 
 | 05-path-enumeration | 6 | 6/6 | 4.6 min |
 | 06-cli-interface | 7 | 7/7 | 5.6 min |
 | 07-llm-integration | 4 | 4/4 | 4.5 min |
-| 08-drift-remediation | 6 | 3/6 | 9.7 min |
+| 08-drift-remediation | 6 | 4/6 | 11.1 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -293,6 +293,15 @@ Recent decisions affecting current work:
 - Terminator descriptions use simple text format (e.g., "goto b1", "if b2|b3", "switch (3 targets)")
 - describe_block() made public for external tool/testing access
 - PathSummary.summary field now populated with natural language descriptions via summarize_path()
+
+**From 08-01 (Wire Natural Loops Command):**
+- CLI command `mirage loops --function FUNC` displays natural loops detected in function CFGs
+- LoopsResponse and LoopInfo structs for JSON output with header, back_edge_from, body_size, nesting_level, body_blocks
+- --verbose flag shows detailed loop body block IDs
+- Nesting level calculation uses recursive header containment check (0 for outermost, increments for inner loops)
+- Integration with detect_natural_loops() from Phase 3 via dominance-based back-edge detection
+- Commented out Patterns and Frontiers dispatch in main.rs (to be implemented in 08-02, 08-03)
+- Followed dominators() command pattern for consistency
 
 **From 08-04 (Fix Doctest Variable Names):**
 - Use no_run flag for incomplete documentation examples instead of full executable code

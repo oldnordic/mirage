@@ -2633,6 +2633,310 @@ mod paths_tests {
         // source_range should be None when no source locations exist
         assert!(summary.source_range.is_none(), "source_range should be None when CFG has no locations");
     }
+
+    // ------------------------------------------------------------------------
+    // Path Caching Tests
+    // ------------------------------------------------------------------------
+
+    /// Test that first call enumerates paths (cache miss)
+    #[test]
+    fn test_paths_cache_miss_first_call() {
+        use crate::cfg::get_or_enumerate_paths;
+        use crate::storage::create_schema;
+        use rusqlite::Connection;
+
+        // Create an in-memory database with Mirage schema
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        // Create Magellan schema first (required for Mirage schema)
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, 4, 3, 0)",
+            [],
+        ).unwrap();
+
+        // Create Mirage schema
+        create_schema(&mut conn).unwrap();
+
+        // Get test CFG and limits
+        let cfg = cmds::create_test_cfg();
+        let limits = PathLimits::default();
+        let test_function_id: i64 = 1;  // First auto-increment ID;
+        // Insert a test function entity (required for foreign key constraint)
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "test_func", "test.rs", "{}"),
+        ).unwrap();
+
+        // Enable foreign key enforcement
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        let test_function_hash: &str = "test_cfg";
+
+        // First call should enumerate (no cache)
+        let paths1 = get_or_enumerate_paths(
+            &cfg,
+            test_function_id,
+            test_function_hash,
+            &limits,
+            &mut conn,
+        ).unwrap();
+
+        // Verify we got paths
+        assert!(!paths1.is_empty(), "First call should enumerate and return paths");
+        assert_eq!(paths1.len(), 2, "Test CFG should have 2 paths");
+
+        // Verify paths were stored in database
+        let path_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            rusqlite::params![test_function_id],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(path_count, 2, "Paths should be stored in database after first call");
+
+        // Verify function_hash was stored
+        let stored_hash: Option<String> = conn.query_row(
+            "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
+            rusqlite::params![test_function_id],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(stored_hash.as_deref(), Some(test_function_hash), "Function hash should be stored");
+    }
+
+    /// Test that second call returns cached paths (cache hit)
+    #[test]
+    fn test_paths_cache_hit_second_call() {
+        use crate::cfg::get_or_enumerate_paths;
+        use crate::storage::create_schema;
+        use rusqlite::Connection;
+
+        // Create an in-memory database with Mirage schema
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        // Create Magellan schema first
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, 4, 3, 0)",
+            [],
+        ).unwrap();
+
+        // Create Mirage schema
+        create_schema(&mut conn).unwrap();
+        // Insert a test function entity (required for foreign key constraint)
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "test_func", "test.rs", "{}"),
+        ).unwrap();
+
+        // Enable foreign key enforcement
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+
+        // Get test CFG and limits
+        let cfg = cmds::create_test_cfg();
+        let limits = PathLimits::default();
+        let test_function_id: i64 = 1;  // First auto-increment ID;
+        let test_function_hash: &str = "test_cfg";
+
+        // First call - cache miss, enumerates and stores
+        let paths1 = get_or_enumerate_paths(
+            &cfg,
+            test_function_id,
+            test_function_hash,
+            &limits,
+            &mut conn,
+        ).unwrap();
+        // Verify hash was stored after first call
+        let stored_hash: Option<String> = conn.query_row(
+            "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
+            rusqlite::params![test_function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(stored_hash.as_deref(), Some(test_function_hash), "Hash should be stored after first call");
+
+        // Verify paths were stored
+        let path_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            rusqlite::params![test_function_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(path_count, 2, "Should have 2 paths stored after first call");
+
+        // Second call - cache hit, should return same paths
+        let paths2 = get_or_enumerate_paths(
+            &cfg,
+            test_function_id,
+            test_function_hash,
+            &limits,
+            &mut conn,
+        ).unwrap();
+
+        // Should return same number of paths
+        assert_eq!(paths2.len(), paths1.len(), "Cache hit should return same number of paths");
+
+        // Paths should have identical path_ids (cache hit returns same data)
+        let mut path_ids1: Vec<_> = paths1.iter().map(|p| &p.path_id).collect();
+        let mut path_ids2: Vec<_> = paths2.iter().map(|p| &p.path_id).collect();
+        path_ids1.sort();
+        path_ids2.sort();
+
+        assert_eq!(path_ids1, path_ids2, "Cache hit should return paths with same IDs");
+
+        // Verify path entries match
+        for (p1, p2) in paths1.iter().zip(paths2.iter()) {
+            assert_eq!(p1.path_id, p2.path_id, "Path IDs should match on cache hit");
+            assert_eq!(p1.kind, p2.kind, "Path kinds should match on cache hit");
+            assert_eq!(p1.blocks, p2.blocks, "Path blocks should match on cache hit");
+        }
+    }
+
+    /// Test that function hash change invalidates cache
+    #[test]
+    fn test_paths_cache_invalidation_on_hash_change() {
+        use crate::cfg::get_or_enumerate_paths;
+        use crate::storage::create_schema;
+        use rusqlite::Connection;
+
+        // Create an in-memory database with Mirage schema
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        // Create Magellan schema first
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, 4, 3, 0)",
+            [],
+        ).unwrap();
+
+        // Create Mirage schema
+        create_schema(&mut conn).unwrap();
+        // Insert a test function entity (required for foreign key constraint)
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "test_func", "test.rs", "{}"),
+        ).unwrap();
+
+        // Enable foreign key enforcement
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+
+        // Get test CFG and limits
+        let cfg = cmds::create_test_cfg();
+        let limits = PathLimits::default();
+        let test_function_id: i64 = 1;  // First auto-increment ID;
+        let test_function_hash_v1: &str = "test_cfg_v1";
+        let test_function_hash_v2: &str = "test_cfg_v2";
+
+        // First call with hash v1 - cache miss, enumerates and stores
+        let paths1 = get_or_enumerate_paths(
+            &cfg,
+            test_function_id,
+            test_function_hash_v1,
+            &limits,
+            &mut conn,
+        ).unwrap();
+
+        // Verify paths were stored
+        let stored_hash_v1: Option<String> = conn.query_row(
+            "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
+            rusqlite::params![test_function_id],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(stored_hash_v1.as_deref(), Some(test_function_hash_v1), "Hash v1 should be stored");
+
+        // Second call with different hash - cache invalidation, should re-enumerate
+        let paths2 = get_or_enumerate_paths(
+            &cfg,
+            test_function_id,
+            test_function_hash_v2,
+            &limits,
+            &mut conn,
+        ).unwrap();
+
+        // Should still return paths (re-enumerated with new hash)
+        assert!(!paths2.is_empty(), "Should re-enumerate after hash change");
+        assert_eq!(paths2.len(), paths1.len(), "Re-enumeration should produce same paths");
+
+        // Verify hash was updated in database
+        let stored_hash_v2: Option<String> = conn.query_row(
+            "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
+            rusqlite::params![test_function_id],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(stored_hash_v2.as_deref(), Some(test_function_hash_v2), "Hash v2 should replace v1");
+
+        // Verify old paths were invalidated
+        let path_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+            rusqlite::params![test_function_id],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(path_count, 2, "Should have 2 paths after invalidation (old replaced with new)");
+    }
 }
 
 // ============================================================================
@@ -2777,6 +3081,7 @@ mod unreachable_tests {
             kind: "Normal".to_string(),
             statements: vec!["stmt1".to_string(), "stmt2".to_string()],
             terminator: "Return".to_string(),
+            incoming_edges: vec![],
         };
 
         assert_eq!(block.block_id, 5);
@@ -2812,6 +3117,228 @@ mod unreachable_tests {
 
         // Test CFG should have no unreachable blocks
         assert_eq!(unreachable_indices.len(), 0, "Test CFG should have no unreachable blocks");
+    }
+
+    /// Test that --show-branches includes incoming edge details
+    #[test]
+    fn test_unreachable_show_branches_with_edges() {
+        use crate::cfg::reachability::find_unreachable;
+        use petgraph::visit::EdgeRef;
+
+        // Create a CFG with an unreachable block that HAS incoming edges
+        // This simulates a block that's only reachable from an unreachable source
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec!["let x = 1".to_string()],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec!["if x > 0".to_string()],
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 3,
+            },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Exit,
+            statements: vec!["return true".to_string()],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        // b3 and b4 are both unreachable, but b4 has an incoming edge from b3
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Normal,
+            statements: vec!["unreachable branch".to_string()],
+            terminator: Terminator::Goto { target: 4 },
+            source_location: None,
+        });
+
+        let b4 = g.add_node(BasicBlock {
+            id: 4,
+            kind: BlockKind::Exit,
+            statements: vec!["unreachable code".to_string()],
+            terminator: Terminator::Unreachable,
+            source_location: None,
+        });
+
+        // Only connect entry to b1, making b3 and b4 unreachable
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+        // b3 -> b4 edge exists, but both blocks are unreachable
+        g.add_edge(b3, b4, EdgeType::Fallthrough);
+
+        // Build UnreachableBlock structs with show_branches=true
+        let unreachable_indices = find_unreachable(&g);
+        let blocks: Vec<UnreachableBlock> = unreachable_indices
+            .iter()
+            .map(|&idx| {
+                let block = &g[idx];
+                let kind_str = format!("{:?}", block.kind);
+                let terminator_str = format!("{:?}", block.terminator);
+
+                // Collect incoming edges
+                let incoming_edges: Vec<IncomingEdge> = g
+                    .edge_references()
+                    .filter(|edge| edge.target() == idx)
+                    .map(|edge| {
+                        let source_block = &g[edge.source()];
+                        let edge_type = g.edge_weight(edge.id()).unwrap();
+                        IncomingEdge {
+                            from_block: source_block.id,
+                            edge_type: format!("{:?}", edge_type),
+                        }
+                    })
+                    .collect();
+
+                UnreachableBlock {
+                    block_id: block.id,
+                    kind: kind_str,
+                    statements: block.statements.clone(),
+                    terminator: terminator_str,
+                    incoming_edges,
+                }
+            })
+            .collect();
+
+        // Should find 2 unreachable blocks (3 and 4)
+        assert_eq!(blocks.len(), 2);
+
+        // Block 3 should have no incoming edges (isolated unreachable code)
+        let block3 = blocks.iter().find(|b| b.block_id == 3).unwrap();
+        assert_eq!(block3.incoming_edges.len(), 0);
+
+        // Block 4 should have 1 incoming edge from block 3
+        let block4 = blocks.iter().find(|b| b.block_id == 4).unwrap();
+        assert_eq!(block4.incoming_edges.len(), 1);
+        assert_eq!(block4.incoming_edges[0].from_block, 3);
+        assert_eq!(block4.incoming_edges[0].edge_type, "Fallthrough");
+    }
+
+    /// Test that --show-branches JSON output includes incoming_edges field
+    #[test]
+    fn test_unreachable_show_branches_json_output() {
+        use crate::cfg::reachability::find_unreachable;
+        use crate::output::JsonResponse;
+        use petgraph::visit::EdgeRef;
+
+        // Create the same CFG as above
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec!["let x = 1".to_string()],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec!["if x > 0".to_string()],
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 3,
+            },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Exit,
+            statements: vec!["return true".to_string()],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Normal,
+            statements: vec!["unreachable branch".to_string()],
+            terminator: Terminator::Goto { target: 4 },
+            source_location: None,
+        });
+
+        let b4 = g.add_node(BasicBlock {
+            id: 4,
+            kind: BlockKind::Exit,
+            statements: vec!["unreachable code".to_string()],
+            terminator: Terminator::Unreachable,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+        g.add_edge(b3, b4, EdgeType::Fallthrough);
+
+        // Build UnreachableBlock structs with incoming edges
+        let unreachable_indices = find_unreachable(&g);
+        let blocks: Vec<UnreachableBlock> = unreachable_indices
+            .iter()
+            .map(|&idx| {
+                let block = &g[idx];
+                UnreachableBlock {
+                    block_id: block.id,
+                    kind: format!("{:?}", block.kind),
+                    statements: block.statements.clone(),
+                    terminator: format!("{:?}", block.terminator),
+                    incoming_edges: g
+                        .edge_references()
+                        .filter(|edge| edge.target() == idx)
+                        .map(|edge| {
+                            let source_block = &g[edge.source()];
+                            let edge_type = g.edge_weight(edge.id()).unwrap();
+                            IncomingEdge {
+                                from_block: source_block.id,
+                                edge_type: format!("{:?}", edge_type),
+                            }
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+
+        let response = UnreachableResponse {
+            function: "test".to_string(),
+            total_functions: 1,
+            functions_with_unreachable: 1,
+            unreachable_count: 2,
+            blocks,
+        };
+
+        let wrapper = JsonResponse::new(response);
+        let json = wrapper.to_json();
+
+        // Verify JSON contains incoming_edges field
+        assert!(json.contains("\"incoming_edges\""));
+        // Verify block 4 has an incoming edge from block 3
+        assert!(json.contains("\"from_block\":3"));
+        assert!(json.contains("\"edge_type\":\"Fallthrough\""));
+    }
+
+    /// Test that IncomingEdge struct serializes correctly
+    #[test]
+    fn test_incoming_edge_serialization() {
+        let edge = IncomingEdge {
+            from_block: 5,
+            edge_type: "TrueBranch".to_string(),
+        };
+
+        let serialized = serde_json::to_string(&edge).unwrap();
+        assert!(serialized.contains("\"from_block\":5"));
+        assert!(serialized.contains("\"edge_type\":\"TrueBranch\""));
     }
 }
 

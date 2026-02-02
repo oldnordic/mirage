@@ -20,6 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: CLI Interface** - User-facing commands for all analysis types ✓ Completed 2026-02-01
 - [x] **Phase 7: LLM Integration** - Structured outputs for agent consumption ✓ Completed 2026-02-01
 - [x] **Phase 8: Drift Remediation** - Wire unimplemented features and fix gaps ✓ Completed 2026-02-02
+- [ ] **Phase 9: MIR Integration & Database Loading** - Implement index command, database loading, and blast zone 🚧 In Progress
 
 ## Phase Details
 
@@ -246,10 +247,37 @@ Plans:
 
 **Status**: ✓ Complete 2026-02-02
 
+### Phase 9: MIR Integration & Database Loading
+
+**Goal**: Implement the `mirage index` command for MIR extraction via Charon, wire database loading for all analysis commands, and implement blast zone impact analysis.
+
+**Depends on**: Phase 2 (MIR extraction infrastructure exists but not wired), Phase 5 (path enumeration), Phase 6 (CLI interface)
+
+**Requirements**: MIR-01, MIR-02, MIR-03, CLI-DB-01, CLI-DB-02, BLAST-01, BLAST-02
+
+**Success Criteria** (what must be TRUE):
+1. `mirage index --project PATH` extracts MIR via Charon and stores CFGs in database
+2. `mirage index --crate NAME` indexes specific crate with function-level CFGs
+3. `mirage index --incremental` only re-indexes changed functions (function_hash comparison)
+4. All analysis commands (paths, cfg, dominators, loops, patterns, frontiers) load CFGs from database instead of test data
+5. `mirage blast-zone --function SYMBOL --block-id N` shows all functions reachable from given block
+6. `mirage blast-zone --path-id ID` shows impact scope for specific execution path
+7. Database stores block-to-function mappings for impact analysis
+8. Charon binary integration works (spawning, parsing ULLBC JSON)
+
+**Plans**: 0 plans (to be created)
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 9 to break down)
+
+**Details**: [To be added during planning]
+
+**Status**: 🚧 In Progress 2026-02-02
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -261,9 +289,10 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 6. CLI Interface | 7/7 | ✓ Complete | 2026-02-01 |
 | 7. LLM Integration | 4/4 | ✓ Complete | 2026-02-01 |
 | 8. Drift Remediation | 6/6 | ✓ Complete | 2026-02-02 |
+| 9. MIR Integration & Database Loading | 0/0 | 🚧 In Progress | - |
 
 ---
 
-**Total Phases:** 8
-**Total Requirements:** 51
-**Coverage:** 51/51 requirements mapped
+**Total Phases:** 9
+**Total Requirements:** 51 + 8 (Phase 9) = 59
+**Coverage:** 51/59 requirements mapped, 8 pending for Phase 9

@@ -5,17 +5,17 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 8: Drift Remediation - Wire unimplemented features
-**Last focus:** Phase 7: LLM Integration (complete)
+**Current focus:** Phase 9: MIR Integration & Database Loading
+**Last focus:** Phase 8: Drift Remediation (complete)
 
 ## Current Position
 
-Phase: 8 of 8 (Drift Remediation) - In Progress
-Plan: 6 plans to wire unimplemented features and fix gaps
-Status: Executing Phase 8 to implement stub commands, wire path caching, add CLI commands for unused features, fix doctests, and implement --show-branches.
-Last activity: 2026-02-02 - Completed 08-06: Wire path caching to paths command
+Phase: 9 of 9 (MIR Integration & Database Loading) - In Progress
+Plan: 0 plans (to be created)
+Status: Code drift analysis identified 2 stub commands, 7 database loading TODOs, and 17 unused imports. Phase 9 will implement mirage index (MIR extraction), database loading for all commands, and mirage blast-zone (impact analysis).
+Last activity: 2026-02-02 - Code drift analysis completed, Phase 9 created
 
-Progress: [████████████████ ] 100% (7 phases complete, 39/39 plans done, Phase 8 complete)
+Progress: [████████████░░░ ] 89% (8 phases complete, 39/39 plans done, Phase 9 pending)
 
 ## Performance Metrics
 
@@ -342,10 +342,14 @@ Recent decisions affecting current work:
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
 - Trigger: Code drift analysis found 6 categories of gaps
-- Stub commands: `mirage index`, `mirage blast-zone`
-- Unused features: Path caching (COMPLETED in 08-06), loops detection (COMPLETED in 08-01), patterns detection (COMPLETED in 08-02), dominance frontiers (COMPLETED in 08-03)
-- Doc test failures: 34 failing due to cfg! macro collision (FIXED in 08-04)
-- --show-branches placeholder (COMPLETED in 08-05)
+- Completed: Path caching, loops detection, patterns detection, dominance frontiers, doctest fixes, --show-branches flag
+- Deferred: `mirage index`, `mirage blast-zone` (moved to Phase 9)
+
+**Phase 9 added (2026-02-02):** MIR Integration & Database Loading
+- Trigger: Code drift analysis after Phase 8 completion
+- Stub commands to implement: `mirage index` (MIR extraction via Charon), `mirage blast-zone` (path-based impact analysis)
+- Database loading: 7 commands need database loading instead of test CFGs (paths, cfg, dominators, loops, unreachable, patterns, frontiers)
+- Requirements: MIR-01 (Charon integration), MIR-02 (ULLBC parsing), MIR-03 (CFG storage), CLI-DB-01 (load CFG from DB), CLI-DB-02 (function lookup), BLAST-01 (block impact), BLAST-02 (path impact)
 
 ### Pending Todos
 
@@ -359,6 +363,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 08-06: Wire path caching to paths command
+Stopped at: Created Phase 9 after code drift analysis
 Resume file: None
-Phase 8 complete - All 39 plans done across all phases
+Phase 8 complete (6/6 plans). Phase 9 pending - MIR Integration & Database Loading

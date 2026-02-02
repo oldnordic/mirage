@@ -13,16 +13,16 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 Phase: 8 of 8 (Drift Remediation) - In Progress
 Plan: 6 plans to wire unimplemented features and fix gaps
 Status: Executing Phase 8 to implement stub commands, wire path caching, add CLI commands for unused features, fix doctests, and implement --show-branches.
-Last activity: 2026-02-02 - Completed 08-04: Fix doctest variable names
+Last activity: 2026-02-02 - Completed 08-03: Wire dominance frontiers command
 
-Progress: [████████████████░] 89.7% (7 phases complete, 35/39 plans done, 4 remaining in Phase 8)
+Progress: [████████████████░] 92.3% (7 phases complete, 36/39 plans done, 3 remaining in Phase 8)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 35
-- Average duration: 4.9 min
-- Total execution time: 2.9 hours
+- Total plans completed: 36
+- Average duration: 5.0 min
+- Total execution time: 3.0 hours
 
 **By Phase:**
 
@@ -35,7 +35,7 @@ Progress: [████████████████░] 89.7% (7 phases 
 | 05-path-enumeration | 6 | 6/6 | 4.6 min |
 | 06-cli-interface | 7 | 7/7 | 5.6 min |
 | 07-llm-integration | 4 | 4/4 | 4.5 min |
-| 08-drift-remediation | 6 | 2/6 | 10.5 min |
+| 08-drift-remediation | 6 | 3/6 | 9.7 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -300,6 +300,13 @@ Recent decisions affecting current work:
 - Provide complete imports and type annotations in doctest examples for self-contained documentation
 - Fixed all 34 failing doctests across 7 files (loops, patterns, dominance_frontiers, reachability, paths, dominators, post_dominators)
 
+**From 08-03 (Wire Dominance Frontiers Command):**
+- Three query modes for dominance frontiers: default (all frontiers), --node N (single node), --iterated (iterated frontier for phi placement)
+- CLI analysis command pattern: database resolution → test CFG → computation → formatted output
+- FrontiersResponse, NodeFrontier, IteratedFrontierResponse structs for JSON serialization
+- Follow established CLI patterns from dominators/loops commands for consistency
+- Reuse compute_dominance_frontiers() from Phase 4 rather than reimplementing algorithm
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -321,5 +328,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 08-04: Fix doctest variable names
+Stopped at: Completed 08-03: Wire dominance frontiers command
 Resume file: None

@@ -16,6 +16,7 @@ pub mod source;
 pub mod summary;
 
 pub use analysis::{find_entry, find_exits, is_exit_block};
+pub use crate::storage::{load_cfg_from_db, resolve_function_name};
 pub use dominance_frontiers::{DominanceFrontiers, compute_dominance_frontiers};
 pub use dominators::{DominatorTree, compute_dominator_tree};
 pub use post_dominators::{PostDominatorTree, compute_post_dominator_tree};

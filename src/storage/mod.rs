@@ -731,6 +731,79 @@ pub fn get_function_hash(conn: &Connection, function_id: i64) -> Option<String> 
     ).optional().ok().flatten()
 }
 
+/// Create a minimal Magellan-compatible database at the given path
+///
+/// This creates a new database with the minimal Magellan schema required
+/// for Mirage to store CFG data. For a full Magellan database, users
+/// should run `magellan watch` on their project.
+///
+/// # Arguments
+///
+/// * `path` - Path where the database should be created
+///
+/// # Returns
+///
+/// * `Ok(())` - Database created successfully
+/// * `Err(...)` - Error if creation fails
+pub fn create_minimal_database<P: AsRef<Path>>(path: P) -> Result<()> {
+    let path = path.as_ref();
+
+    // Don't overwrite existing database
+    if path.exists() {
+        anyhow::bail!("Database already exists: {}", path.display());
+    }
+
+    let mut conn = Connection::open(path)
+        .context("Failed to create database file")?;
+
+    // Create Magellan meta table
+    conn.execute(
+        "CREATE TABLE magellan_meta (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            magellan_schema_version INTEGER NOT NULL,
+            sqlitegraph_schema_version INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        )",
+        [],
+    ).context("Failed to create magellan_meta table")?;
+
+    // Create graph_entities table (minimal schema)
+    conn.execute(
+        "CREATE TABLE graph_entities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            name TEXT NOT NULL,
+            file_path TEXT,
+            data TEXT NOT NULL
+        )",
+        [],
+    ).context("Failed to create graph_entities table")?;
+
+    // Create indexes for graph_entities
+    conn.execute(
+        "CREATE INDEX idx_graph_entities_kind ON graph_entities(kind)",
+        [],
+    ).context("Failed to create index on graph_entities.kind")?;
+
+    conn.execute(
+        "CREATE INDEX idx_graph_entities_name ON graph_entities(name)",
+        [],
+    ).context("Failed to create index on graph_entities.name")?;
+
+    // Initialize Magellan meta
+    let now = chrono::Utc::now().timestamp();
+    conn.execute(
+        "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+         VALUES (1, ?, ?, ?)",
+        params![REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, now],
+    ).context("Failed to initialize magellan_meta")?;
+
+    // Create Mirage schema
+    create_schema(&mut conn).context("Failed to create Mirage schema")?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1159,5 +1232,248 @@ mod tests {
         // Verify hash was updated
         let stored_hash = get_function_hash(&conn, function_id);
         assert_eq!(stored_hash, Some("hash_v2".to_string()));
+    }
+
+    // Helper function to create a test database with Magellan + Mirage schema
+    fn create_test_db_with_schema() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        // Create Magellan tables
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, ?, ?, ?)",
+            params![REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, 0],
+        ).unwrap();
+
+        // Create Mirage schema
+        create_schema(&mut conn).unwrap();
+
+        // Enable foreign key enforcement for tests
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+
+        conn
+    }
+
+    // Tests for resolve_function_name and load_cfg_from_db (09-02)
+
+    #[test]
+    fn test_resolve_function_by_id() {
+        let conn = create_test_db_with_schema();
+
+        // Insert a test function
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "my_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Resolve by numeric ID
+        let result = resolve_function_name(&conn, &function_id.to_string()).unwrap();
+        assert_eq!(result, function_id);
+    }
+
+    #[test]
+    fn test_resolve_function_by_name() {
+        let conn = create_test_db_with_schema();
+
+        // Insert a test function
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "test_function", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Resolve by name
+        let result = resolve_function_name(&conn, "test_function").unwrap();
+        assert_eq!(result, function_id);
+    }
+
+    #[test]
+    fn test_resolve_function_not_found() {
+        let conn = create_test_db_with_schema();
+
+        // Try to resolve a non-existent function
+        let result = resolve_function_name(&conn, "nonexistent_func");
+
+        assert!(result.is_err(), "Should return error for non-existent function");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("not found") || err_msg.contains("not found in database"));
+    }
+
+    #[test]
+    fn test_resolve_function_numeric_string() {
+        let conn = create_test_db_with_schema();
+
+        // Insert a test function
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "func123", "test.rs", "{}"),
+        ).unwrap();
+
+        // Resolve by numeric string "123" - should parse as ID, not name
+        let result = resolve_function_name(&conn, "123").unwrap();
+        assert_eq!(result, 123);
+
+        // Now insert a function with ID 456
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "another_func", "test.rs", "{}"),
+        ).unwrap();
+        let _id_456 = conn.last_insert_rowid();
+
+        // If we query "456" it should try to parse as numeric ID
+        // Since we just inserted and got some ID, let's verify numeric parsing works
+        let result = resolve_function_name(&conn, "999").unwrap();
+        assert_eq!(result, 999, "Should return numeric ID directly");
+    }
+
+    #[test]
+    fn test_load_cfg_not_found() {
+        let conn = create_test_db_with_schema();
+
+        // Try to load CFG for non-existent function
+        let result = load_cfg_from_db(&conn, 99999);
+
+        assert!(result.is_err(), "Should return error for function with no CFG");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("No CFG blocks found") || err_msg.contains("not found"));
+    }
+
+    #[test]
+    fn test_load_cfg_empty_terminator() {
+        use crate::cfg::{BlockKind, Terminator};
+
+        let mut conn = create_test_db_with_schema();
+
+        // Insert a test function
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "empty_term_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Create a block with NULL terminator (should default to Unreachable)
+        conn.execute(
+            "INSERT INTO cfg_blocks (function_id, block_kind, byte_start, byte_end, function_hash)
+             VALUES (?, ?, ?, ?, ?)",
+            params!(function_id, "Exit", 0, 10, "hash789"),
+        ).unwrap();
+
+        // Load the CFG - should handle NULL terminator gracefully
+        let cfg = load_cfg_from_db(&conn, function_id).unwrap();
+
+        assert_eq!(cfg.node_count(), 1);
+        let block = &cfg[petgraph::graph::NodeIndex::new(0)];
+        assert!(matches!(block.terminator, Terminator::Unreachable));
+    }
+
+    #[test]
+    fn test_load_cfg_with_multiple_edge_types() {
+        use crate::cfg::{BlockKind, Terminator, EdgeType};
+
+        let mut conn = create_test_db_with_schema();
+
+        // Insert a test function
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "edge_types_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Create blocks with different edge types
+        let entry_term = serde_json::to_string(&Terminator::SwitchInt {
+            targets: vec![1],
+            otherwise: 2,
+        }).unwrap();
+        let branch1_term = serde_json::to_string(&Terminator::Goto { target: 3 }).unwrap();
+        let branch2_term = serde_json::to_string(&Terminator::Call { target: Some(3), unwind: None }).unwrap();
+        let exit_term = serde_json::to_string(&Terminator::Return).unwrap();
+
+        conn.execute(
+            "INSERT INTO cfg_blocks (function_id, block_kind, terminator, function_hash)
+             VALUES (?, ?, ?, ?)",
+            params!(function_id, "Entry", entry_term, "hash_edge"),
+        ).unwrap();
+        let block_0_id: i64 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO cfg_blocks (function_id, block_kind, terminator, function_hash)
+             VALUES (?, ?, ?, ?)",
+            params!(function_id, "Normal", branch1_term, "hash_edge"),
+        ).unwrap();
+        let block_1_id: i64 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO cfg_blocks (function_id, block_kind, terminator, function_hash)
+             VALUES (?, ?, ?, ?)",
+            params!(function_id, "Normal", branch2_term, "hash_edge"),
+        ).unwrap();
+        let block_2_id: i64 = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO cfg_blocks (function_id, block_kind, terminator, function_hash)
+             VALUES (?, ?, ?, ?)",
+            params!(function_id, "Exit", exit_term, "hash_edge"),
+        ).unwrap();
+        let block_3_id: i64 = conn.last_insert_rowid();
+
+        // Insert edges with different types
+        conn.execute(
+            "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
+            params!(block_0_id, block_1_id, "TrueBranch"),
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
+            params!(block_0_id, block_2_id, "FalseBranch"),
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
+            params!(block_1_id, block_3_id, "Fallthrough"),
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
+            params!(block_2_id, block_3_id, "Call"),
+        ).unwrap();
+
+        // Load the CFG
+        let cfg = load_cfg_from_db(&conn, function_id).unwrap();
+
+        assert_eq!(cfg.node_count(), 4);
+        assert_eq!(cfg.edge_count(), 4);
+
+        // Verify edge types
+        use petgraph::visit::EdgeRef;
+        let edges: Vec<_> = cfg.edge_references().map(|e| {
+            (e.source().index(), e.target().index(), *e.weight())
+        }).collect();
+
+        assert!(edges.contains(&(0, 1, EdgeType::TrueBranch)));
+        assert!(edges.contains(&(0, 2, EdgeType::FalseBranch)));
+        assert!(edges.contains(&(1, 3, EdgeType::Fallthrough)));
+        assert!(edges.contains(&(2, 3, EdgeType::Call)));
     }
 }

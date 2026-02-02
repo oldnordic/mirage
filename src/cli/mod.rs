@@ -65,6 +65,9 @@ pub enum Commands {
     /// Show dominance relationships for a function
     Dominators(DominatorsArgs),
 
+    /// Show natural loops in CFG
+    Loops(LoopsArgs),
+
     /// Find unreachable code within functions
     Unreachable(UnreachableArgs),
 
@@ -151,6 +154,17 @@ pub struct DominatorsArgs {
 }
 
 #[derive(Parser, Debug, Clone)]
+pub struct LoopsArgs {
+    /// Function to analyze for loops
+    #[arg(long)]
+    pub function: String,
+
+    /// Show detailed loop body blocks
+    #[arg(long)]
+    pub verbose: bool,
+}
+
+#[derive(Parser, Debug, Clone)]
 pub struct UnreachableArgs {
     /// Find unreachable code within functions
     #[arg(long)]
@@ -159,6 +173,21 @@ pub struct UnreachableArgs {
     /// Show branch details
     #[arg(long)]
     pub show_branches: bool,
+}
+
+#[derive(Parser, Debug, Clone)]
+pub struct PatternsArgs {
+    /// Function to analyze for branching patterns
+    #[arg(long)]
+    pub function: String,
+
+    /// Show only if/else patterns
+    #[arg(long)]
+    pub if_else: bool,
+
+    /// Show only match patterns
+    #[arg(long)]
+    pub r#match: bool,
 }
 
 #[derive(Parser, Debug, Clone)]

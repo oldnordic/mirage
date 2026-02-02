@@ -3774,4 +3774,338 @@ mod output_format_tests {
         assert!(!json.contains("\"totalPaths\""));
         assert!(!json.contains("\"errorPaths\""));
     }
+
+    /// Test loops command detects natural loops
+    #[test]
+    fn test_loops_detects_loops() {
+        use crate::cfg::{detect_natural_loops, BasicBlock, BlockKind, EdgeType, Terminator};
+        use petgraph::graph::DiGraph;
+
+        // Create a simple loop: 0 -> 1 -> 2 -> 1
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 3 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec!["loop body".to_string()],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+        g.add_edge(b1, b3, EdgeType::FalseBranch);
+        g.add_edge(b2, b1, EdgeType::LoopBack);
+
+        let loops = detect_natural_loops(&g);
+
+        // Should detect one loop
+        assert_eq!(loops.len(), 1, "Should detect exactly one loop");
+        assert_eq!(loops[0].header.index(), 1, "Loop header should be block 1");
+    }
+
+    /// Test loops command with empty CFG
+    #[test]
+    fn test_loops_empty_cfg() {
+        use crate::cfg::detect_natural_loops;
+        use petgraph::graph::DiGraph;
+        let empty_cfg: crate::cfg::Cfg = DiGraph::new();
+        let loops = detect_natural_loops(&empty_cfg);
+
+        assert!(loops.is_empty(), "Empty CFG should have no loops");
+    }
+
+    /// Test loops response serialization
+    #[test]
+    fn test_loops_response_serialization() {
+        use crate::output::JsonResponse;
+
+        let response = LoopsResponse {
+            function: "test_func".to_string(),
+            loop_count: 2,
+            loops: vec![
+                LoopInfo {
+                    header: 1,
+                    back_edge_from: 2,
+                    body_size: 2,
+                    nesting_level: 0,
+                    body_blocks: vec![1, 2],
+                },
+                LoopInfo {
+                    header: 3,
+                    back_edge_from: 4,
+                    body_size: 3,
+                    nesting_level: 1,
+                    body_blocks: vec![1, 2, 3],
+                },
+            ],
+        };
+
+        // Should serialize without errors
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"function\""));
+        assert!(json.contains("\"loop_count\""));
+        assert!(json.contains("\"loops\""));
+
+        // Test with JsonResponse wrapper
+        let wrapper = JsonResponse::new(response);
+        let wrapped_json = wrapper.to_json();
+        assert!(wrapped_json.contains("\"schema_version\""));
+        assert!(wrapped_json.contains("\"execution_id\""));
+    }
+
+    /// Test LoopsArgs struct fields
+    #[test]
+    fn test_loops_args_fields() {
+        let args = LoopsArgs {
+            function: "my_function".to_string(),
+            verbose: true,
+        };
+
+        assert_eq!(args.function, "my_function");
+        assert!(args.verbose);
+    }
+
+    /// Test LoopInfo struct fields
+    #[test]
+    fn test_loop_info_fields() {
+        let loop_info = LoopInfo {
+            header: 5,
+            back_edge_from: 7,
+            body_size: 3,
+            nesting_level: 2,
+            body_blocks: vec![5, 6, 7],
+        };
+
+        assert_eq!(loop_info.header, 5);
+        assert_eq!(loop_info.back_edge_from, 7);
+        assert_eq!(loop_info.body_size, 3);
+        assert_eq!(loop_info.nesting_level, 2);
+        assert_eq!(loop_info.body_blocks, vec![5, 6, 7]);
+    }
+
+    /// Test loops command with json output format
+    #[test]
+    fn test_loops_json_output_format() {
+        use crate::output::JsonResponse;
+
+        let response = LoopsResponse {
+            function: "json_test".to_string(),
+            loop_count: 1,
+            loops: vec![LoopInfo {
+                header: 1,
+                back_edge_from: 2,
+                body_size: 2,
+                nesting_level: 0,
+                body_blocks: vec![1, 2],
+            }],
+        };
+
+        let wrapper = JsonResponse::new(response);
+        let json = wrapper.to_json();
+
+        // Verify JSON structure
+        assert!(json.contains("\"schema_version\""));
+        assert!(json.contains("\"execution_id\""));
+        assert!(json.contains("\"tool\""));
+        assert!(json.contains("\"timestamp\""));
+        assert!(json.contains("\"data\""));
+    }
+
+    /// Test loops command with verbose flag
+    #[test]
+    fn test_loops_verbose_flag() {
+        let args_verbose = LoopsArgs {
+            function: "test".to_string(),
+            verbose: true,
+        };
+
+        let args_not_verbose = LoopsArgs {
+            function: "test".to_string(),
+            verbose: false,
+        };
+
+        assert!(args_verbose.verbose);
+        assert!(!args_not_verbose.verbose);
+    }
+
+    /// Test loops nesting level calculation
+    #[test]
+    fn test_loops_nesting_levels() {
+        let loop_outer = LoopInfo {
+            header: 1,
+            back_edge_from: 3,
+            body_size: 3,
+            nesting_level: 0, // Outermost
+            body_blocks: vec![1, 2, 3],
+        };
+
+        let loop_inner = LoopInfo {
+            header: 2,
+            back_edge_from: 4,
+            body_size: 2,
+            nesting_level: 1, // Nested inside outer
+            body_blocks: vec![2, 4],
+        };
+
+        assert_eq!(loop_outer.nesting_level, 0);
+        assert_eq!(loop_inner.nesting_level, 1);
+    }
+
+    /// Test loops response with no loops
+    #[test]
+    fn test_loops_response_empty() {
+        use crate::output::JsonResponse;
+
+        let response = LoopsResponse {
+            function: "no_loops_func".to_string(),
+            loop_count: 0,
+            loops: vec![],
+        };
+
+        let wrapper = JsonResponse::new(response);
+        let json = wrapper.to_json();
+
+        // Should handle empty loops gracefully
+        assert!(json.contains("\"loop_count\":0"));
+        assert!(json.contains("\"loops\":[]"));
+    }
+
+    /// Test patterns command with if/else detection
+    #[test]
+    fn test_patterns_if_else_detection() {
+        use crate::cfg::{detect_if_else_patterns, detect_match_patterns};
+
+        let cfg = cmds::create_test_cfg();
+
+        // Detect patterns
+        let if_else_patterns = detect_if_else_patterns(&cfg);
+        let match_patterns = detect_match_patterns(&cfg);
+
+        // Test CFG has a simple if/else (block 1 -> blocks 2 and 3)
+        // This is a diamond pattern, so it should be detected
+        assert!(!if_else_patterns.is_empty(), "Should detect if/else pattern");
+
+        // Check pattern structure
+        let pattern = &if_else_patterns[0];
+        assert_eq!(cfg[pattern.condition].id, 1);
+        assert_eq!(cfg[pattern.true_branch].id, 2);
+        assert_eq!(cfg[pattern.false_branch].id, 3);
+
+        // Our test CFG doesn't have a match statement
+        assert!(match_patterns.is_empty(), "Should not detect match patterns in simple if/else");
+    }
+
+    /// Test patterns command with --if-else filter
+    #[test]
+    fn test_patterns_if_else_filter() {
+        let args = PatternsArgs {
+            function: "test_func".to_string(),
+            if_else: true,
+            r#match: false,
+        };
+
+        let cli = Cli {
+            db: None,
+            output: OutputFormat::Human,
+            command: Commands::Patterns(args.clone()),
+        };
+
+        // Command should not panic
+        let result = cmds::patterns(&args, &cli);
+        assert!(result.is_ok(), "patterns command should succeed with --if-else filter");
+    }
+
+    /// Test patterns command with --match filter
+    #[test]
+    fn test_patterns_match_filter() {
+        let args = PatternsArgs {
+            function: "test_func".to_string(),
+            if_else: false,
+            r#match: true,
+        };
+
+        let cli = Cli {
+            db: None,
+            output: OutputFormat::Human,
+            command: Commands::Patterns(args.clone()),
+        };
+
+        // Command should not panic
+        let result = cmds::patterns(&args, &cli);
+        assert!(result.is_ok(), "patterns command should succeed with --match filter");
+    }
+
+    /// Test patterns command with JSON output
+    #[test]
+    fn test_patterns_json_output() {
+        let args = PatternsArgs {
+            function: "test_func".to_string(),
+            if_else: false,
+            r#match: false,
+        };
+
+        let cli = Cli {
+            db: None,
+            output: OutputFormat::Json,
+            command: Commands::Patterns(args.clone()),
+        };
+
+        // Capture output
+        let result = cmds::patterns(&args, &cli);
+        assert!(result.is_ok(), "patterns command should succeed with JSON output");
+    }
+
+    /// Test patterns response struct serialization
+    #[test]
+    fn test_patterns_response_serialization() {
+        let response = PatternsResponse {
+            function: "test_func".to_string(),
+            if_else_count: 1,
+            match_count: 0,
+            if_else_patterns: vec![IfElseInfo {
+                condition_block: 1,
+                true_branch: 2,
+                false_branch: 3,
+                merge_point: Some(4),
+                has_else: true,
+            }],
+            match_patterns: vec![],
+        };
+
+        // Should serialize to JSON
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"function\""));
+        assert!(json.contains("\"if_else_count\""));
+        assert!(json.contains("\"match_count\""));
+
+        // Check snake_case naming
+        assert!(json.contains("\"if_else_patterns\""));
+        assert!(json.contains("\"condition_block\""));
+        assert!(json.contains("\"merge_point\""));
+    }
 }

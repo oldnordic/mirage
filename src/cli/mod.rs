@@ -4109,3 +4109,348 @@ mod output_format_tests {
         assert!(json.contains("\"merge_point\""));
     }
 }
+
+// ============================================================================
+// frontiers() Command Tests
+// ============================================================================
+
+#[cfg(test)]
+mod frontiers_tests {
+    use super::*;
+    use crate::cfg::{compute_dominance_frontiers, DominatorTree};
+    use tempfile::NamedTempFile;
+
+    /// Create a minimal test database
+    fn create_minimal_db() -> anyhow::Result<NamedTempFile> {
+        use crate::storage::{REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION};
+        let file = NamedTempFile::new()?;
+        let conn = rusqlite::Connection::open(file.path())?;
+
+        // Create Magellan tables
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY,
+                type TEXT NOT NULL,
+                name TEXT,
+                source_file TEXT
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, ?, ?, strftime('%s', 'now'))",
+            [REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION],
+        )?;
+
+        Ok(file)
+    }
+
+    /// Test frontiers response struct serialization
+    #[test]
+    fn test_frontiers_response_serialization() {
+        use crate::output::JsonResponse;
+
+        let response = FrontiersResponse {
+            function: "test_func".to_string(),
+            nodes_with_frontiers: 2,
+            frontiers: vec![
+                NodeFrontier {
+                    node: 1,
+                    frontier_set: vec![3],
+                },
+                NodeFrontier {
+                    node: 2,
+                    frontier_set: vec![3],
+                },
+            ],
+        };
+
+        let wrapper = JsonResponse::new(response);
+        let json = wrapper.to_json();
+
+        // Verify JSON structure
+        assert!(json.contains("\"function\":\"test_func\""));
+        assert!(json.contains("\"nodes_with_frontiers\":2"));
+        assert!(json.contains("\"frontiers\":["));
+    }
+
+    /// Test iterated frontier response struct serialization
+    #[test]
+    fn test_iterated_frontier_response_serialization() {
+        use crate::output::JsonResponse;
+
+        let response = IteratedFrontierResponse {
+            function: "test_func".to_string(),
+            iterated_frontier: vec![3, 4],
+        };
+
+        let wrapper = JsonResponse::new(response);
+        let json = wrapper.to_json();
+
+        // Verify JSON structure
+        assert!(json.contains("\"function\":\"test_func\""));
+        assert!(json.contains("\"iterated_frontier\":[3,4]"));
+    }
+
+    /// Test basic frontier computation (diamond CFG)
+    #[test]
+    fn test_frontiers_basic() {
+        use crate::cfg::{BasicBlock, BlockKind, Terminator, EdgeType};
+        use petgraph::graph::DiGraph;
+
+        // Create diamond CFG: 0 -> 1,2 -> 3
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec!["branch 1".to_string()],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec!["branch 2".to_string()],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::TrueBranch);
+        g.add_edge(b0, b2, EdgeType::FalseBranch);
+        g.add_edge(b1, b3, EdgeType::Fallthrough);
+        g.add_edge(b2, b3, EdgeType::Fallthrough);
+
+        // Compute dominance frontiers
+        let dom_tree = DominatorTree::new(&g).expect("CFG has entry");
+        let frontiers = compute_dominance_frontiers(&g, dom_tree);
+
+        // In diamond CFG:
+        // DF[1] = {3} (1 dominates itself, pred of 3, doesn't strictly dominate 3)
+        // DF[2] = {3} (2 dominates itself, pred of 3, doesn't strictly dominate 3)
+        let df1 = frontiers.frontier(b1);
+        assert!(df1.contains(&b3));
+        assert_eq!(df1.len(), 1);
+
+        let df2 = frontiers.frontier(b2);
+        assert!(df2.contains(&b3));
+        assert_eq!(df2.len(), 1);
+
+        // Entry (0) has empty frontier (strictly dominates all nodes)
+        let df0 = frontiers.frontier(b0);
+        assert!(df0.is_empty());
+    }
+
+    /// Test --iterated flag functionality
+    #[test]
+    fn test_frontiers_iterated_flag() {
+        let args = FrontiersArgs {
+            function: "test_func".to_string(),
+            iterated: true,
+            node: None,
+        };
+
+        assert!(args.iterated);
+        assert!(args.node.is_none());
+    }
+
+    /// Test --node flag functionality
+    #[test]
+    fn test_frontiers_node_flag() {
+        let args = FrontiersArgs {
+            function: "test_func".to_string(),
+            iterated: false,
+            node: Some(5),
+        };
+
+        assert!(!args.iterated);
+        assert_eq!(args.node, Some(5));
+    }
+
+    /// Test frontiers with linear CFG (empty frontiers)
+    #[test]
+    fn test_frontiers_linear_cfg() {
+        use crate::cfg::{BasicBlock, BlockKind, Terminator, EdgeType};
+        use petgraph::graph::DiGraph;
+
+        // Linear CFG: 0 -> 1 -> 2 -> 3
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::Fallthrough);
+        g.add_edge(b2, b3, EdgeType::Fallthrough);
+
+        // Compute dominance frontiers
+        let dom_tree = DominatorTree::new(&g).expect("CFG has entry");
+        let frontiers = compute_dominance_frontiers(&g, dom_tree);
+
+        // Linear CFG has no dominance frontiers (no join points)
+        let nodes_with_frontiers: Vec<_> = frontiers.nodes_with_frontiers().collect();
+        assert!(nodes_with_frontiers.is_empty());
+    }
+
+    /// Test frontiers with loop CFG (self-frontier)
+    #[test]
+    fn test_frontiers_loop_cfg() {
+        use crate::cfg::{BasicBlock, BlockKind, Terminator, EdgeType};
+        use petgraph::graph::DiGraph;
+
+        // Loop CFG: 0 -> 1 <-> 2 (back edge), 1 -> 3 (exit)
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 3 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec!["loop body".to_string()],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+        g.add_edge(b1, b3, EdgeType::FalseBranch);
+        g.add_edge(b2, b1, EdgeType::LoopBack);
+
+        // Compute dominance frontiers
+        let dom_tree = DominatorTree::new(&g).expect("CFG has entry");
+        let frontiers = compute_dominance_frontiers(&g, dom_tree);
+
+        // Loop header (1) should have self-frontier due to back edge
+        let df1 = frontiers.frontier(b1);
+        assert!(df1.contains(&b1), "Loop header should have self-frontier");
+    }
+
+    /// Test frontiers command with json output format
+    #[test]
+    fn test_frontiers_json_output_format() {
+        use crate::output::JsonResponse;
+
+        let response = FrontiersResponse {
+            function: "json_test".to_string(),
+            nodes_with_frontiers: 2,
+            frontiers: vec![
+                NodeFrontier {
+                    node: 1,
+                    frontier_set: vec![3],
+                },
+                NodeFrontier {
+                    node: 2,
+                    frontier_set: vec![3],
+                },
+            ],
+        };
+
+        let wrapper = JsonResponse::new(response);
+        let json = wrapper.to_json();
+
+        // Verify JSON structure with metadata
+        assert!(json.contains("\"schema_version\""));
+        assert!(json.contains("\"execution_id\""));
+        assert!(json.contains("\"tool\""));
+        assert!(json.contains("\"timestamp\""));
+        assert!(json.contains("\"data\""));
+    }
+
+    /// Test frontiers response with empty frontiers
+    #[test]
+    fn test_frontiers_response_empty() {
+        use crate::output::JsonResponse;
+
+        let response = FrontiersResponse {
+            function: "linear_func".to_string(),
+            nodes_with_frontiers: 0,
+            frontiers: vec![],
+        };
+
+        let wrapper = JsonResponse::new(response);
+        let json = wrapper.to_json();
+
+        // Should handle empty frontiers gracefully
+        assert!(json.contains("\"nodes_with_frontiers\":0"));
+        assert!(json.contains("\"frontiers\":[]"));
+    }
+}

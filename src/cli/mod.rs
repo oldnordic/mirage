@@ -607,31 +607,101 @@ pub mod cmds {
 
         output::header(&format!("Indexing {}", project_path.display()));
 
-        // Run Charon
+        // Run Charon (with auto-install prompt if missing)
         output::cmd("Running Charon to extract MIR...");
-        let ullbc_json = match run_charon(&project_path) {
-            Ok(json) => json,
-            Err(e) => {
-                // Check if Charon is not found
-                if e.to_string().contains("No such file") || e.to_string().contains("not found") {
-                    let msg = "Charon binary not found".to_string();
-                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                        let error = output::JsonError::new(
-                            "CharonNotFound",
-                            &msg,
-                            output::E_INVALID_INPUT
-                        ).with_remediation("Install Charon: cargo install charon --git https://github.com/AeneasVerif/charon");
-                        let wrapper = output::JsonResponse::new(error);
-                        println!("{}", wrapper.to_json());
-                        std::process::exit(output::EXIT_ERROR);
-                    } else {
-                        output::error(&msg);
-                        output::info("Install Charon: cargo install charon --git https://github.com/AeneasVerif/charon");
-                        output::info("Or download from: https://github.com/AeneasVerif/charon");
-                        std::process::exit(output::EXIT_ERROR);
-                    }
+
+        // Check if Charon binary exists before attempting to run
+        let charon_exists = std::path::Path::new("charon").exists()
+            || std::process::Command::new("charon")
+                .arg("--version")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+
+        let ullbc_json = if !charon_exists {
+            // Charon not found - offer to auto-install
+            let msg = "Charon binary not found";
+            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                let error = output::JsonError::new(
+                    "CharonNotFound",
+                    msg,
+                    output::E_INVALID_INPUT
+                ).with_remediation("Install Charon: cargo install --git https://github.com/AeneasVerif/charon charon");
+                let wrapper = output::JsonResponse::new(error);
+                println!("{}", wrapper.to_json());
+                std::process::exit(output::EXIT_ERROR);
+            }
+
+            // Human mode: prompt for auto-install
+            output::error(msg);
+            output::info("Charon is required for MIR extraction.");
+            print!("\nInstall Charon now? [Y/n] ");
+            use std::io::Write;
+            std::io::stdout().flush().ok();
+
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).ok();
+            let input = input.trim().to_lowercase();
+
+            if input == "n" || input == "no" {
+                output::info("Install manually: cargo install --git https://github.com/AeneasVerif/charon charon");
+                output::info("Or download from: https://github.com/AeneasVerif/charon");
+                std::process::exit(output::EXIT_ERROR);
+            }
+
+            // Attempt auto-install
+            output::info("Installing Charon from GitHub...");
+            output::cmd("cargo install --git https://github.com/AeneasVerif/charon charon");
+
+            let install_status = std::process::Command::new("cargo")
+                .args(["install", "--git", "https://github.com/AeneasVerif/charon", "charon"])
+                .status()
+                .context("Failed to run cargo install")?;
+
+            if !install_status.success() {
+                output::error("Charon installation failed");
+                output::info("Try installing manually: cargo install --git https://github.com/AeneasVerif/charon charon");
+                std::process::exit(output::EXIT_ERROR);
+            }
+
+            output::success("Charon installed successfully");
+
+            // Now run Charon
+            match run_charon(&project_path) {
+                Ok(json) => json,
+                Err(e) => {
+                    output::error(&format!("Failed to run Charon after installation: {}", e));
+                    return Err(e.context("Failed to run Charon"));
                 }
-                return Err(e.context("Failed to run Charon"));
+            }
+        } else {
+            // Charon exists - run it normally
+            match run_charon(&project_path) {
+                Ok(json) => json,
+                Err(e) => {
+                    // Check if the error is about binary not found (path issue)
+                    if e.to_string().contains("No such file") || e.to_string().contains("not found") {
+                        let msg = "Charon binary not found in PATH";
+                        if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                            let error = output::JsonError::new(
+                                "CharonNotFound",
+                                msg,
+                                output::E_INVALID_INPUT
+                            ).with_remediation("Install Charon: cargo install --git https://github.com/AeneasVerif/charon charon");
+                            let wrapper = output::JsonResponse::new(error);
+                            println!("{}", wrapper.to_json());
+                            std::process::exit(output::EXIT_ERROR);
+                        } else {
+                            output::error(msg);
+                            output::info("Install Charon: cargo install --git https://github.com/AeneasVerif/charon charon");
+                            output::info("Or download from: https://github.com/AeneasVerif/charon");
+                            std::process::exit(output::EXIT_ERROR);
+                        }
+                    }
+                    return Err(e.context("Failed to run Charon"));
+                }
             }
         };
 

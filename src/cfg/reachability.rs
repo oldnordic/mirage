@@ -36,8 +36,11 @@ pub fn find_reachable(cfg: &Cfg) -> Vec<NodeIndex> {
 /// - All blocks are reachable
 ///
 /// # Example
-/// ```rust
-/// let unreachable = find_unreachable(&cfg);
+/// ```rust,no_run
+/// # use mirage::cfg::reachability::find_unreachable;
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// let unreachable = find_unreachable(&graph);
 /// for block_idx in unreachable {
 ///     println!("Block {:?} is dead code", block_idx);
 /// }
@@ -89,10 +92,15 @@ pub fn unreachable_block_ids(cfg: &Cfg) -> Vec<BlockId> {
 /// Use `can_reach_cached` or `ReachabilityCache` for repeated queries.
 ///
 /// # Example
-/// ```rust
-/// let entry = find_entry(&cfg).unwrap();
+/// ```rust,no_run
+/// # use mirage::cfg::reachability::can_reach;
+/// # use mirage::cfg::analysis::find_entry;
+/// # use mirage::cfg::Cfg;
+/// # use petgraph::graph::NodeIndex;
+/// # let graph: Cfg = unimplemented!();
+/// let entry = find_entry(&graph).unwrap();
 /// let exit = NodeIndex::new(5);
-/// if can_reach(&cfg, entry, exit) {
+/// if can_reach(&graph, entry, exit) {
 ///     println!("Exit is reachable from entry");
 /// }
 /// ```
@@ -106,10 +114,16 @@ pub fn can_reach(cfg: &Cfg, from: NodeIndex, to: NodeIndex) -> bool {
 /// when making multiple reachability queries.
 ///
 /// # Example
-/// ```rust
-/// let mut space = DfsSpace::new(&cfg);
+/// ```rust,no_run
+/// # use mirage::cfg::reachability::can_reach_cached;
+/// # use petgraph::algo::DfsSpace;
+/// # use mirage::cfg::Cfg;
+/// # use petgraph::graph::NodeIndex;
+/// # let graph: Cfg = unimplemented!();
+/// # let queries: Vec<(NodeIndex, NodeIndex)> = vec![];
+/// let mut space = DfsSpace::new(&graph);
 /// for (from, to) in queries {
-///     if can_reach_cached(&cfg, from, to, &mut space) {
+///     if can_reach_cached(&graph, from, to, &mut space) {
 ///         // ...
 ///     }
 /// }
@@ -129,10 +143,15 @@ pub fn can_reach_cached(
 /// Create once, reuse for many queries on the same CFG.
 ///
 /// # Example
-/// ```rust
-/// let mut cache = ReachabilityCache::new(&cfg);
-/// for node in cfg.node_indices() {
-///     if cache.can_reach(&cfg, entry, node) {
+/// ```rust,no_run
+/// # use mirage::cfg::reachability::ReachabilityCache;
+/// # use mirage::cfg::analysis::find_entry;
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// # let entry = find_entry(&graph).unwrap();
+/// let mut cache = ReachabilityCache::new(&graph);
+/// for node in graph.node_indices() {
+///     if cache.can_reach(&graph, entry, node) {
 ///         println!("Node {:?} is reachable", node);
 ///     }
 /// }

@@ -71,6 +71,12 @@ pub enum Commands {
     /// Find unreachable code within functions
     Unreachable(UnreachableArgs),
 
+    /// Show branching patterns (if/else, match) in CFG
+    Patterns(PatternsArgs),
+
+    /// Show dominance frontiers in CFG
+    Frontiers(FrontiersArgs),
+
     /// Verify a path is still valid
     Verify(VerifyArgs),
 
@@ -188,6 +194,21 @@ pub struct PatternsArgs {
     /// Show only match patterns
     #[arg(long)]
     pub r#match: bool,
+}
+
+#[derive(Parser, Debug, Clone)]
+pub struct FrontiersArgs {
+    /// Function to analyze for dominance frontiers
+    #[arg(long)]
+    pub function: String,
+
+    /// Show iterated dominance frontier (for phi placement)
+    #[arg(long)]
+    pub iterated: bool,
+
+    /// Show frontiers for specific node only
+    #[arg(long)]
+    pub node: Option<usize>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -422,6 +443,24 @@ struct VerifyResult {
     function_id: Option<i64>,
     reason: String,
     current_paths: usize,
+}
+
+/// Response for loops command
+#[derive(serde::Serialize)]
+struct LoopsResponse {
+    function: String,
+    loop_count: usize,
+    loops: Vec<LoopInfo>,
+}
+
+/// Information about a single natural loop
+#[derive(serde::Serialize)]
+struct LoopInfo {
+    header: usize,
+    back_edge_from: usize,
+    body_size: usize,
+    nesting_level: usize,
+    body_blocks: Vec<usize>,
 }
 
 // ============================================================================
@@ -1034,6 +1073,96 @@ pub mod cmds {
         }
     }
 
+    pub fn loops(args: &LoopsArgs, cli: &Cli) -> Result<()> {
+        use crate::cfg::detect_natural_loops;
+        use crate::storage::MirageDb;
+
+        // Resolve database path
+        let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // Open database (follows status command pattern for error handling)
+        let _db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
+            Err(_e) => {
+                // JSON-aware error handling with remediation
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::database_not_found(&db_path);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", db_path));
+                    output::info("Hint: Run 'mirage index' to create the database");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
+            }
+        };
+
+        // TODO: Load CFG from database for the specified function.
+        // This requires MIR extraction (Phase 02-01) to be complete.
+        // For now, create a test CFG to demonstrate the loops functionality.
+        let cfg = create_test_cfg();
+
+        // Detect natural loops
+        let natural_loops = detect_natural_loops(&cfg);
+
+        // Compute nesting levels for each loop
+        let loop_infos: Vec<LoopInfo> = natural_loops.iter().map(|loop_| {
+            let nesting_level = loop_.nesting_level(&natural_loops);
+            let body_blocks: Vec<usize> = loop_.body.iter()
+                .map(|&node| cfg[node].id)
+                .collect();
+            LoopInfo {
+                header: cfg[loop_.header].id,
+                back_edge_from: cfg[loop_.back_edge.0].id,
+                body_size: loop_.size(),
+                nesting_level,
+                body_blocks,
+            }
+        }).collect();
+
+        // Output based on format
+        match cli.output {
+            OutputFormat::Human => {
+                println!("Function: {}", args.function);
+                println!("Natural Loops: {}", natural_loops.len());
+                println!();
+
+                if natural_loops.is_empty() {
+                    output::info("No natural loops detected in this function");
+                } else {
+                    for (i, loop_info) in loop_infos.iter().enumerate() {
+                        println!("Loop {}:", i + 1);
+                        println!("  Header: Block {}", loop_info.header);
+                        println!("  Back edge from: Block {}", loop_info.back_edge_from);
+                        println!("  Body size: {} blocks", loop_info.body_size);
+                        println!("  Nesting level: {}", loop_info.nesting_level);
+
+                        if args.verbose {
+                            println!("  Body blocks: {:?}", loop_info.body_blocks);
+                        }
+                        println!();
+                    }
+                }
+            }
+            OutputFormat::Json | OutputFormat::Pretty => {
+                let response = LoopsResponse {
+                    function: args.function.clone(),
+                    loop_count: natural_loops.len(),
+                    loops: loop_infos,
+                };
+                let wrapper = output::JsonResponse::new(response);
+                match cli.output {
+                    OutputFormat::Json => println!("{}", wrapper.to_json()),
+                    OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                    _ => unreachable!(),
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn unreachable(args: &UnreachableArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::reachability::find_unreachable;
         use crate::storage::MirageDb;
@@ -1296,6 +1425,18 @@ pub mod cmds {
     pub fn blast_zone(_args: BlastZoneArgs) -> Result<()> {
         // TODO: Implement path-based impact analysis
         output::error("Blast zone analysis not yet implemented");
+        std::process::exit(1);
+    }
+
+    pub fn patterns(_args: &PatternsArgs, _cli: &Cli) -> Result<()> {
+        // TODO: Implement pattern detection command (08-02)
+        output::error("Pattern detection not yet implemented");
+        std::process::exit(1);
+    }
+
+    pub fn frontiers(_args: &FrontiersArgs, _cli: &Cli) -> Result<()> {
+        // TODO: Implement dominance frontiers command (08-03)
+        output::error("Dominance frontiers not yet implemented");
         std::process::exit(1);
     }
 }

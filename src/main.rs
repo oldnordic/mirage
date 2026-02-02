@@ -43,8 +43,16 @@ fn run_command(cli: Cli) -> Result<()> {
         Commands::Dominators(ref args) => cli::cmds::dominators(args, &cli)?,
         Commands::Loops(ref args) => cli::cmds::loops(args, &cli)?,
         Commands::Unreachable(ref args) => cli::cmds::unreachable(args, &cli)?,
+        // TODO: Implement in Phase 8 plans 08-05 and 08-06
+        // Commands::Patterns(ref args) => cli::cmds::patterns(args, &cli)?,
+        // Commands::Frontiers(ref args) => cli::cmds::frontiers(args, &cli)?,
         Commands::Verify(ref args) => cli::cmds::verify(args, &cli)?,
         Commands::BlastZone(args) => cli::cmds::blast_zone(args)?,
+        _ => {
+            // Placeholder for unimplemented commands
+            eprintln!("This command is not yet implemented");
+            std::process::exit(1);
+        }
     }
     Ok(())
 }

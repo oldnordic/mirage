@@ -2,7 +2,7 @@
 
 ## Overview
 
-Mirage transforms code into verifiable graph artifacts. Starting from database schema and MIR extraction, we build control flow graphs, analyze dominance relationships, enumerate execution paths, and expose everything through a CLI that produces structured outputs for LLM consumption. Every phase delivers something that can be verified against the graph.
+Mirage transforms code into verifiable graph artifacts. Starting from database schema and MIR extraction, we build control flow graphs, analyze dominance relationships, enumerate execution paths, and expose everything through a CLI that produces structured outputs for LLM consumption. Every phase delivers something that can verified against the graph.
 
 ## Phases
 
@@ -265,12 +265,13 @@ Plans:
 7. Database stores block-to-function mappings for impact analysis
 8. Charon binary integration works (spawning, parsing ULLBC JSON)
 
-**Plans**: 0 plans (to be created)
+**Plans**: 4 plans in 3 waves
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 9 to break down)
-
-**Details**: [To be added during planning]
+- [ ] 09-01-PLAN.md — Implement mirage index command (Charon integration, CFG storage)
+- [ ] 09-02-PLAN.md — Create shared database loading utilities (resolve_function_name, load_cfg_from_db)
+- [ ] 09-03-PLAN.md — Wire database loading to all CLI commands (replace create_test_cfg)
+- [ ] 09-04-PLAN.md — Implement mirage blast-zone command (block and path impact analysis)
 
 **Status**: 🚧 In Progress 2026-02-02
 
@@ -289,10 +290,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 6. CLI Interface | 7/7 | ✓ Complete | 2026-02-01 |
 | 7. LLM Integration | 4/4 | ✓ Complete | 2026-02-01 |
 | 8. Drift Remediation | 6/6 | ✓ Complete | 2026-02-02 |
-| 9. MIR Integration & Database Loading | 0/0 | 🚧 In Progress | - |
+| 9. MIR Integration & Database Loading | 0/4 | 🚧 In Progress | - |
 
 ---
 
 **Total Phases:** 9
-**Total Requirements:** 51 + 8 (Phase 9) = 59
+**Total Requirements:** 59
 **Coverage:** 51/59 requirements mapped, 8 pending for Phase 9
+**Total Plans:** 43 (39 complete + 4 pending)

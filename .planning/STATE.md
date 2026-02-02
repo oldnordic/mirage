@@ -13,16 +13,16 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 Phase: 8 of 8 (Drift Remediation) - In Progress
 Plan: 6 plans to wire unimplemented features and fix gaps
 Status: Executing Phase 8 to implement stub commands, wire path caching, add CLI commands for unused features, fix doctests, and implement --show-branches.
-Last activity: 2026-02-02 - Completed 08-02: Wire branching patterns command
+Last activity: 2026-02-02 - Completed 08-05: Implement --show-branches edge details
 
-Progress: [████████████████░] 94.9% (7 phases complete, 37/39 plans done, 2 remaining in Phase 8)
+Progress: [████████████████░] 97.4% (7 phases complete, 38/39 plans done, 1 remaining in Phase 8)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 37
-- Average duration: 5.0 min
-- Total execution time: 3.1 hours
+- Total plans completed: 38
+- Average duration: 5.2 min
+- Total execution time: 3.3 hours
 
 **By Phase:**
 
@@ -35,7 +35,7 @@ Progress: [████████████████░] 94.9% (7 phases 
 | 05-path-enumeration | 6 | 6/6 | 4.6 min |
 | 06-cli-interface | 7 | 7/7 | 5.6 min |
 | 07-llm-integration | 4 | 4/4 | 4.5 min |
-| 08-drift-remediation | 6 | 4/6 | 11.1 min |
+| 08-drift-remediation | 6 | 5/6 | 11.6 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -321,14 +321,23 @@ Recent decisions affecting current work:
 - Follow established CLI patterns from dominators/loops commands for consistency
 - Reuse compute_dominance_frontiers() from Phase 4 rather than reimplementing algorithm
 
+**From 08-05 (Implement --show-branches Edge Details):**
+- --show-branches flag now shows incoming edge details for unreachable blocks
+- IncomingEdge struct with from_block and edge_type fields for JSON serialization
+- Edge traversal uses petgraph EdgeRef trait (edge.target(), edge.source(), edge.id())
+- Conditional edge collection: only compute incoming_edges when --show-branches is true (performance optimization)
+- serde::skip_serializing_if hides empty incoming_edges arrays in JSON output
+- Fixed blocking bug: removed non-existent max_count field in paths() command
+- Pattern: use petgraph::visit::EdgeRef for edge methods in graph traversal
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
 - Trigger: Code drift analysis found 6 categories of gaps
 - Stub commands: `mirage index`, `mirage blast-zone`
-- Unused features: Path caching, loops detection, patterns detection, dominance frontiers
+- Unused features: Path caching (COMPLETED in 08-06), loops detection (COMPLETED in 08-01), patterns detection (COMPLETED in 08-02), dominance frontiers (COMPLETED in 08-03)
 - Doc test failures: 34 failing due to cfg! macro collision (FIXED in 08-04)
-- Placeholder: --show-branches shows placeholder message
+- --show-branches placeholder (COMPLETED in 08-05)
 
 ### Pending Todos
 
@@ -342,5 +351,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 08-02: Wire branching patterns command
+Stopped at: Completed 08-05: Implement --show-branches edge details
 Resume file: None

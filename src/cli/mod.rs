@@ -1720,7 +1720,7 @@ pub mod cmds {
                     println!("Count: {}", frontier_blocks.len());
                     println!();
                     if frontier_blocks.is_empty() {
-                        output::info("Block {} has empty dominance frontier", node_id);
+                        output::info(&format!("Block {} has empty dominance frontier", node_id));
                     } else {
                         println!("Frontier blocks:");
                         for id in &frontier_blocks {

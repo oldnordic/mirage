@@ -13,16 +13,16 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 Phase: 8 of 8 (Drift Remediation) - In Progress
 Plan: 6 plans to wire unimplemented features and fix gaps
 Status: Executing Phase 8 to implement stub commands, wire path caching, add CLI commands for unused features, fix doctests, and implement --show-branches.
-Last activity: 2026-02-02 - Completed 08-05: Implement --show-branches edge details
+Last activity: 2026-02-02 - Completed 08-06: Wire path caching to paths command
 
-Progress: [████████████████░] 97.4% (7 phases complete, 38/39 plans done, 1 remaining in Phase 8)
+Progress: [████████████████ ] 100% (7 phases complete, 39/39 plans done, Phase 8 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 38
-- Average duration: 5.2 min
-- Total execution time: 3.3 hours
+- Total plans completed: 39
+- Average duration: 5.3 min
+- Total execution time: 3.4 hours
 
 **By Phase:**
 
@@ -35,7 +35,7 @@ Progress: [████████████████░] 97.4% (7 phases 
 | 05-path-enumeration | 6 | 6/6 | 4.6 min |
 | 06-cli-interface | 7 | 7/7 | 5.6 min |
 | 07-llm-integration | 4 | 4/4 | 4.5 min |
-| 08-drift-remediation | 6 | 5/6 | 11.6 min |
+| 08-drift-remediation | 6 | 6/6 | 11.3 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -330,6 +330,14 @@ Recent decisions affecting current work:
 - Fixed blocking bug: removed non-existent max_count field in paths() command
 - Pattern: use petgraph::visit::EdgeRef for edge methods in graph traversal
 
+**From 08-06 (Wire Path Caching to CLI):**
+- paths() command changed from enumerate_paths() to get_or_enumerate_paths() for automatic caching
+- Test function_id (-1) and hash ("test_cfg") used for test CFG database integration
+- Foreign key constraint handling: tests must insert graph_entities entry before storing cfg_paths
+- Cache behavior verified: first call enumerates, second call returns cached paths, hash changes trigger invalidation
+- Test database setup pattern: Magellan schema → Mirage schema → insert test entity → enable FK → run test
+- Database connection changed from _db to mut db for cache operations
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -351,5 +359,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 08-05: Implement --show-branches edge details
+Stopped at: Completed 08-06: Wire path caching to paths command
 Resume file: None
+Phase 8 complete - All 39 plans done across all phases

@@ -24,10 +24,15 @@ use std::collections::{HashSet, HashMap};
 /// region meets control from outside n's region.
 ///
 /// # Example
-/// ```rust
-/// let dom_tree = DominatorTree::new(&cfg)?;
-/// let frontiers = DominanceFrontiers::new(&cfg, dom_tree);
-///
+/// ```rust,no_run
+/// # use mirage::cfg::dominance_frontiers::DominanceFrontiers;
+/// # use mirage::cfg::dominators::DominatorTree;
+/// # use mirage::cfg::Cfg;
+/// # use petgraph::graph::NodeIndex;
+/// # let graph: Cfg = unimplemented!();
+/// # let dom_tree = DominatorTree::new(&graph).unwrap();
+/// # let frontiers = DominanceFrontiers::new(&graph, dom_tree);
+/// # let some_node = NodeIndex::new(0);
 /// for node in frontiers.frontier(some_node) {
 ///     println!("{:?} is in {:?}'s dominance frontier", node, some_node);
 /// }
@@ -52,9 +57,13 @@ impl DominanceFrontiers {
     /// Complexity: O(|V|²) for worst-case CFG
     ///
     /// # Example
-    /// ```rust
-    /// let dom_tree = DominatorTree::new(&cfg)?;
-    /// let frontiers = DominanceFrontiers::new(&cfg, dom_tree);
+    /// ```rust,no_run
+    /// # use mirage::cfg::dominance_frontiers::DominanceFrontiers;
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
+    /// # let graph: Cfg = unimplemented!();
+    /// # let dom_tree = DominatorTree::new(&graph).unwrap();
+    /// let frontiers = DominanceFrontiers::new(&graph, dom_tree);
     /// ```
     pub fn new(cfg: &Cfg, dominator_tree: DominatorTree) -> Self {
         let mut frontiers: HashMap<NodeIndex, HashSet<NodeIndex>> = HashMap::new();
@@ -106,7 +115,15 @@ impl DominanceFrontiers {
     /// (e.g., node that doesn't dominate any branching code).
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
+    /// # use mirage::cfg::dominance_frontiers::DominanceFrontiers;
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
+    /// # use petgraph::graph::NodeIndex;
+    /// # let graph: Cfg = unimplemented!();
+    /// # let dom_tree = DominatorTree::new(&graph).unwrap();
+    /// # let frontiers = DominanceFrontiers::new(&graph, dom_tree);
+    /// # let node = NodeIndex::new(0);
     /// let df = frontiers.frontier(node);
     /// println!("Node {:?} has {} nodes in its dominance frontier", node, df.len());
     /// ```
@@ -119,7 +136,16 @@ impl DominanceFrontiers {
     /// Returns true if v is a join point where n's dominance ends.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
+    /// # use mirage::cfg::dominance_frontiers::DominanceFrontiers;
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
+    /// # use petgraph::graph::NodeIndex;
+    /// # let graph: Cfg = unimplemented!();
+    /// # let dom_tree = DominatorTree::new(&graph).unwrap();
+    /// # let frontiers = DominanceFrontiers::new(&graph, dom_tree);
+    /// # let n = NodeIndex::new(0);
+    /// # let v = NodeIndex::new(1);
     /// if frontiers.in_frontier(n, v) {
     ///     println!("{:?} is where {:?}'s dominance ends", v, n);
     /// }
@@ -184,9 +210,13 @@ impl DominanceFrontiers {
 /// This is a shorthand for DominanceFrontiers::new().
 ///
 /// # Example
-/// ```rust
-/// let dom_tree = DominatorTree::new(&cfg)?;
-/// let frontiers = compute_dominance_frontiers(&cfg, dom_tree)?;
+/// ```rust,no_run
+/// # use mirage::cfg::dominance_frontiers::compute_dominance_frontiers;
+/// # use mirage::cfg::dominators::DominatorTree;
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// # let dom_tree = DominatorTree::new(&graph).unwrap();
+/// let frontiers = compute_dominance_frontiers(&graph, dom_tree);
 /// ```
 pub fn compute_dominance_frontiers(cfg: &Cfg, dominator_tree: DominatorTree) -> DominanceFrontiers {
     DominanceFrontiers::new(cfg, dominator_tree)

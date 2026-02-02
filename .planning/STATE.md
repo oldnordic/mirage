@@ -309,6 +309,11 @@ Recent decisions affecting current work:
 - Provide complete imports and type annotations in doctest examples for self-contained documentation
 - Fixed all 34 failing doctests across 7 files (loops, patterns, dominance_frontiers, reachability, paths, dominators, post_dominators)
 
+**From 08-02 (Wire Branching Patterns Command):**
+- Filter logic: --if-else excludes match patterns and vice versa; default shows both
+- Separate IfElseInfo and MatchInfo structs rather than unified enum for clearer JSON serialization
+- Pattern detection functions (detect_if_else_patterns, detect_match_patterns) from Phase 3 now exposed via CLI
+
 **From 08-03 (Wire Dominance Frontiers Command):**
 - Three query modes for dominance frontiers: default (all frontiers), --node N (single node), --iterated (iterated frontier for phi placement)
 - CLI analysis command pattern: database resolution → test CFG → computation → formatted output
@@ -337,5 +342,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 08-03: Wire dominance frontiers command
+Stopped at: Completed 08-02: Wire branching patterns command
 Resume file: None

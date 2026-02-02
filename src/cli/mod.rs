@@ -425,6 +425,13 @@ struct UnreachableResponse {
     blocks: Vec<UnreachableBlock>,
 }
 
+/// Incoming edge information for unreachable blocks
+#[derive(serde::Serialize)]
+struct IncomingEdge {
+    from_block: usize,
+    edge_type: String,
+}
+
 /// Unreachable block details for JSON output
 #[derive(serde::Serialize)]
 struct UnreachableBlock {
@@ -432,6 +439,8 @@ struct UnreachableBlock {
     kind: String,
     statements: Vec<String>,
     terminator: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    incoming_edges: Vec<IncomingEdge>,
 }
 
 /// Response for verify command
@@ -585,14 +594,14 @@ pub mod cmds {
     }
 
     pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
-        use crate::cfg::{PathKind, PathLimits, enumerate_paths};
+        use crate::cfg::{PathKind, PathLimits, get_or_enumerate_paths};
         use crate::storage::MirageDb;
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;
 
         // Open database
-        let _db = match MirageDb::open(&db_path) {
+        let mut db = match MirageDb::open(&db_path) {
             Ok(db) => db,
             Err(_e) => {
                 // JSON-aware error handling with remediation
@@ -610,7 +619,7 @@ pub mod cmds {
         };
 
         // For now, create a test CFG since MIR extraction isn't complete
-        // TODO: Load CFG from database using args.function
+        // TODO: Load CFG from database using args.function and get function_id
         let cfg = create_test_cfg();
 
         // Build path limits based on args
@@ -619,8 +628,19 @@ pub mod cmds {
             limits = limits.with_max_length(max_length);
         }
 
-        // Enumerate paths
-        let mut paths = enumerate_paths(&cfg, &limits);
+        // Use cached path enumeration via get_or_enumerate_paths()
+        // For test CFGs, we use a special function_id (-1) and hash ("test_cfg")
+        // This allows caching to work even with test data within a database session
+        // When MIR extraction is complete, we'll query the database for actual function_id and hash
+        let test_function_id: i64 = -1;  // Special ID for test CFGs
+        let test_function_hash: &str = "test_cfg";  // Hash for test CFGs
+        let mut paths = get_or_enumerate_paths(
+            &cfg,
+            test_function_id,
+            test_function_hash,
+            &limits,
+            db.conn_mut(),
+        ).map_err(|e| anyhow::anyhow!("Path enumeration failed: {}", e))?;
 
         // Filter to error paths if requested
         if args.show_errors {
@@ -1217,6 +1237,7 @@ pub mod cmds {
     pub fn unreachable(args: &UnreachableArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::reachability::find_unreachable;
         use crate::storage::MirageDb;
+        use petgraph::visit::EdgeRef;
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;
@@ -1274,15 +1295,34 @@ pub mod cmds {
         // Build UnreachableBlock structs from the NodeIndex results
         let blocks: Vec<UnreachableBlock> = unreachable_indices
             .iter()
-            .filter_map(|&idx| cfg.node_weight(idx))
-            .map(|block| {
+            .map(|&idx| {
+                let block = &cfg[idx];
                 let kind_str = format!("{:?}", block.kind);
                 let terminator_str = format!("{:?}", block.terminator);
+
+                // Collect incoming edges if show_branches is requested
+                let incoming_edges = if args.show_branches {
+                    cfg.edge_references()
+                        .filter(|edge| edge.target() == idx)
+                        .map(|edge| {
+                            let source_block = &cfg[edge.source()];
+                            let edge_type = cfg.edge_weight(edge.id()).unwrap();
+                            IncomingEdge {
+                                from_block: source_block.id,
+                                edge_type: format!("{:?}", edge_type),
+                            }
+                        })
+                        .collect()
+                } else {
+                    vec![]
+                };
+
                 UnreachableBlock {
                     block_id: block.id,
                     kind: kind_str,
                     statements: block.statements.clone(),
                     terminator: terminator_str,
+                    incoming_edges,
                 }
             })
             .collect();
@@ -1321,7 +1361,18 @@ pub mod cmds {
                 }
 
                 if args.show_branches {
-                    output::info("Branch details: Use --show-branches to see incoming edges (not yet implemented)");
+                    println!("\nIncoming Edges:");
+                    for block in &blocks {
+                        if block.incoming_edges.is_empty() {
+                            println!("  Block {} has no incoming edges (entry or isolated)", block.block_id);
+                        } else {
+                            println!("  Block {} incoming edges:", block.block_id);
+                            for edge in &block.incoming_edges {
+                                println!("    from block {} ({})", edge.from_block, edge.edge_type);
+                            }
+                        }
+                        println!();
+                    }
                 }
             }
             OutputFormat::Json | OutputFormat::Pretty => {
@@ -2684,6 +2735,7 @@ mod unreachable_tests {
                     kind: "Exit".to_string(),
                     statements: vec!["unreachable code".to_string()],
                     terminator: "Unreachable".to_string(),
+                    incoming_edges: vec![],
                 }
             ],
         };

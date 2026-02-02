@@ -530,12 +530,279 @@ struct IteratedFrontierResponse {
 pub mod cmds {
     use super::*;
     use crate::output;
-    use anyhow::Result;
+    use anyhow::{Context, Result};
 
-    pub fn index(_args: IndexArgs) -> Result<()> {
-        // TODO: Implement M1 (MIR Extraction)
-        output::error("Indexing not yet implemented - requires MIR extraction (Milestone 1)");
-        std::process::exit(1);
+    /// Response for index command
+    #[derive(serde::Serialize)]
+    struct IndexResult {
+        crate_name: String,
+        total_functions: usize,
+        updated_functions: usize,
+        skipped_functions: usize,
+        errors: Vec<String>,
+    }
+
+    pub fn index(args: IndexArgs, cli: &Cli) -> Result<()> {
+        use crate::cfg::ullbc_to_cfg;
+        use crate::mir::{run_charon, parse_ullbc};
+        use crate::mir::charon::UllbcFunction;
+        use crate::storage::{MirageDb, create_minimal_database, store_cfg, get_function_hash};
+        use rusqlite::OptionalExtension;
+        use std::path::{Path, PathBuf};
+
+        // Resolve database path
+        let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // Create database if it doesn't exist
+        if !Path::new(&db_path).exists() {
+            output::info(&format!("Creating database at {}", db_path));
+            create_minimal_database(&db_path)
+                .with_context(|| format!("Failed to create database at {}", db_path))?;
+            output::success("Database created successfully");
+        }
+
+        // Open database
+        let mut db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
+            Err(e) => {
+                // JSON-aware error handling with remediation
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::new(
+                        "DatabaseError",
+                        &format!("Failed to open database: {}", e),
+                        output::E_DATABASE_NOT_FOUND
+                    );
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", e));
+                    std::process::exit(output::EXIT_DATABASE);
+                }
+            }
+        };
+
+        // Determine project path
+        let project_path = determine_project_path(&args)?;
+        let cargo_toml = project_path.join("Cargo.toml");
+
+        // Verify Cargo.toml exists
+        if !cargo_toml.exists() {
+            let msg = format!("Cargo.toml not found at {}", cargo_toml.display());
+            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                let error = output::JsonError::new(
+                    "ProjectNotFound",
+                    &msg,
+                    output::E_INVALID_INPUT
+                );
+                let wrapper = output::JsonResponse::new(error);
+                println!("{}", wrapper.to_json());
+                std::process::exit(output::EXIT_FILE_NOT_FOUND);
+            } else {
+                output::error(&msg);
+                output::info("Hint: --project should point to a Rust project directory");
+                std::process::exit(output::EXIT_FILE_NOT_FOUND);
+            }
+        }
+
+        output::header(&format!("Indexing {}", project_path.display()));
+
+        // Run Charon
+        output::cmd("Running Charon to extract MIR...");
+        let ullbc_json = match run_charon(&project_path) {
+            Ok(json) => json,
+            Err(e) => {
+                // Check if Charon is not found
+                if e.to_string().contains("No such file") || e.to_string().contains("not found") {
+                    let msg = "Charon binary not found".to_string();
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::new(
+                            "CharonNotFound",
+                            &msg,
+                            output::E_INVALID_INPUT
+                        ).with_remediation("Install Charon: cargo install charon --git https://github.com/AeneasVerif/charon");
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_ERROR);
+                    } else {
+                        output::error(&msg);
+                        output::info("Install Charon: cargo install charon --git https://github.com/AeneasVerif/charon");
+                        output::info("Or download from: https://github.com/AeneasVerif/charon");
+                        std::process::exit(output::EXIT_ERROR);
+                    }
+                }
+                return Err(e.context("Failed to run Charon"));
+            }
+        };
+
+        // Parse ULLBC
+        let ullbc_data = match parse_ullbc(&ullbc_json) {
+            Ok(data) => data,
+            Err(e) => {
+                output::error(&format!("Failed to parse Charon output: {}", e));
+                output::info("Hint: Ensure Charon output format is JSON");
+                return Err(e);
+            }
+        };
+
+        let crate_name = &ullbc_data.crate_name;
+        let functions = ullbc_data.functions;
+
+        if functions.is_empty() {
+            output::warn("No functions found in ULLBC output");
+            let result = IndexResult {
+                crate_name: crate_name.clone(),
+                total_functions: 0,
+                updated_functions: 0,
+                skipped_functions: 0,
+                errors: vec!["No functions found".to_string()],
+            };
+
+            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                let wrapper = output::JsonResponse::new(result);
+                println!("{}", wrapper.to_json());
+            } else {
+                println!("\nNo functions found to index.");
+            }
+            return Ok(());
+        }
+
+        // Process each function
+        let mut updated = 0;
+        let mut skipped = 0;
+        let mut errors = Vec::new();
+        let conn = db.conn_mut();
+
+        for func in &functions {
+            let func_name = &func.name;
+
+            // Skip functions without body
+            if func.body.is_none() {
+                continue;
+            }
+
+            // Compute function hash for incremental detection
+            let body = func.body.as_ref().unwrap();
+            let function_hash = compute_function_hash(func);
+
+            // Check if we should skip (incremental mode)
+            if args.incremental {
+                // Check if function already exists with same hash
+                // First we need to find the function_id in graph_entities
+                let existing_func_id: Option<i64> = conn.query_row(
+                    "SELECT id FROM graph_entities WHERE kind = 'function' AND name = ? LIMIT 1",
+                    rusqlite::params![func_name],
+                    |row| row.get(0)
+                ).optional().ok().flatten();
+
+                if let Some(func_id) = existing_func_id {
+                    if let Some(stored_hash) = get_function_hash(conn, func_id) {
+                        if stored_hash == function_hash {
+                            skipped += 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Convert ULLBC to CFG
+            let cfg = ullbc_to_cfg(body);
+
+            // Find or create graph_entities entry for the function
+            let function_id: i64 = match conn.query_row(
+                "SELECT id FROM graph_entities WHERE kind = 'function' AND name = ? LIMIT 1",
+                rusqlite::params![func_name],
+                |row| row.get(0)
+            ).optional() {
+                Ok(Some(id)) => id,
+                Ok(None) => {
+                    // Create new function entity
+                    conn.execute(
+                        "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+                        rusqlite::params!("function", func_name, "", "{}"),
+                    ).context("Failed to insert function entity")?;
+                    conn.last_insert_rowid()
+                }
+                Err(e) => {
+                    errors.push(format!("{}: {}", func_name, e));
+                    continue;
+                }
+            };
+
+            // Store CFG
+            if let Err(e) = store_cfg(conn, function_id, &function_hash, &cfg) {
+                errors.push(format!("{}: {}", func_name, e));
+            } else {
+                updated += 1;
+
+                // Print progress for human output
+                if !matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let block_count = cfg.node_count();
+                    let edge_count = cfg.edge_count();
+                    println!("  Indexed: {} ({} blocks, {} edges)", func_name, block_count, edge_count);
+                }
+            }
+        }
+
+        // Prepare result
+        let result = IndexResult {
+            crate_name: crate_name.clone(),
+            total_functions: functions.len(),
+            updated_functions: updated,
+            skipped_functions: skipped,
+            errors: errors.clone(),
+        };
+
+        // Output based on format
+        match cli.output {
+            OutputFormat::Human => {
+                println!();
+                output::success(&format!("Indexing complete for {}", crate_name));
+                println!("  Total functions: {}", result.total_functions);
+                println!("  Updated: {}", result.updated_functions);
+                println!("  Skipped: {}", result.skipped_functions);
+                if !errors.is_empty() {
+                    println!("  Errors: {}", errors.len());
+                    for err in &errors {
+                        println!("    - {}", err);
+                    }
+                }
+            }
+            OutputFormat::Json => {
+                let wrapper = output::JsonResponse::new(result);
+                println!("{}", wrapper.to_json());
+            }
+            OutputFormat::Pretty => {
+                let wrapper = output::JsonResponse::new(result);
+                println!("{}", wrapper.to_pretty_json());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Determine the project path from arguments
+    fn determine_project_path(args: &IndexArgs) -> anyhow::Result<std::path::PathBuf> {
+        use std::path::PathBuf;
+
+        if let Some(ref project) = args.project {
+            Ok(PathBuf::from(project))
+        } else if args.crate_.is_some() {
+            // Use current directory
+            std::env::current_dir()
+                .context("Failed to get current directory")
+        } else {
+            // Default: current directory
+            std::env::current_dir()
+                .context("Failed to get current directory")
+        }
+    }
+
+    /// Compute a BLAKE3 hash of a function for incremental detection
+    fn compute_function_hash(func: &crate::mir::charon::UllbcFunction) -> String {
+        let serialized = serde_json::to_string(func).unwrap_or_default();
+        let hash = blake3::hash(serialized.as_bytes());
+        hash.to_string()
     }
 
     pub fn status(_args: StatusArgs, cli: &Cli) -> Result<()> {

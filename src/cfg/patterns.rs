@@ -77,9 +77,12 @@ impl MatchPattern {
 /// outgoing edges and terminator type.
 ///
 /// # Example
-/// ```rust
-/// for node in cfg.node_indices() {
-///     match classify_branch(&cfg, node) {
+/// ```rust,no_run
+/// # use mirage::cfg::patterns::{classify_branch, BranchType};
+/// # use mirage::cfg::Cfg;
+/// # let graph: Cfg = unimplemented!();
+/// for node in graph.node_indices() {
+///     match classify_branch(&graph, node) {
 ///         BranchType::Conditional => println!("if/else at {:?}", node),
 ///         BranchType::MultiWay => println!("match at {:?}", node),
 ///         _ => {}
@@ -196,8 +199,10 @@ fn find_common_successor(cfg: &Cfg, n1: NodeIndex, n2: NodeIndex) -> Option<Node
 /// Returns an empty vec if no patterns found.
 ///
 /// # Example
-/// ```rust
-/// let patterns = detect_if_else_patterns(&cfg);
+/// ```rust,no_run
+/// # use mirage::cfg::patterns::detect_if_else_patterns;
+/// # let graph = unimplemented!();
+/// let patterns = detect_if_else_patterns(&graph);
 /// for pattern in patterns {
 ///     println!("if/else at {:?}, merges at {:?}", pattern.condition, pattern.merge_point);
 /// }
@@ -270,8 +275,10 @@ fn order_branches_by_edge_type(
 /// Returns an empty vec if no patterns found.
 ///
 /// # Example
-/// ```rust
-/// let patterns = detect_match_patterns(&cfg);
+/// ```rust,no_run
+/// # use mirage::cfg::patterns::detect_match_patterns;
+/// # let graph = unimplemented!();
+/// let patterns = detect_match_patterns(&graph);
 /// for pattern in patterns {
 ///     println!("match at {:?} with {} branches", pattern.switch_node, pattern.branch_count());
 /// }

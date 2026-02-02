@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Path Enumeration** - Enumerate and classify execution paths ✓ Completed 2026-02-01
 - [x] **Phase 6: CLI Interface** - User-facing commands for all analysis types ✓ Completed 2026-02-01
 - [x] **Phase 7: LLM Integration** - Structured outputs for agent consumption ✓ Completed 2026-02-01
+- [x] **Phase 8: Drift Remediation** - Wire unimplemented features and fix gaps ✓ Completed 2026-02-02
 
 ## Phase Details
 
@@ -215,10 +216,40 @@ Plans:
 - [x] 07-03-PLAN.md — Error remediation suggestions (error codes, JsonError helpers)
 - [x] 07-04-PLAN.md — Control flow natural language summaries (summarize_path, describe_block)
 
+### Phase 8: Drift Remediation
+
+**Goal**: Wire up all unimplemented features, fix stub commands, enable path caching, add CLI commands for unused analysis capabilities, fix doctests, and implement placeholder flags.
+
+**Depends on**: Phase 5, Phase 6
+
+**Requirements**: DRIFT-01, DRIFT-02, DRIFT-03, DRIFT-04, DRIFT-05, DRIFT-06
+
+**Success Criteria** (what must be TRUE):
+1. `mirage index` command implements MIR extraction (no longer stub)
+2. `mirage blast-zone` command implements path-based impact analysis (no longer stub)
+3. Path caching functions wired to CLI (cached queries actually use database)
+4. `mirage loops` command shows natural loops in CFG
+5. `mirage patterns` command shows if-else/match patterns
+6. `mirage frontiers` command shows dominance frontiers
+7. All doctests pass (34 currently failing due to cfg! macro collision)
+8. `--show-branches` flag shows actual branch edge details
+
+**Plans**: 6 plans in 2 waves
+
+Plans:
+- [x] 08-01 — Wire natural loops to CLI (mirage loops command)
+- [x] 08-02 — Wire pattern detection to CLI (mirage patterns command)
+- [x] 08-03 — Wire dominance frontiers to CLI (mirage frontiers command)
+- [x] 08-04 — Fix doctests (cfg! macro collision)
+- [x] 08-05 — Implement --show-branches (incoming edge details)
+- [x] 08-06 — Wire path caching to CLI (get_or_enumerate_paths integration)
+
+**Status**: ✓ Complete 2026-02-02
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -229,9 +260,10 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 5. Path Enumeration | 6/6 | ✓ Complete | 2026-02-01 |
 | 6. CLI Interface | 7/7 | ✓ Complete | 2026-02-01 |
 | 7. LLM Integration | 4/4 | ✓ Complete | 2026-02-01 |
+| 8. Drift Remediation | 6/6 | ✓ Complete | 2026-02-02 |
 
 ---
 
-**Total Phases:** 7
+**Total Phases:** 8
 **Total Requirements:** 51
 **Coverage:** 51/51 requirements mapped

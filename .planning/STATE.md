@@ -11,11 +11,11 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 9 of 9 (MIR Integration & Database Loading) - In Progress
-Plan: 2 of 2 (Database Loading Utilities) - Complete
-Status: Database loading utilities implemented. Ready for CLI command integration. CFG storage and loading complete with function resolution.
-Last activity: 2026-02-02 - Completed 09-02 Database Loading Utilities
+Plan: 1 of 2 (mirage index command) - Complete
+Status: MIR extraction via Charon implemented with incremental indexing. CFG storage complete with function_hash tracking.
+Last activity: 2026-02-02 - Completed 09-01 mirage index command
 
-Progress: [█████████████░ ] 92% (8 phases complete, 41/42 plans done, Phase 9: 2/2 plans complete)
+Progress: [█████████████░ ] 92% (8 phases complete, 41/43 plans done, Phase 9: 1/2 plans complete)
 
 ## Performance Metrics
 
@@ -338,6 +338,16 @@ Recent decisions affecting current work:
 - Test database setup pattern: Magellan schema → Mirage schema → insert test entity → enable FK → run test
 - Database connection changed from _db to mut db for cache operations
 
+**From 09-01 (mirage index command):**
+- BLAKE3 function_hash for incremental update detection - only re-index changed functions
+- Auto-install Charon with helpful error message when binary not found
+- store_cfg() clears existing blocks before insert for atomic updates
+- index() uses --incremental flag to skip unchanged functions
+- External tool integration: spawn binary, capture stdout, parse JSON
+- Incremental indexing pattern: compute hash, compare, skip if unchanged
+- Database atomic updates: BEGIN IMMEDIATE TRANSACTION, clear existing, insert new
+- Progress indication: show processed, updated, skipped, errors counts
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -363,6 +373,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 09-02 Database Loading Utilities
+Stopped at: Completed 09-01 mirage index command
 Resume file: None
-Phase 8 complete (6/6 plans). Phase 9: 2/2 plans complete (CFG Storage, Database Loading Utilities)
+Phase 8 complete (6/6 plans). Phase 9: 1/2 plans complete (mirage index command)

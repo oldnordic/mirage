@@ -36,7 +36,7 @@ fn main() -> Result<()> {
 
 fn run_command(cli: Cli) -> Result<()> {
     match cli.command {
-        Commands::Index(args) => cli::cmds::index(args, &cli)?,
+        Commands::Index(ref args) => cli::cmds::index(args, &cli)?,
         Commands::Status(args) => cli::cmds::status(args, &cli)?,
         Commands::Paths(ref args) => cli::cmds::paths(args, &cli)?,
         Commands::Cfg(ref args) => cli::cmds::cfg(args, &cli)?,

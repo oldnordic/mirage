@@ -542,7 +542,7 @@ pub mod cmds {
         errors: Vec<String>,
     }
 
-    pub fn index(args: IndexArgs, cli: &Cli) -> Result<()> {
+    pub fn index(args: &IndexArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::ullbc_to_cfg;
         use crate::mir::{run_charon, parse_ullbc};
         use crate::mir::charon::UllbcFunction;

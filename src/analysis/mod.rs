@@ -859,4 +859,115 @@ mod tests {
         assert!(json.contains(r#""data_dependencies":5"#));
         assert!(json.contains(r#""control_dependencies":3"#));
     }
+
+    #[test]
+    fn test_symbol_info_json_from_symbol_info() {
+        // Test SymbolInfoJson conversion from SymbolInfo
+        use magellan::SymbolInfo;
+
+        let symbol_info = SymbolInfo {
+            symbol_id: Some("test_symbol_id".to_string()),
+            fqn: Some("test::function".to_string()),
+            file_path: "test.rs".to_string(),
+            kind: "Function".to_string(),
+        };
+
+        let json_symbol: SymbolInfoJson = (&symbol_info).into();
+
+        assert_eq!(json_symbol.symbol_id, Some("test_symbol_id".to_string()));
+        assert_eq!(json_symbol.fqn, Some("test::function".to_string()));
+        assert_eq!(json_symbol.file_path, "test.rs");
+        assert_eq!(json_symbol.kind, "Function");
+    }
+
+    #[test]
+    fn test_enhanced_blast_zone_creation() {
+        // Test EnhancedBlastZone struct creation and serialization
+        let forward = vec![
+            SymbolInfoJson {
+                symbol_id: Some("func_a_id".to_string()),
+                fqn: Some("func_a".to_string()),
+                file_path: "a.rs".to_string(),
+                kind: "Function".to_string(),
+            },
+            SymbolInfoJson {
+                symbol_id: Some("func_b_id".to_string()),
+                fqn: Some("func_b".to_string()),
+                file_path: "b.rs".to_string(),
+                kind: "Function".to_string(),
+            },
+        ];
+
+        let backward = vec![
+            SymbolInfoJson {
+                symbol_id: Some("main_id".to_string()),
+                fqn: Some("main".to_string()),
+                file_path: "main.rs".to_string(),
+                kind: "Function".to_string(),
+            },
+        ];
+
+        let path_impact = PathImpactSummary {
+            path_id: Some("test_path_id".to_string()),
+            path_length: 5,
+            blocks_affected: vec![1, 2, 3, 4],
+            unique_blocks_count: 4,
+        };
+
+        let blast_zone = EnhancedBlastZone {
+            target: "test_function".to_string(),
+            forward_reachable: forward.clone(),
+            backward_reachable: backward.clone(),
+            path_impact: Some(path_impact),
+        };
+
+        assert_eq!(blast_zone.target, "test_function");
+        assert_eq!(blast_zone.forward_reachable.len(), 2);
+        assert_eq!(blast_zone.backward_reachable.len(), 1);
+        assert!(blast_zone.path_impact.is_some());
+
+        // Test serialization
+        let json = serde_json::to_string(&blast_zone).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("forward_reachable"));
+        assert!(json.contains("backward_reachable"));
+        assert!(json.contains("path_impact"));
+        assert!(json.contains("func_a"));
+        assert!(json.contains("main"));
+    }
+
+    #[test]
+    fn test_path_impact_summary_serialization() {
+        // Test PathImpactSummary can be serialized to JSON
+        let impact = PathImpactSummary {
+            path_id: Some("test_path".to_string()),
+            path_length: 10,
+            blocks_affected: vec![1, 2, 3, 4, 5],
+            unique_blocks_count: 5,
+        };
+
+        let json = serde_json::to_string(&impact).unwrap();
+        assert!(json.contains("path_id"));
+        assert!(json.contains("path_length"));
+        assert!(json.contains("blocks_affected"));
+        assert!(json.contains("unique_blocks_count"));
+        assert!(json.contains("test_path"));
+    }
+
+    #[test]
+    fn test_enhanced_blast_zone_without_path_impact() {
+        // Test EnhancedBlastZone without optional path_impact
+        let blast_zone = EnhancedBlastZone {
+            target: "test_function".to_string(),
+            forward_reachable: vec![],
+            backward_reachable: vec![],
+            path_impact: None,
+        };
+
+        assert!(blast_zone.path_impact.is_none());
+
+        // Test serialization with None
+        let json = serde_json::to_string(&blast_zone).unwrap();
+        assert!(json.contains(r#""path_impact":null"#));
+    }
 }

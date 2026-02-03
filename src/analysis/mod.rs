@@ -12,6 +12,8 @@
 //! a unified API for both layers of analysis.
 
 use anyhow::Result;
+use serde::Serialize;
+use std::collections::HashMap;
 
 // Re-export key types from Magellan for convenience
 pub use magellan::CodeGraph;
@@ -22,6 +24,53 @@ pub use magellan::{
     ExecutionPath, PathEnumerationResult, PathStatistics, ProgramSlice, SliceDirection,
     SliceResult, SliceStatistics, Supernode, SymbolInfo,
 };
+
+/// Serializable wrapper for [`DeadSymbol`]
+///
+/// Magellan's [`DeadSymbol`] doesn't implement Serialize, so we provide
+/// a wrapper struct that can be serialized to JSON for CLI output.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeadSymbolJson {
+    /// Fully-qualified name of the dead symbol
+    pub fqn: Option<String>,
+    /// File path containing the symbol
+    pub file_path: String,
+    /// Symbol kind (Function, Method, Class, etc.)
+    pub kind: String,
+    /// Reason why this symbol is unreachable/dead
+    pub reason: String,
+}
+
+impl From<&DeadSymbol> for DeadSymbolJson {
+    fn from(dead: &DeadSymbol) -> Self {
+        Self {
+            fqn: dead.symbol.fqn.clone(),
+            file_path: dead.symbol.file_path.clone(),
+            kind: dead.symbol.kind.clone(),
+            reason: dead.reason.clone(),
+        }
+    }
+}
+
+/// Enhanced dead code detection combining Magellan and Mirage analysis
+///
+/// Combines inter-procedural dead code detection (uncalled functions from Magellan)
+/// with intra-procedural dead code detection (unreachable blocks within functions from Mirage).
+///
+/// # Fields
+///
+/// - `uncalled_functions`: Functions never called from entry point (Magellan)
+/// - `unreachable_blocks`: Unreachable blocks within functions (Mirage)
+/// - `total_dead_count`: Total count of dead code items
+#[derive(Debug, Clone, Serialize)]
+pub struct EnhancedDeadCode {
+    /// From Magellan: Functions never called from entry
+    pub uncalled_functions: Vec<DeadSymbolJson>,
+    /// From Mirage: Unreachable blocks within functions (function_name -> block_ids)
+    pub unreachable_blocks: HashMap<String, Vec<usize>>,
+    /// Total count of dead code items
+    pub total_dead_count: usize,
+}
 
 /// Bridge to Magellan's inter-procedural graph algorithms
 ///

@@ -727,10 +727,9 @@ pub mod cmds {
     pub fn index(args: &IndexArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::ullbc_to_cfg;
         use crate::mir::{run_charon, parse_ullbc};
-        use crate::mir::charon::UllbcFunction;
-        use crate::storage::{MirageDb, create_minimal_database, store_cfg, get_function_hash};
+        use crate::storage::{MirageDb, create_minimal_database, store_cfg, get_changed_functions, hash_changed};
         use rusqlite::OptionalExtension;
-        use std::path::{Path, PathBuf};
+        use std::path::Path;
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;
@@ -788,6 +787,26 @@ pub mod cmds {
         }
 
         output::header(&format!("Indexing {}", project_path.display()));
+
+        // Smart re-indexing: detect changed files first when using incremental mode
+        // This provides early feedback to the user about what may need re-indexing
+        if args.incremental {
+            output::info("Detecting changed files via git diff...");
+
+            match get_changed_functions(db.conn(), &project_path) {
+                Ok(changed) => {
+                    if !changed.is_empty() {
+                        output::success(&format!("Detected {} potentially changed functions via git", changed.len()));
+                    } else {
+                        output::info("No changed Rust files detected via git diff");
+                    }
+                }
+                Err(e) => {
+                    // Non-fatal: just log and continue
+                    output::warn(&format!("Could not detect git changes: {}, using hash comparison only", e));
+                }
+            }
+        }
 
         // Run Charon (with auto-install prompt if missing)
         output::cmd("Running Charon to extract MIR...");
@@ -939,21 +958,24 @@ pub mod cmds {
 
             // Check if we should skip (incremental mode)
             if args.incremental {
-                // Check if function already exists with same hash
-                // First we need to find the function_id in graph_entities
-                let existing_func_id: Option<i64> = conn.query_row(
+                // First check if function is in the git-changed set
+                // If not detected by git, still do hash comparison to be safe
+                let should_skip = if let Some(existing_func_id) = conn.query_row(
                     "SELECT id FROM graph_entities WHERE kind = 'function' AND name = ? LIMIT 1",
                     rusqlite::params![func_name],
                     |row| row.get(0)
-                ).optional().ok().flatten();
+                ).optional().ok().flatten() {
+                    // Function exists in DB - use hash comparison
+                    !hash_changed(conn, existing_func_id, &function_hash)
+                        .unwrap_or(true) // If hash check fails, assume changed
+                } else {
+                    // New function - always index
+                    false
+                };
 
-                if let Some(func_id) = existing_func_id {
-                    if let Some(stored_hash) = get_function_hash(conn, func_id) {
-                        if stored_hash == function_hash {
-                            skipped += 1;
-                            continue;
-                        }
-                    }
+                if should_skip {
+                    skipped += 1;
+                    continue;
                 }
             }
 
@@ -5447,11 +5469,13 @@ mod dominators_tests {
             function: "test_func".to_string(),
             must_pass_through: Some("1".to_string()),
             post: false,
+            inter_procedural: false,
         };
 
         assert_eq!(args.function, "test_func");
         assert_eq!(args.must_pass_through, Some("1".to_string()));
         assert!(!args.post);
+        assert!(!args.inter_procedural);
     }
 
     /// Test DominatorsArgs with --post flag
@@ -5461,11 +5485,13 @@ mod dominators_tests {
             function: "my_function".to_string(),
             must_pass_through: None,
             post: true,
+            inter_procedural: false,
         };
 
         assert_eq!(args.function, "my_function");
         assert!(args.post, "post flag should be true");
         assert!(args.must_pass_through.is_none(), "must_pass_through should be None");
+        assert!(!args.inter_procedural);
     }
 
     /// Test DominanceResponse struct serializes correctly

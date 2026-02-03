@@ -252,6 +252,10 @@ pub struct BlastZoneArgs {
     /// Include error paths in analysis
     #[arg(long)]
     pub include_errors: bool,
+
+    /// Use call graph for inter-procedural impact analysis
+    #[arg(long)]
+    pub use_call_graph: bool,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -598,6 +602,10 @@ struct BlockImpactResponse {
     reachable_count: usize,
     max_depth: usize,
     has_cycles: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    forward_impact: Option<Vec<CallGraphSymbol>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backward_impact: Option<Vec<CallGraphSymbol>>,
 }
 
 /// Response for path impact analysis (blast zone)
@@ -607,6 +615,21 @@ struct PathImpactResponse {
     path_length: usize,
     unique_blocks_affected: Vec<usize>,
     impact_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    forward_impact: Option<Vec<CallGraphSymbol>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backward_impact: Option<Vec<CallGraphSymbol>>,
+}
+
+/// Call graph symbol for impact analysis
+#[derive(Clone, serde::Serialize)]
+struct CallGraphSymbol {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    symbol_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fqn: Option<String>,
+    file_path: String,
+    kind: String,
 }
 
 // ============================================================================
@@ -2364,6 +2387,41 @@ pub mod cmds {
                 }
             };
 
+            // Compute call graph impact if requested
+            let (forward_impact, backward_impact): (Option<Vec<CallGraphSymbol>>, Option<Vec<CallGraphSymbol>>) = if args.use_call_graph {
+                use crate::analysis::MagellanBridge;
+                match MagellanBridge::open(&db_path) {
+                    Ok(bridge) => {
+                        // Use function name as symbol identifier
+                        let symbol_id = function_name.as_str();
+                        let forward: Option<Vec<CallGraphSymbol>> = bridge.reachable_symbols(symbol_id)
+                            .map(|symbols| symbols.into_iter().map(|s| CallGraphSymbol {
+                                symbol_id: s.symbol_id,
+                                fqn: s.fqn,
+                                file_path: s.file_path,
+                                kind: s.kind,
+                            }).collect())
+                            .ok();
+                        let backward: Option<Vec<CallGraphSymbol>> = bridge.reverse_reachable_symbols(symbol_id)
+                            .map(|symbols| symbols.into_iter().map(|s| CallGraphSymbol {
+                                symbol_id: s.symbol_id,
+                                fqn: s.fqn,
+                                file_path: s.file_path,
+                                kind: s.kind,
+                            }).collect())
+                            .ok();
+                        (forward, backward)
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Could not open Magellan database for call graph analysis: {}", e);
+                        eprintln!("Note: --use-call-graph requires a Magellan code graph database");
+                        (None, None)
+                    }
+                }
+            } else {
+                (None, None)
+            };
+
             // Output
             match cli.output {
                 OutputFormat::Human => {
@@ -2374,7 +2432,26 @@ pub mod cmds {
                     println!("Path kind: {}", path_kind);
                     println!("Path length: {} blocks", impact.path_length);
                     println!();
-                    println!("Impact Scope:");
+
+                    // Show call graph impact if available
+                    if let Some(ref forward) = forward_impact {
+                        println!("Inter-Procedural Impact (Call Graph):");
+                        println!("  Forward Impact: {} functions reached", forward.len());
+                        for sym in forward {
+                            println!("    - {}", sym.fqn.as_deref().unwrap_or(&sym.file_path));
+                        }
+                    }
+                    if let Some(ref backward) = backward_impact {
+                        if !backward.is_empty() {
+                            println!("  Backward Impact: {} functions can reach this", backward.len());
+                            for sym in backward {
+                                println!("    - {}", sym.fqn.as_deref().unwrap_or(&sym.file_path));
+                            }
+                        }
+                    }
+                    println!();
+
+                    println!("Intra-Procedural Impact (CFG):");
                     println!("  Unique blocks affected: {}", impact.impact_count);
                     if impact.impact_count > 0 {
                         println!("  Affected blocks: {:?}", impact.unique_blocks_affected);
@@ -2393,6 +2470,8 @@ pub mod cmds {
                         path_length: impact.path_length,
                         unique_blocks_affected: impact.unique_blocks_affected,
                         impact_count: impact.impact_count,
+                        forward_impact: forward_impact.clone(),
+                        backward_impact: backward_impact.clone(),
                     };
                     let wrapper = output::JsonResponse::new(response);
                     match cli.output {
@@ -2475,6 +2554,41 @@ pub mod cmds {
             let max_depth = if args.max_depth == 100 { None } else { Some(args.max_depth) };
             let impact = find_reachable_from_block(&cfg, block_id, max_depth);
 
+            // Compute call graph impact if requested
+            let (forward_impact, backward_impact): (Option<Vec<CallGraphSymbol>>, Option<Vec<CallGraphSymbol>>) = if args.use_call_graph {
+                use crate::analysis::MagellanBridge;
+                match MagellanBridge::open(&db_path) {
+                    Ok(bridge) => {
+                        // Use function name as symbol identifier
+                        let symbol_id = function_name.as_str();
+                        let forward: Option<Vec<CallGraphSymbol>> = bridge.reachable_symbols(symbol_id)
+                            .map(|symbols| symbols.into_iter().map(|s| CallGraphSymbol {
+                                symbol_id: s.symbol_id,
+                                fqn: s.fqn,
+                                file_path: s.file_path,
+                                kind: s.kind,
+                            }).collect())
+                            .ok();
+                        let backward: Option<Vec<CallGraphSymbol>> = bridge.reverse_reachable_symbols(symbol_id)
+                            .map(|symbols| symbols.into_iter().map(|s| CallGraphSymbol {
+                                symbol_id: s.symbol_id,
+                                fqn: s.fqn,
+                                file_path: s.file_path,
+                                kind: s.kind,
+                            }).collect())
+                            .ok();
+                        (forward, backward)
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Could not open Magellan database for call graph analysis: {}", e);
+                        eprintln!("Note: --use-call-graph requires a Magellan code graph database");
+                        (None, None)
+                    }
+                }
+            } else {
+                (None, None)
+            };
+
             // Output
             match cli.output {
                 OutputFormat::Human => {
@@ -2483,7 +2597,26 @@ pub mod cmds {
                     println!("Function: {}", function_name);
                     println!("Source block: {}", impact.source_block_id);
                     println!();
-                    println!("Impact Scope:");
+
+                    // Show call graph impact if available
+                    if let Some(ref forward) = forward_impact {
+                        println!("Inter-Procedural Impact (Call Graph):");
+                        println!("  Forward Impact: {} functions reached", forward.len());
+                        for sym in forward {
+                            println!("    - {}", sym.fqn.as_deref().unwrap_or(&sym.file_path));
+                        }
+                    }
+                    if let Some(ref backward) = backward_impact {
+                        if !backward.is_empty() {
+                            println!("  Backward Impact: {} functions can reach this", backward.len());
+                            for sym in backward {
+                                println!("    - {}", sym.fqn.as_deref().unwrap_or(&sym.file_path));
+                            }
+                        }
+                    }
+                    println!();
+
+                    println!("Intra-Procedural Impact (CFG):");
                     println!("  Reachable blocks: {}", impact.reachable_count);
                     if impact.reachable_count > 0 {
                         println!("  Affected blocks: {:?}", impact.reachable_blocks);
@@ -2506,6 +2639,8 @@ pub mod cmds {
                         reachable_count: impact.reachable_count,
                         max_depth: impact.max_depth_reached,
                         has_cycles: impact.has_cycles,
+                        forward_impact: forward_impact.clone(),
+                        backward_impact: backward_impact.clone(),
                     };
                     let wrapper = output::JsonResponse::new(response);
                     match cli.output {

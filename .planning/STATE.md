@@ -13,17 +13,17 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 Phase: 11 of 11 (Inter-procedural Dominance, Hotspots & Smart Re-indexing)
 Plan: 5 of 6
 Next Phase: None (final phase)
-Status: Phase 11 in progress, plan 11-03 complete
-Last activity: 2026-02-03 - Completed 11-03 (Hotspots CLI command)
+Status: Phase 11 in progress, plan 11-05 complete
+Last activity: 2026-02-03 - Completed 11-05 (Smart Re-indexing)
 
-Progress: [█████████████░] 98% (10 phases complete, 54/55 plans done)
+Progress: [█████████████░] 98% (10 phases complete, 55/56 plans done)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 54
+- Total plans completed: 55
 - Average duration: 5.3 min
-- Total execution time: 4.7 hours
+- Total execution time: 4.8 hours
 
 **By Phase:**
 
@@ -39,7 +39,7 @@ Progress: [█████████████░] 98% (10 phases complete, 
 | 08-drift-remediation | 6 | 6/6 | 11.3 min |
 | 09-mir-integration-database-loading | 4 | 4/4 | 5.5 min |
 | 10-magellan-v2-integration-and-bugfixes | 5 | 5/5 | 4.0 min |
-| 11-inter-procedural-dominance-hotspots-smart-reindexing | 5 | 5/6 | 4.6 min |
+| 11-inter-procedural-dominance-hotspots-smart-reindexing | 5 | 5/6 | 4.5 min |
 
 **Recent Trend:**
 - Last 5 plans: 3.8 min
@@ -420,6 +420,12 @@ Recent decisions affecting current work:
 - Database query joins graph_entities: Function names from graph_entities table, not cfg_blocks
 - HotspotEntry derives Clone for vector operations in response construction
 
+**From 11-05 (Smart Re-indexing):**
+- Git diff as pre-filter for early user feedback, not authoritative (hash comparison remains definitive)
+- Non-fatal git detection: graceful fallback to hash-only comparison on git errors
+- Helper functions (hash_changed, get_changed_functions) are public for testability and reusability
+- Dual-strategy change detection: git diff for broad file changes, hash comparison for precise function changes
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -464,6 +470,6 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-03
-Stopped at: Completed 11-03 (Hotspots CLI command)
-Resume file: .planning/phases/11-inter-procedural-dominance-hotspots-and-smart-reindexing/11-03-SUMMARY.md
-Phase 11 in progress (5/6 plans complete). Overall: 54/55 plans done.
+Stopped at: Completed 11-05 (Smart Re-indexing)
+Resume file: .planning/phases/11-inter-procedural-dominance-hotspots-and-smart-reindexing/11-05-SUMMARY.md
+Phase 11 in progress (5/6 plans complete). Overall: 55/56 plans done.

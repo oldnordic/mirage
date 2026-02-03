@@ -5,23 +5,24 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** MILESTONE COMPLETE
+**Current focus:** Phase 11: Inter-procedural Dominance, Hotspots & Smart Re-indexing
 **Last focus:** Phase 10: Magellan v2 Integration & Bugfixes (complete)
 
 ## Current Position
 
-Phase: 10 of 10 (Magellan v2 Integration & Bugfixes) - COMPLETE ✓
-Plan: 5 of 5 (all plans)
-Status: All 10 phases complete, all 49 plans executed
-Last activity: 2026-02-03 - Completed Phase 10 program slicing command
+Phase: 11 of 11 (Inter-procedural Dominance, Hotspots & Smart Re-indexing)
+Plan: 1 of 6
+Next Phase: None (final phase)
+Status: Phase 11 in progress, plan 11-01 complete
+Last activity: 2026-02-03 - Completed 11-01 (Call graph condensation JSON wrappers)
 
-Progress: [██████████████] 100% (10 phases complete, 49/49 plans done)
+Progress: [████████████░░] 94% (10 phases complete, 50/55 plans done)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 49
-- Average duration: 5.3 min
+- Total plans completed: 50
+- Average duration: 5.2 min
 - Total execution time: 4.4 hours
 
 **By Phase:**
@@ -38,6 +39,7 @@ Progress: [██████████████] 100% (10 phases complete,
 | 08-drift-remediation | 6 | 6/6 | 11.3 min |
 | 09-mir-integration-database-loading | 4 | 4/4 | 5.5 min |
 | 10-magellan-v2-integration-and-bugfixes | 5 | 5/5 | 4.0 min |
+| 11-inter-procedural-dominance-hotspots-smart-reindexing | 1 | 1/6 | 3 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.0 min
@@ -396,6 +398,14 @@ Recent decisions affecting current work:
 - Separate "Inter-Procedural Impact" and "Intra-Procedural Impact" in human output for clarity
 - Optional JSON fields with skip_serializing_if for clean output when call graph data is None
 
+**From 11-01 (Call Graph Condensation for Inter-Procedural Dominance):**
+- CondensationJson and SupernodeJson wrappers provide CLI serialization for SCC-based condensation results
+- From<&CondensationResult> trait implementation enables clean conversion API
+- condense_call_graph_json() convenience method returns JSON-serializable output
+- Supernode.id converted to String (from i64) for JSON compatibility
+- largest_scc_size computed for quick tight coupling assessment
+- JSON wrapper pattern follows existing SliceWrapper/SliceStats approach for consistency
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -411,11 +421,21 @@ Recent decisions affecting current work:
 
 **Phase 10 added (2026-02-03):** Magellan v2 Integration & Bugfixes - COMPLETE
 - Trigger: Integration opportunities identified with Magellan v2.0.0 + compilation errors need fixing
+- Completed: Magellan dependency added, analysis module with MagellanBridge wrapper created
 - 10-01 complete: Enhanced unreachable command with --include-uncalled flag
 - 10-02 complete: unreachable command with --include-uncalled flag
 - 10-03 complete: blast zone enhancement with call graph integration
 - 10-04 complete: combined cycle detection (call graph + function loops)
 - 10-05 complete: program slicing command (backward/forward)
+- Deferred: SC 8 (Inter-procedural dominance), SC 9 (Path-based hotspot analysis), SC 10 (Smart re-indexing)
+
+**Phase 11 added (2026-02-03):** Inter-procedural Dominance, Hotspots & Smart Re-indexing - Ready to plan
+- Trigger: Phase 10 completion left unused Magellan imports (CondensationGraph, CondensationResult, Supernode, ExecutionPath, PathEnumerationResult, PathStatistics)
+- Purpose: Complete Magellan v2 integration, implement deferred SC 8-10 features, achieve zero-warning build
+- Target features:
+  * SC 8: Inter-procedural dominance analysis using call graph condensation
+  * SC 9: Path-based hotspot analysis with risk scoring
+  * SC 10: Smart re-indexing using Magellan's graph diff
 
 ### Pending Todos
 
@@ -430,6 +450,6 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-03
-Stopped at: Completed 10-03 (blast zone enhancement with call graph)
-Resume file: .planning/phases/10-magellan-v2-integration-and-bugfixes/10-03-SUMMARY.md
-Phase 10 COMPLETE (5/5 plans complete). All 10 phases complete (49/49 plans done)
+Stopped at: Completed 11-01 (Call graph condensation JSON wrappers)
+Resume file: .planning/phases/11-inter-procedural-dominance-hotspots-and-smart-reindexing/11-01-SUMMARY.md
+Phase 11 in progress (1/6 plans complete). Overall: 50/55 plans done.

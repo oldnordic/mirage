@@ -26,8 +26,14 @@ pub use paths::{
 /// Mirage schema version
 pub const MIRAGE_SCHEMA_VERSION: i32 = 1;
 
-/// Magellan schema version we require
-pub const REQUIRED_MAGELLAN_SCHEMA_VERSION: i32 = 4;
+/// Minimum Magellan schema version we require
+pub const MIN_MAGELLAN_SCHEMA_VERSION: i32 = 4;
+
+/// Magellan schema version used in tests (for consistency)
+pub const TEST_MAGELLAN_SCHEMA_VERSION: i32 = MIN_MAGELLAN_SCHEMA_VERSION;
+
+/// Alias for backward compatibility (same as TEST_MAGELLAN_SCHEMA_VERSION)
+pub const REQUIRED_MAGELLAN_SCHEMA_VERSION: i32 = TEST_MAGELLAN_SCHEMA_VERSION;
 
 /// SQLiteGraph schema version we require
 pub const REQUIRED_SQLITEGRAPH_SCHEMA_VERSION: i32 = 3;
@@ -39,6 +45,10 @@ pub struct MirageDb {
 
 impl MirageDb {
     /// Open database at the given path
+    ///
+    /// This can open:
+    /// - A Mirage database (with mirage_meta table)
+    /// - A Magellan database (extends it with Mirage tables)
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         if !path.exists() {
@@ -48,12 +58,23 @@ impl MirageDb {
         let mut conn = Connection::open(path)
             .context("Failed to open database")?;
 
-        // Verify schema and run migrations if needed
-        let mirage_version: i32 = conn.query_row(
-            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+        // Check if mirage_meta table exists
+        let mirage_meta_exists: bool = conn.query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='mirage_meta'",
             [],
             |row| row.get(0),
-        ).unwrap_or(0);
+        ).optional()?.unwrap_or(0) == 1;
+
+        // Get Mirage schema version (0 if table doesn't exist)
+        let mirage_version: i32 = if mirage_meta_exists {
+            conn.query_row(
+                "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            ).optional()?.flatten().unwrap_or(0)
+        } else {
+            0
+        };
 
         if mirage_version > MIRAGE_SCHEMA_VERSION {
             anyhow::bail!(
@@ -68,18 +89,20 @@ impl MirageDb {
             "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
             [],
             |row| row.get(0),
-        ).unwrap_or(0);
+        ).optional()?.flatten().unwrap_or(0);
 
-        if magellan_version != REQUIRED_MAGELLAN_SCHEMA_VERSION {
+        if magellan_version < MIN_MAGELLAN_SCHEMA_VERSION {
             anyhow::bail!(
-                "Magellan schema version {} is incompatible with required version {}.
-                 Please update Magellan.",
-                magellan_version, REQUIRED_MAGELLAN_SCHEMA_VERSION
+                "Magellan schema version {} is too old (minimum {}). Please update Magellan.",
+                magellan_version, MIN_MAGELLAN_SCHEMA_VERSION
             );
         }
 
-        // Run migrations if we're behind current version
-        if mirage_version < MIRAGE_SCHEMA_VERSION {
+        // If mirage_meta doesn't exist, this is a pure Magellan database.
+        // Initialize Mirage tables to extend it.
+        if !mirage_meta_exists {
+            create_schema(&mut conn, magellan_version)?;
+        } else if mirage_version < MIRAGE_SCHEMA_VERSION {
             migrate_schema(&mut conn)?;
         }
 
@@ -153,7 +176,10 @@ pub fn migrate_schema(conn: &mut Connection) -> Result<()> {
 }
 
 /// Create Mirage schema tables in an existing Magellan database
-pub fn create_schema(conn: &mut Connection) -> Result<()> {
+///
+/// The magellan_schema_version parameter should be the actual version
+/// from the magellan_meta table, not MIN_MAGELLAN_SCHEMA_VERSION.
+pub fn create_schema(conn: &mut Connection, magellan_schema_version: i32) -> Result<()> {
     // Create mirage_meta table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS mirage_meta (
@@ -440,7 +466,21 @@ pub fn resolve_function_name(conn: &Connection, name_or_id: &str) -> Result<i64>
 /// - Terminator is stored as JSON in the database and deserialized via serde_json
 pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cfg::Cfg> {
     use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType};
+    use crate::cfg::source::SourceLocation;
     use petgraph::graph::NodeIndex;
+    use std::path::PathBuf;
+
+    // Query file_path for this function from graph_entities
+    let file_path: Option<String> = conn
+        .query_row(
+            "SELECT file_path FROM graph_entities WHERE id = ?",
+            params![function_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Failed to query file_path from graph_entities")?;
+
+    let file_path = file_path.map(PathBuf::from);
 
     // Query all blocks for this function
     let mut stmt = conn.prepare_cached(
@@ -471,12 +511,19 @@ pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cf
         );
     }
 
+    // Read source file if available (for reconstructing source_location)
+    let source_text = if let Some(ref path) = file_path {
+        std::fs::read_to_string(path).ok()
+    } else {
+        None
+    };
+
     // Build mapping from database block ID to graph node index
     let mut db_id_to_node: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
     let mut graph = Cfg::new();
 
     // Add each block to the graph
-    for (node_idx, (db_id, kind_str, _byte_start, _byte_end, terminator_json)) in
+    for (node_idx, (db_id, kind_str, byte_start, byte_end, terminator_json)) in
         block_rows.iter().enumerate()
     {
         // Parse block kind
@@ -496,12 +543,27 @@ pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cf
             crate::cfg::Terminator::Unreachable
         };
 
+        // Reconstruct source_location from database byte ranges
+        let source_location = match (&file_path, byte_start, byte_end) {
+            (Some(path), Some(start), Some(end)) => {
+                let start = *start as usize;
+                let end = *end as usize;
+                Some(SourceLocation::from_bytes_with_source(
+                    path,
+                    source_text.as_deref(),
+                    start,
+                    end,
+                ))
+            }
+            _ => None,
+        };
+
         let block = BasicBlock {
             id: node_idx,
             kind,
             statements: vec![], // Empty for now - future enhancement
             terminator,
-            source_location: None, // Future enhancement: load from source_location table
+            source_location,
         };
 
         graph.add_node(block);
@@ -731,6 +793,148 @@ pub fn get_function_hash(conn: &Connection, function_id: i64) -> Option<String> 
     ).optional().ok().flatten()
 }
 
+/// Compare two function hashes and return true if they differ
+///
+/// Used by the index command to decide whether to skip a function.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `function_id` - ID of the function
+/// * `new_hash` - New hash to compare against stored hash
+///
+/// # Returns
+///
+/// * `Ok(true)` - Hashes differ or function is new (needs re-indexing)
+/// * `Ok(false)` - Hashes match (can skip)
+/// * `Err(...)` - Database query error
+pub fn hash_changed(
+    conn: &Connection,
+    function_id: i64,
+    new_hash: &str,
+) -> Result<bool> {
+    let old_hash: Option<String> = conn.query_row(
+        "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
+        params![function_id],
+        |row| row.get(0)
+    ).optional()?;
+
+    match old_hash {
+        Some(old) => Ok(old != new_hash),
+        None => Ok(true),  // New function, always index
+    }
+}
+
+/// Compute the set of functions that need re-indexing based on git changes
+///
+/// This uses git diff to find changed Rust files, then queries the database
+/// for functions defined in those files.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `project_path` - Path to the project being indexed
+///
+/// # Returns
+///
+/// Set of function names that should be re-indexed
+///
+/// # Notes
+///
+/// - Uses `git diff --name-only HEAD` to detect changed files
+/// - Only considers .rs files
+/// - Returns functions from changed files based on graph_entities table
+pub fn get_changed_functions(
+    conn: &Connection,
+    project_path: &std::path::Path,
+) -> Result<std::collections::HashSet<String>> {
+    use std::collections::HashSet;
+    use std::process::Command;
+
+    let mut changed = HashSet::new();
+
+    // Use git to find changed Rust files
+    if let Ok(git_output) = Command::new("git")
+        .args(["diff", "--name-only", "HEAD"])
+        .current_dir(project_path)
+        .output()
+    {
+        let git_files = String::from_utf8_lossy(&git_output.stdout);
+
+        // Collect .rs files that changed
+        let changed_rs_files: Vec<&str> = git_files
+            .lines()
+            .filter(|f| f.ends_with(".rs"))
+            .collect();
+
+        if changed_rs_files.is_empty() {
+            return Ok(changed);
+        }
+
+        // Build a list of file paths for the SQL query
+        for file in changed_rs_files {
+            // Normalize the file path relative to project root
+            let normalized_path = if file.starts_with('/') {
+                file.trim_start_matches('/')
+            } else {
+                file
+            };
+
+            // Query for functions in this file
+            // Note: file_path in graph_entities may be relative or absolute,
+            // so we check both patterns
+            let mut stmt = conn.prepare_cached(
+                "SELECT name FROM graph_entities
+                 WHERE kind = 'function' AND (
+                     file_path = ? OR
+                     file_path = ? OR
+                     file_path LIKE '%' || ?
+                 )"
+            ).context("Failed to prepare function lookup query")?;
+
+            let with_slash = format!("/{}", normalized_path);
+
+            let rows = stmt.query_map(
+                params![normalized_path, &with_slash, normalized_path],
+                |row| row.get::<_, String>(0)
+            ).context("Failed to execute function lookup")?;
+
+            for row in rows {
+                if let Ok(func_name) = row {
+                    changed.insert(func_name);
+                }
+            }
+        }
+    }
+
+    Ok(changed)
+}
+
+/// Get the file containing a function
+///
+/// # Arguments
+///
+/// * `conn` - Database connection
+/// * `function_name` - Name of the function
+///
+/// # Returns
+///
+/// * `Ok(Some(file_path))` - The file path if found
+/// * `Ok(None)` - Function not found
+/// * `Err(...)` - Database error
+pub fn get_function_file(
+    conn: &Connection,
+    function_name: &str,
+) -> Result<Option<String>> {
+    let file: Option<String> = conn.query_row(
+        "SELECT file_path FROM graph_entities WHERE kind = 'function' AND name = ? LIMIT 1",
+        params![function_name],
+        |row| row.get(0)
+    ).optional()?;
+
+    Ok(file)
+}
+
 /// Get the function name for a given block ID
 ///
 /// # Arguments
@@ -881,7 +1085,7 @@ pub fn create_minimal_database<P: AsRef<Path>>(path: P) -> Result<()> {
     ).context("Failed to initialize magellan_meta")?;
 
     // Create Mirage schema
-    create_schema(&mut conn).context("Failed to create Mirage schema")?;
+    create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).context("Failed to create Mirage schema")?;
 
     Ok(())
 }
@@ -923,7 +1127,7 @@ mod tests {
         ).unwrap();
 
         // Create Mirage schema
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Verify tables exist
         let table_count: i64 = conn.query_row(
@@ -968,7 +1172,7 @@ mod tests {
         ).unwrap();
 
         // Create Mirage schema at version 0 (no mirage_meta yet)
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Verify version is 1
         let version: i32 = conn.query_row(
@@ -1013,7 +1217,7 @@ mod tests {
         ).unwrap();
 
         // Create Mirage schema
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Migration should be a no-op - already at current version
         migrate_schema(&mut conn).unwrap();
@@ -1064,7 +1268,7 @@ mod tests {
         ).unwrap();
 
         // Create Mirage schema
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Insert a graph entity (function)
         conn.execute(
@@ -1136,7 +1340,7 @@ mod tests {
         ).unwrap();
 
         // Create Mirage schema
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Insert a function entity
         conn.execute(
@@ -1237,7 +1441,7 @@ mod tests {
             params![REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, 0],
         ).unwrap();
 
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
@@ -1349,7 +1553,7 @@ mod tests {
         ).unwrap();
 
         // Create Mirage schema
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Enable foreign key enforcement for tests
         conn.execute("PRAGMA foreign_keys = ON", []).unwrap();

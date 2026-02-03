@@ -7,6 +7,34 @@
 
 > "An agent may only speak if it can reference a graph artifact."
 
+## Part of the Code Intelligence Toolset
+
+Mirage is one of five complementary tools designed to work together for comprehensive code analysis:
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| **[Magellan](https://github.com/oldnordic/magellan)** | Call graph indexing and symbol navigation | `cargo install magellan` |
+| **[llmgrep](https://github.com/oldnordic/llmgrep)** | Semantic code search over indexed symbols | `cargo install llmgrep` |
+| **[Mirage](https://github.com/oldnordic/mirage)** | Control-flow analysis and path enumeration | `cargo install mirage-analyzer` |
+| **[sqlitegraph](https://crates.io/crates/sqlitegraph)** | Shared graph database library (dependency) | Included automatically |
+| **[splice](https://github.com/oldnordic/splice)** | Source code transformation with span precision | `cargo install splice` |
+
+```
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│  Magellan   │ ───► │  llmgrep    │ ───► │   Mirage    │
+│ (Call Graph)│      │  (Search)   │      │  (CFG/Paths)│
+└─────────────┘      └─────────────┘      └─────────────┘
+       │                    │                     │
+       └────────────────────┴─────────────────────┘
+                     │
+              ┌──────▼──────┐
+              │ sqlitegraph │
+              │  (Database) │
+              └─────────────┘
+```
+
+**Important:** Mirage provides its full capabilities when used together with Magellan. Inter-procedural analysis features (call graph dominance, hotspots, cross-function slicing) require Magellan's call graph data.
+
 ## What is Mirage?
 
 Mirage is a command-line tool that extracts control-flow graphs (CFG) from Rust code via MIR, enumerates execution paths, and provides graph-based reasoning capabilities. It stores analysis results in a SQLite database for incremental updates.
@@ -17,6 +45,7 @@ Mirage is a command-line tool that extracts control-flow graphs (CFG) from Rust 
 - ❌ An embedding or semantic search tool
 - ❌ A linter or static analysis tool
 - ❌ A code completion engine
+- ❌ A call graph indexer (use [Magellan](https://github.com/oldnordic/magellan))
 
 ### What Mirage IS
 
@@ -26,29 +55,7 @@ Mirage is a command-line tool that extracts control-flow graphs (CFG) from Rust 
 - ✅ Loop detection (natural loops within functions)
 - ✅ Dead code detection (unreachable blocks)
 - ✅ Impact analysis (blast zones, program slicing)
-- ✅ Inter-procedural analysis (call graph condensation, hotspots)
-
-## Position in the Ecosystem
-
-```
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│  Magellan   │ ───► │  llmgrep    │ ───► │   Mirage    │
-│ (Indexer)   │      │  (Search)   │      │  (Paths)    │
-└─────────────┘      └─────────────┘      └─────────────┘
-       │                    │                     │
-       └────────────────────┴─────────────────────┘
-                     │
-              ┌──────▼──────┐
-              │   SQLite    │
-              │   Database  │
-              └─────────────┘
-```
-
-| Tool | Purpose |
-|------|---------|
-| **Magellan** | Call graph indexing and symbol navigation |
-| **llmgrep** | Semantic code search over indexed symbols |
-| **Mirage** | Control-flow analysis and path enumeration |
+- ✅ Inter-procedural analysis (with Magellan: call graph condensation, hotspots)
 
 ## Installation
 
@@ -336,16 +343,32 @@ The default database location is `./codemcp/mirage.db`. Use the `MIRAGE_DB` envi
 
 ## Requirements
 
-- Rust 1.70+
-- [Charon](https://github.com/AeneasVerif/charon) binary in PATH
-- For inter-procedural features: [Magellan](https://github.com/oldnordic/magellan) indexed database
+- Rust 1.77+
+- [Charon](https://github.com/AeneasVerif/charon) binary in PATH (for MIR extraction)
+- **For inter-procedural features:** [Magellan](https://github.com/oldnordic/magellan) indexed database
+- **Recommended for full workflow:**
+  - [Magellan](https://crates.io/crates/magellan) - `cargo install magellan`
+  - [llmgrep](https://crates.io/crates/llmgrep) - `cargo install llmgrep`
+  - [splice](https://github.com/oldnordic/splice) - `cargo install splice`
 
 ## License
 
 GPL-3.0-or-later
 
-## Related Projects
+## The Complete Toolset
 
-- [Magellan](https://github.com/oldnordic/magellan) - Code graph indexer
-- [llmgrep](https://github.com/oldnordic/llmgrep) - Semantic code search
-- [Charon](https://github.com/AeneasVerif/charon) - Rust MIR/CFG extraction
+Mirage is part of a coordinated set of tools for AI-assisted code understanding:
+
+| Tool | Function |
+|------|----------|
+| [Magellan](https://github.com/oldnordic/magellan) | Builds call graphs, indexes all symbols |
+| [llmgrep](https://github.com/oldnordic/llmgrep) | Searches symbols semantically |
+| [Mirage](https://github.com/oldnordic/mirage) | Analyzes control flow and execution paths |
+| [sqlitegraph](https://crates.io/crates/sqlitegraph) | Shared graph database format |
+| [splice](https://github.com/oldnordic/splice) | Precision code editing using spans |
+
+These tools share a common database format and are designed to be used together by AI agents and developers.
+
+## External Dependencies
+
+- [Charon](https://github.com/AeneasVerif/charon) - Rust MIR extraction (required)

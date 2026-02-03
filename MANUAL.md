@@ -10,6 +10,20 @@ Mirage is a path-aware code intelligence tool for Rust. It extracts control-flow
 
 **Core Principle:** An agent may only speak if it can reference a graph artifact.
 
+## Part of the Code Intelligence Toolset
+
+Mirage is one of five complementary tools designed to work together:
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| [Magellan](https://github.com/oldnordic/magellan) | Call graph indexing and symbol navigation | `cargo install magellan` |
+| [llmgrep](https://github.com/oldnordic/llmgrep) | Semantic code search over indexed symbols | `cargo install llmgrep` |
+| [Mirage](https://github.com/oldnordic/mirage) | Control-flow analysis and path enumeration | `cargo install mirage-analyzer` |
+| [sqlitegraph](https://crates.io/crates/sqlitegraph) | Shared graph database library (dependency) | Included automatically |
+| [splice](https://github.com/oldnordic/splice) | Source code transformation with span precision | `cargo install splice` |
+
+**Important:** Mirage provides its full capabilities when used together with Magellan. Inter-procedural analysis features (call graph dominance, hotspots, cross-function slicing) require Magellan's call graph data.
+
 ---
 
 ## Getting Started
@@ -29,7 +43,31 @@ cargo install --path .
 ### Requirements
 
 - **Charon:** Install [Charon](https://github.com/AeneasVerif/charon) and ensure it's in your PATH
-- **Magellan (optional):** For inter-procedural features, run `magellan watch` on your project first
+- **Magellan (recommended):** For inter-procedural features, run `magellan watch` on your project first
+
+### Full Workflow Setup
+
+For the complete code intelligence workflow:
+
+```bash
+# Install all tools
+cargo install magellan llmgrep mirage-analyzer splice
+
+# In your project directory
+cd /path/to/rust/project
+
+# Start the call graph indexer (magellan)
+magellan watch --root ./src --db .codemcp/project.db
+
+# In another terminal - index control flow (mirage)
+mirage index --project .
+
+# Search symbols (llmgrep)
+llmgrep search --query "function_name" --db .codemcp/project.db
+
+# Analyze paths (mirage)
+mirage paths --function "my_crate::main"
+```
 
 ### First Usage
 
@@ -581,6 +619,13 @@ Inter-procedural features require Magellan. Run `magellan watch` first or omit t
 
 ## See Also
 
-- [README.md](README.md) - Project overview
+### Companion Tools
+
 - [Magellan](https://github.com/oldnordic/magellan) - Call graph indexer
-- [llmgrep](https://github.com/oldnordic/llmgrep) - Semantic search
+- [llmgrep](https://github.com/oldnordic/llmgrep) - Semantic code search
+- [sqlitegraph](https://crates.io/crates/sqlitegraph) - Shared graph database library
+- [splice](https://github.com/oldnordic/splice) - Precision code editing with spans
+
+### Documentation
+
+- [README.md](README.md) - Project overview and quick start

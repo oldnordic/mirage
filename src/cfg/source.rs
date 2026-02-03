@@ -83,6 +83,63 @@ impl SourceLocation {
         // Overlap if ranges intersect
         self.byte_start < other.byte_end && self.byte_end > other.byte_start
     }
+
+    /// Create a source location from byte ranges, with optional source for line/column.
+    ///
+    /// If source is provided, computes line/column from byte offsets.
+    /// If source is None, line/column fields are set to 0 (lazy computation).
+    ///
+    /// This is useful when reconstructing SourceLocation from database where
+    /// the source file may not be available.
+    pub fn from_bytes_with_source(
+        file_path: impl Into<PathBuf>,
+        source: Option<&str>,
+        byte_start: usize,
+        byte_end: usize,
+    ) -> Self {
+        let file_path = file_path.into();
+
+        if let Some(src) = source {
+            // Compute line/column from source
+            let (start_line, start_col) = byte_to_line_column(src, byte_start);
+            let (end_line, end_col) = byte_to_line_column(src, byte_end);
+            Self {
+                file_path,
+                byte_start,
+                byte_end,
+                start_line,
+                start_column: start_col,
+                end_line,
+                end_column: end_col,
+            }
+        } else {
+            // No source available - line/column will be 0
+            // Display will fall back to byte ranges
+            Self {
+                file_path,
+                byte_start,
+                byte_end,
+                start_line: 0,
+                start_column: 0,
+                end_line: 0,
+                end_column: 0,
+            }
+        }
+    }
+
+    /// Get a human-readable description (fallback to byte ranges if line/column unavailable)
+    pub fn display_or_bytes(&self) -> String {
+        if self.start_line > 0 {
+            self.display()
+        } else {
+            format!(
+                "{}:bytes{}-{}",
+                self.file_path.display(),
+                self.byte_start,
+                self.byte_end
+            )
+        }
+    }
 }
 
 /// Convert byte offset to line and column (1-indexed)
@@ -341,5 +398,62 @@ mod tests {
 
         assert!(loc1.overlaps(&loc2));
         assert!(loc2.overlaps(&loc1));
+    }
+
+    #[test]
+    fn test_from_bytes_with_source_with_source() {
+        let source = "hello\nworld";
+        let loc = SourceLocation::from_bytes_with_source("test.rs", Some(source), 0, 5);
+
+        assert_eq!(loc.file_path, PathBuf::from("test.rs"));
+        assert_eq!(loc.byte_start, 0);
+        assert_eq!(loc.byte_end, 5);
+        assert_eq!(loc.start_line, 1);
+        assert_eq!(loc.start_column, 1);
+        assert_eq!(loc.end_line, 1);
+        assert_eq!(loc.end_column, 6);
+    }
+
+    #[test]
+    fn test_from_bytes_with_source_without_source() {
+        let loc = SourceLocation::from_bytes_with_source("test.rs", None, 10, 20);
+
+        assert_eq!(loc.file_path, PathBuf::from("test.rs"));
+        assert_eq!(loc.byte_start, 10);
+        assert_eq!(loc.byte_end, 20);
+        assert_eq!(loc.start_line, 0);  // No source = 0
+        assert_eq!(loc.start_column, 0);
+        assert_eq!(loc.end_line, 0);
+        assert_eq!(loc.end_column, 0);
+    }
+
+    #[test]
+    fn test_display_or_bytes_with_line_column() {
+        let loc = SourceLocation {
+            file_path: PathBuf::from("test.rs"),
+            byte_start: 0,
+            byte_end: 10,
+            start_line: 1,
+            start_column: 1,
+            end_line: 1,
+            end_column: 11,
+        };
+
+        assert_eq!(loc.display_or_bytes(), "test.rs:1:1-1:11");
+    }
+
+    #[test]
+    fn test_display_or_bytes_without_line_column() {
+        let loc = SourceLocation {
+            file_path: PathBuf::from("test.rs"),
+            byte_start: 100,
+            byte_end: 200,
+            start_line: 0,
+            start_column: 0,
+            end_line: 0,
+            end_column: 0,
+        };
+
+        assert_eq!(loc.display_or_bytes(), "test.rs:bytes100-200");
     }
 }

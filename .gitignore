@@ -1,0 +1,46 @@
+# Rust
+/target/
+/debug/
+**/*.rs.bk
+*.pdb
+
+# Cargo
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+codemcp/
+
+# Documentation (local only)
+docs/*.md !README.md !MANUAL.md !CHANGELOG.md
+
+# Planning files (local development)
+.planning/
+!.planning/ROADMAP.md
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+
+# Temporary files
+*.tmp
+*.temp

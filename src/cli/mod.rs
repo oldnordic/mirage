@@ -91,6 +91,9 @@ pub enum Commands {
 
     /// Perform program slicing (backward/forward impact analysis)
     Slice(SliceArgs),
+
+    /// Show high-risk functions (hotspots)
+    Hotspots(HotspotsArgs),
 }
 
 // ============================================================================
@@ -166,6 +169,10 @@ pub struct DominatorsArgs {
     /// Show post-dominators instead of dominators
     #[arg(long)]
     pub post: bool,
+
+    /// Use inter-procedural (call graph) dominance instead of intra-procedural (CFG)
+    #[arg(long)]
+    pub inter_procedural: bool,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -290,6 +297,29 @@ pub struct SliceArgs {
     /// Show detailed symbol information
     #[arg(long)]
     pub verbose: bool,
+}
+
+#[derive(Parser, Debug, Clone)]
+pub struct HotspotsArgs {
+    /// Entry point symbol (default: main)
+    #[arg(long, default_value = "main")]
+    pub entry: String,
+
+    /// Maximum number of hotspots to return
+    #[arg(long, default_value = "20")]
+    pub top: usize,
+
+    /// Minimum path count threshold
+    #[arg(long)]
+    pub min_paths: Option<usize>,
+
+    /// Show detailed metrics for each hotspot
+    #[arg(long)]
+    pub verbose: bool,
+
+    /// Use inter-procedural analysis (requires Magellan DB)
+    #[arg(long)]
+    pub inter_procedural: bool,
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
@@ -630,6 +660,36 @@ struct CallGraphSymbol {
     fqn: Option<String>,
     file_path: String,
     kind: String,
+}
+
+/// Response for hotspots command
+#[derive(serde::Serialize)]
+struct HotspotsResponse {
+    /// Entry point used for analysis
+    entry_point: String,
+    /// Total functions analyzed
+    total_functions: usize,
+    /// Hotspots found
+    hotspots: Vec<HotspotEntry>,
+    /// Analysis mode used
+    mode: String,  // "intra-procedural" or "inter-procedural"
+}
+
+/// Single hotspot entry
+#[derive(serde::Serialize)]
+struct HotspotEntry {
+    /// Function name
+    function: String,
+    /// Risk score (higher = more risky)
+    risk_score: f64,
+    /// Path count (execution paths through this function)
+    path_count: usize,
+    /// Dominance factor (SCC size or dominance level)
+    dominance_factor: f64,
+    /// Complexity metric (block count)
+    complexity: usize,
+    /// File path
+    file_path: String,
 }
 
 // ============================================================================

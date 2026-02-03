@@ -125,6 +125,126 @@ impl From<&SliceResult> for SliceWrapper {
     }
 }
 
+/// Serializable wrapper for inter-procedural execution paths
+///
+/// Represents a call chain from one function to another through the call graph.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExecutionPathJson {
+    /// Functions in this call chain (ordered from start to end)
+    pub symbols: Vec<SymbolInfoJson>,
+    /// Path length (number of function calls)
+    pub length: usize,
+}
+
+impl From<&ExecutionPath> for ExecutionPathJson {
+    fn from(path: &ExecutionPath) -> Self {
+        ExecutionPathJson {
+            symbols: path.symbols.iter().map(|s| s.into()).collect(),
+            length: path.length,
+        }
+    }
+}
+
+/// Serializable wrapper for path enumeration results
+///
+/// Wraps Magellan's [`PathEnumerationResult`] for CLI JSON output.
+#[derive(Debug, Clone, Serialize)]
+pub struct PathEnumerationJson {
+    /// All discovered execution paths
+    pub paths: Vec<ExecutionPathJson>,
+    /// Total number of paths enumerated
+    pub total_enumerated: usize,
+    /// Whether enumeration was truncated due to limits
+    pub truncated: bool,
+    /// Statistics about enumerated paths
+    pub statistics: PathStatisticsJson,
+}
+
+/// Serializable statistics for path enumeration
+#[derive(Debug, Clone, Serialize)]
+pub struct PathStatisticsJson {
+    /// Average path length
+    pub avg_length: f64,
+    /// Maximum path length
+    pub max_length: usize,
+    /// Minimum path length
+    pub min_length: usize,
+}
+
+impl From<&PathEnumerationResult> for PathEnumerationJson {
+    fn from(result: &PathEnumerationResult) -> Self {
+        PathEnumerationJson {
+            paths: result.paths.iter().map(|p| p.into()).collect(),
+            total_enumerated: result.total_enumerated,
+            truncated: result.bounded_hit,
+            statistics: PathStatisticsJson {
+                avg_length: result.statistics.avg_length,
+                max_length: result.statistics.max_length,
+                min_length: result.statistics.min_length,
+            },
+        }
+    }
+}
+
+/// Serializable wrapper for call graph condensation results
+///
+/// Magellan's [`CondensationResult`] doesn't implement Serialize,
+/// so we provide a wrapper struct for CLI JSON output.
+#[derive(Debug, Clone, Serialize)]
+pub struct CondensationJson {
+    /// Number of supernodes (SCCs) in the condensed graph
+    pub supernode_count: usize,
+    /// Number of edges between supernodes
+    pub edge_count: usize,
+    /// Supernodes with their member functions
+    pub supernodes: Vec<SupernodeJson>,
+    /// Largest SCC size (indicates tight coupling)
+    pub largest_scc_size: usize,
+}
+
+/// Serializable representation of a supernode (SCC)
+#[derive(Debug, Clone, Serialize)]
+pub struct SupernodeJson {
+    /// Supernode ID
+    pub id: String,
+    /// Number of functions in this SCC
+    pub member_count: usize,
+    /// Member function names
+    pub members: Vec<String>,
+}
+
+impl From<&CondensationResult> for CondensationJson {
+    fn from(result: &CondensationResult) -> Self {
+        let supernodes: Vec<SupernodeJson> = result
+            .graph
+            .supernodes
+            .iter()
+            .map(|sn| SupernodeJson {
+                id: sn.id.to_string(),
+                member_count: sn.members.len(),
+                members: sn
+                    .members
+                    .iter()
+                    .filter_map(|m| m.fqn.clone())
+                    .collect(),
+            })
+            .collect();
+
+        let largest_scc_size = supernodes
+            .iter()
+            .map(|sn| sn.member_count)
+            .max()
+            .unwrap_or(0);
+
+        CondensationJson {
+            supernode_count: result.graph.supernodes.len(),
+            edge_count: result.graph.edges.len(),
+            supernodes,
+            largest_scc_size,
+        }
+    }
+}
+
 /// Information about a call graph cycle
 ///
 /// Serializable wrapper for cycle detection results.
@@ -567,6 +687,43 @@ impl MagellanBridge {
             .enumerate_paths(start_symbol_id, end_symbol_id, max_depth, max_paths)
     }
 
+    /// Enumerate paths and return JSON-serializable result
+    ///
+    /// Convenience method that wraps [`PathEnumerationResult`] in a
+    /// JSON-serializable format for CLI output.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_symbol_id` - Starting symbol ID or FQN
+    /// * `end_symbol_id` - Optional ending symbol ID or FQN
+    /// * `max_depth` - Maximum path depth (default: 100)
+    /// * `max_paths` - Maximum number of paths to return (default: 1000)
+    ///
+    /// # Returns
+    ///
+    /// JSON-serializable path enumeration result
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use mirage::analysis::MagellanBridge;
+    ///
+    /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
+    /// let result = bridge.enumerate_paths_json("main", None, 50, 100)?;
+    /// println!("Found {} paths", result.total_enumerated);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    pub fn enumerate_paths_json(
+        &self,
+        start_symbol_id: &str,
+        end_symbol_id: Option<&str>,
+        max_depth: usize,
+        max_paths: usize,
+    ) -> Result<PathEnumerationJson> {
+        let result = self.graph.enumerate_paths(start_symbol_id, end_symbol_id, max_depth, max_paths)?;
+        Ok((&result).into())
+    }
+
     /// Condense the call graph by collapsing SCCs into supernodes
     ///
     /// Creates a condensation DAG by collapsing each strongly connected component
@@ -577,6 +734,7 @@ impl MagellanBridge {
     /// - **Topological Sorting**: Condensation graph is a DAG
     /// - **Mutual Recursion Detection**: Large supernodes indicate tight coupling
     /// - **Impact Analysis**: Changing one symbol affects its entire SCC
+    /// - **Inter-procedural Dominance**: Functions in root supernodes dominate downstream functions
     ///
     /// # Returns
     ///
@@ -597,6 +755,31 @@ impl MagellanBridge {
     /// ```
     pub fn condense_call_graph(&self) -> Result<CondensationResult> {
         self.graph.condense_call_graph()
+    }
+
+    /// Condense call graph and return JSON-serializable result
+    ///
+    /// Convenience method that wraps [`CondensationResult`] in a
+    /// JSON-serializable format for CLI output.
+    ///
+    /// # Returns
+    ///
+    /// [`CondensationJson`] with condensed DAG summary and supernode details
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use mirage::analysis::MagellanBridge;
+    ///
+    /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
+    /// let condensed = bridge.condense_call_graph_json()?;
+    /// println!("Condensed to {} supernodes", condensed.supernode_count);
+    /// println!("Largest SCC has {} functions", condensed.largest_scc_size);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    pub fn condense_call_graph_json(&self) -> Result<CondensationJson> {
+        let result = self.graph.condense_call_graph()?;
+        Ok((&result).into())
     }
 }
 

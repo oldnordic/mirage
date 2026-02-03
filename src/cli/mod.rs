@@ -4074,6 +4074,7 @@ mod unreachable_tests {
             functions_with_unreachable: 0,
             unreachable_count: 0,
             blocks: vec![],
+            uncalled_functions: None,
         };
 
         let wrapper = JsonResponse::new(response);

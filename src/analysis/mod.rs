@@ -301,11 +301,14 @@ impl MagellanBridge {
     ///
     /// // Find all functions unreachable from main
     /// let dead = bridge.dead_symbols("main")?;
-    /// for dead_symbol in dead {
+    /// for dead_symbol in &dead {
     ///     println!("Dead: {} ({})",
     ///         dead_symbol.symbol.fqn.as_deref().unwrap_or("?"),
     ///         dead_symbol.reason);
     /// }
+    ///
+    /// // Convert to JSON-serializable format
+    /// let json_symbols: Vec<DeadSymbolJson> = dead.iter().map(|d| d.into()).collect();
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn dead_symbols(&self, entry_symbol_id: &str) -> Result<Vec<DeadSymbol>> {
@@ -498,5 +501,65 @@ mod tests {
             let _bridge = MagellanBridge::open("test.db")?;
             Ok(())
         };
+    }
+
+    #[test]
+    fn test_dead_symbol_json_from_dead_symbol() {
+        // Test DeadSymbolJson conversion from DeadSymbol
+        use magellan::{SymbolInfo, DeadSymbol as MagellanDeadSymbol};
+
+        let symbol_info = SymbolInfo {
+            symbol_id: Some("test_symbol_id".to_string()),
+            fqn: Some("test::function".to_string()),
+            file_path: "test.rs".to_string(),
+            kind: "Function".to_string(),
+        };
+
+        let dead = MagellanDeadSymbol {
+            symbol: symbol_info,
+            reason: "Not called from entry point".to_string(),
+        };
+
+        let json_symbol: DeadSymbolJson = (&dead).into();
+
+        assert_eq!(json_symbol.fqn, Some("test::function".to_string()));
+        assert_eq!(json_symbol.file_path, "test.rs");
+        assert_eq!(json_symbol.kind, "Function");
+        assert_eq!(json_symbol.reason, "Not called from entry point");
+    }
+
+    #[test]
+    fn test_enhanced_dead_code_serialization() {
+        // Test EnhancedDeadCode can be serialized to JSON
+        use magellan::{SymbolInfo, DeadSymbol as MagellanDeadSymbol};
+
+        let symbol_info = SymbolInfo {
+            symbol_id: Some("test_id".to_string()),
+            fqn: Some("dead::function".to_string()),
+            file_path: "test.rs".to_string(),
+            kind: "Function".to_string(),
+        };
+
+        let dead = MagellanDeadSymbol {
+            symbol: symbol_info,
+            reason: "Uncalled".to_string(),
+        };
+
+        let json_symbol: DeadSymbolJson = (&dead).into();
+
+        let mut unreachable_blocks = std::collections::HashMap::new();
+        unreachable_blocks.insert("test_func".to_string(), vec![1, 2, 3]);
+
+        let enhanced = EnhancedDeadCode {
+            uncalled_functions: vec![json_symbol],
+            unreachable_blocks,
+            total_dead_count: 4,
+        };
+
+        // Test serialization
+        let json = serde_json::to_string(&enhanced).unwrap();
+        assert!(json.contains("uncalled_functions"));
+        assert!(json.contains("unreachable_blocks"));
+        assert!(json.contains("total_dead_count"));
     }
 }

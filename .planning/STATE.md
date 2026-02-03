@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 10 of 10 (Magellan v2 Integration & Bugfixes) - IN PROGRESS
-Plan: 2 of 5 (unreachable command with uncalled functions)
-Status: Phase 10 plans 01-02 complete, 10-03 partial - blast zone enhancement incomplete
-Last activity: 2026-02-03 - Working on enhanced blast zone with call graph reachability
+Plan: 4 of 5 (combined cycle detection command)
+Status: Phase 10 plans 01-02 complete, 10-03 partial, 10-04 complete
+Last activity: 2026-02-03 - Completed cycles command (call graph SCCs + function loops)
 
-Progress: [█████████████░] 92% (9 phases complete, 46/49 plans done, Phase 10: 2.5/5 complete)
+Progress: [█████████████░] 94% (9 phases complete, 47/49 plans done, Phase 10: 3.5/5 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 44
+- Total plans completed: 47
 - Average duration: 5.3 min
-- Total execution time: 3.9 hours
+- Total execution time: 4.2 hours
 
 **By Phase:**
 
@@ -37,7 +37,7 @@ Progress: [█████████████░] 92% (9 phases complete, 4
 | 07-llm-integration | 4 | 4/4 | 4.5 min |
 | 08-drift-remediation | 6 | 6/6 | 11.3 min |
 | 09-mir-integration-database-loading | 4 | 4/4 | 5.5 min |
-| 10-magellan-v2-integration-and-bugfixes | 5 | 1/5 | 2.6 min |
+| 10-magellan-v2-integration-and-bugfixes | 5 | 3/5 | 3.4 min |
 
 **Recent Trend:**
 - Last 5 plans: 4.8 min
@@ -378,6 +378,12 @@ Recent decisions affecting current work:
 - All Magellan algorithm result types re-exported for ergonomic API (CodeGraph, SymbolInfo, Cycle, Slice, etc.)
 - Analysis module (src/analysis/mod.rs) provides bridge pattern for combining inter-procedural (Magellan) and intra-procedural (Mirage) analysis
 
+**From 10-04 (Combined Cycle Detection):**
+- `--both` flag as default behavior for cycles command shows both call graph and function loops
+- Cycle types clearly separated: call graph cycles (architectural coupling) vs function loops (control flow structure)
+- HashMap<String, Vec<LoopInfo>> mapping for function loops (multiple loops per function due to nesting)
+- Graceful degradation: cycles command continues with function loops if Magellan database unavailable
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -393,7 +399,7 @@ Recent decisions affecting current work:
 
 **Phase 10 added (2026-02-03):** Magellan v2 Integration & Bugfixes - IN PROGRESS
 - Trigger: Integration opportunities identified with Magellan v2.0.0 + compilation errors need fixing
-- 10-01 complete: Magellan v2.0.0 integrated with MagellanBridge wrapper
+- 10-01 complete: Enhanced unreachable command with --include-uncalled flag
 - 10-02 complete: unreachable command with --include-uncalled flag
 - 10-03 partial: blast zone enhancement incomplete (function body integration remaining)
 - Pending: 5 more areas (cycles, slicing, dominance, hotspots, re-indexing) + bug fixes
@@ -417,6 +423,6 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-03
-Stopped at: Partial completion of 10-03 (enhanced blast zone with call graph reachability)
-Resume file: .planning/phases/10-magellan-v2-integration-and-bugfixes/10-03-SUMMARY.md
-Phase 10 IN PROGRESS (2.5/5 plans complete). All 9 previous phases complete (46/49 plans done, 1 partial)
+Stopped at: Completed 10-04 (combined cycle detection command)
+Resume file: .planning/phases/10-magellan-v2-integration-and-bugfixes/10-04-SUMMARY.md
+Phase 10 IN PROGRESS (3.5/5 plans complete). All 9 previous phases complete (47/49 plans done, 1 partial)

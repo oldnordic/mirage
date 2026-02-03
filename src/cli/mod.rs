@@ -4039,6 +4039,7 @@ mod unreachable_tests {
         use crate::output::JsonResponse;
 
         let response = UnreachableResponse {
+            uncalled_functions: None,
             function: "test_func".to_string(),
             total_functions: 1,
             functions_with_unreachable: 1,
@@ -4069,12 +4070,12 @@ mod unreachable_tests {
         use crate::output::JsonResponse;
 
         let response = UnreachableResponse {
+            uncalled_functions: None,
             function: "test_func".to_string(),
             total_functions: 1,
             functions_with_unreachable: 0,
             unreachable_count: 0,
             blocks: vec![],
-            uncalled_functions: None,
         };
 
         let wrapper = JsonResponse::new(response);
@@ -4105,11 +4106,13 @@ mod unreachable_tests {
     #[test]
     fn test_unreachable_args_flags() {
         let args_with = UnreachableArgs {
+            include_uncalled: false,
             within_functions: true,
             show_branches: true,
         };
 
         let args_without = UnreachableArgs {
+            include_uncalled: false,
             within_functions: false,
             show_branches: false,
         };
@@ -4327,6 +4330,7 @@ mod unreachable_tests {
             functions_with_unreachable: 1,
             unreachable_count: 2,
             blocks,
+            uncalled_functions: None,
         };
 
         let wrapper = JsonResponse::new(response);
@@ -5104,6 +5108,7 @@ mod output_format_tests {
 
         // UnreachableResponse
         let unreach_resp = UnreachableResponse {
+            uncalled_functions: None,
             function: "test_func".to_string(),
             total_functions: 1,
             functions_with_unreachable: 0,
@@ -5155,6 +5160,7 @@ mod output_format_tests {
 
         // UnreachableResponse wrapped
         let unreach_resp = UnreachableResponse {
+            uncalled_functions: None,
             function: "test_func".to_string(),
             total_functions: 1,
             functions_with_unreachable: 0,

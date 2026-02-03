@@ -1447,7 +1447,6 @@ pub mod cmds {
         use crate::cfg::{DominatorTree, PostDominatorTree};
         use crate::cfg::{resolve_function_name, load_cfg_from_db};
         use crate::storage::MirageDb;
-        use crate::analysis::MagellanBridge;
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;

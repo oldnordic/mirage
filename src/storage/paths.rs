@@ -159,7 +159,7 @@ pub fn store_paths_batch(conn: &mut Connection, function_id: i64, paths: &[Path]
         .context("Failed to begin transaction for store_paths_batch")?;
 
     // Optimize for bulk insert - get current settings
-    let old_journal: String = conn.query_row("PRAGMA journal_mode", [], |row| row.get(0))
+    let _old_journal: String = conn.query_row("PRAGMA journal_mode", [], |row| row.get(0))
         .unwrap_or_else(|_| "delete".to_string());
     let old_sync: i64 = conn.query_row("PRAGMA synchronous", [], |row| row.get(0))
         .unwrap_or(2);
@@ -336,10 +336,9 @@ pub fn get_cached_paths(conn: &mut Connection, function_id: i64) -> Result<Vec<P
 
     // Reconstruct Path objects
     let mut paths = Vec::new();
-    for (path_id, mut data) in path_data {
-        data.path_id = path_id;
-        let path = Path::new(data.blocks, data.kind);
-        // Verify entry/exit match the path (path_id was computed from blocks)
+    for (path_id, data) in path_data {
+        // Use with_id to preserve the stored path_id (hash was computed when path was first stored)
+        let path = Path::with_id(path_id, data.blocks, data.kind);
         paths.push(path);
     }
 
@@ -521,7 +520,7 @@ mod tests {
         ).unwrap();
 
         // Create Mirage schema
-        crate::storage::create_schema(&mut conn).unwrap();
+        crate::storage::create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Insert a test function
         conn.execute(

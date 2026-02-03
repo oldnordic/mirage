@@ -15,6 +15,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
 // Re-export path caching functions
+// Note: Some exports like PathCache, store_paths, etc. are not currently used
+// but are kept for potential future use and API completeness
+#[allow(unused_imports)]
 pub use paths::{
     PathCache,
     store_paths,
@@ -179,7 +182,7 @@ pub fn migrate_schema(conn: &mut Connection) -> Result<()> {
 ///
 /// The magellan_schema_version parameter should be the actual version
 /// from the magellan_meta table, not MIN_MAGELLAN_SCHEMA_VERSION.
-pub fn create_schema(conn: &mut Connection, magellan_schema_version: i32) -> Result<()> {
+pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Result<()> {
     // Create mirage_meta table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS mirage_meta (
@@ -1648,7 +1651,7 @@ mod tests {
 
     #[test]
     fn test_load_cfg_empty_terminator() {
-        use crate::cfg::{BlockKind, Terminator};
+        use crate::cfg::Terminator;
 
         let mut conn = create_test_db_with_schema();
 
@@ -1676,7 +1679,7 @@ mod tests {
 
     #[test]
     fn test_load_cfg_with_multiple_edge_types() {
-        use crate::cfg::{BlockKind, Terminator, EdgeType};
+        use crate::cfg::{Terminator, EdgeType};
 
         let mut conn = create_test_db_with_schema();
 

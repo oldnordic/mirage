@@ -51,11 +51,6 @@ fn run_command(cli: Cli) -> Result<()> {
         Commands::Cycles(ref args) => cli::cmds::cycles(args, &cli)?,
         Commands::Slice(ref args) => cli::cmds::slice(args, &cli)?,
         Commands::Hotspots(ref args) => cli::cmds::hotspots(args, &cli)?,
-        _ => {
-            // Placeholder for unimplemented commands
-            eprintln!("This command is not yet implemented");
-            std::process::exit(1);
-        }
     }
     Ok(())
 }

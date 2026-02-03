@@ -112,7 +112,7 @@ pub fn summarize_cfg(function_name: &str, cfg: &Cfg) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cfg::{BasicBlock, BlockId, BlockKind, Terminator, Path, PathKind};
+    use crate::cfg::{BasicBlock, Terminator, Path, PathKind};
     use crate::cfg::edge::EdgeType;
     use petgraph::graph::DiGraph;
 

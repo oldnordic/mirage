@@ -40,7 +40,6 @@ use crate::cfg::{BlockId, Cfg, Terminator};
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
 
 /// Execution path through a CFG
 ///
@@ -67,6 +66,31 @@ impl Path {
         let entry = *blocks.first().unwrap_or(&0);
         let exit = *blocks.last().unwrap_or(&0);
         let path_id = hash_path(&blocks);
+
+        Self {
+            path_id,
+            blocks,
+            kind,
+            entry,
+            exit,
+        }
+    }
+
+    /// Create a path with a pre-existing path_id (for loading from cache)
+    ///
+    /// # Arguments
+    ///
+    /// * `path_id` - The stored path identifier
+    /// * `blocks` - Ordered block IDs in execution order
+    /// * `kind` - Path classification
+    ///
+    /// # Note
+    ///
+    /// This bypasses the normal path_id computation. Use only when loading
+    /// previously stored paths where the path_id was already computed.
+    pub fn with_id(path_id: String, blocks: Vec<BlockId>, kind: PathKind) -> Self {
+        let entry = *blocks.first().unwrap_or(&0);
+        let exit = *blocks.last().unwrap_or(&0);
 
         Self {
             path_id,
@@ -3309,7 +3333,7 @@ mod tests {
         ).unwrap();
 
         // Create Mirage schema
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Insert a test function
         conn.execute(
@@ -3365,7 +3389,7 @@ mod tests {
             [],
         ).unwrap();
 
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
@@ -3421,7 +3445,7 @@ mod tests {
             [],
         ).unwrap();
 
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
@@ -3677,7 +3701,7 @@ mod tests {
             [],
         ).unwrap();
 
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
@@ -3731,7 +3755,7 @@ mod tests {
             [],
         ).unwrap();
 
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
@@ -3788,7 +3812,7 @@ mod tests {
             [],
         ).unwrap();
 
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
@@ -3848,7 +3872,7 @@ mod tests {
             [],
         ).unwrap();
 
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",

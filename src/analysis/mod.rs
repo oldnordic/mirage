@@ -20,10 +20,15 @@ pub use magellan::CodeGraph;
 
 // Re-export algorithm result types for ergonomic API
 pub use magellan::{
-    Cycle, CycleKind, CycleReport, CondensationGraph, CondensationResult, DeadSymbol,
-    ExecutionPath, PathEnumerationResult, PathStatistics, ProgramSlice, SliceDirection,
-    SliceResult, SliceStatistics, Supernode, SymbolInfo,
+    Cycle, CycleKind, CycleReport, CondensationResult, DeadSymbol,
+    ExecutionPath, PathEnumerationResult, SymbolInfo,
 };
+
+// Private imports for test compilation (not re-exported)
+// These are used in tests but not at module level
+#[allow(unused_imports)]
+use magellan::{CondensationGraph, PathStatistics, ProgramSlice, SliceDirection,
+    SliceResult, SliceStatistics, Supernode};
 
 /// Serializable wrapper for [`DeadSymbol`]
 ///
@@ -1333,7 +1338,7 @@ mod tests {
 
     #[test]
     fn test_path_enumeration_json_serialization() {
-        use magellan::{ExecutionPath, PathEnumerationResult, PathStatistics};
+        use magellan::{ExecutionPath, PathStatistics};
 
         let symbols = vec![
             SymbolInfo {
@@ -1344,12 +1349,12 @@ mod tests {
             },
         ];
 
-        let path = ExecutionPath {
+        let _path = ExecutionPath {
             symbols,
             length: 1,
         };
 
-        let stats = PathStatistics {
+        let _stats = PathStatistics {
             avg_length: 2.0,
             max_length: 5,
             min_length: 1,

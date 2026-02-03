@@ -79,6 +79,52 @@ impl From<&SymbolInfo> for SymbolInfoJson {
     }
 }
 
+/// Serializable wrapper for program slice results
+///
+/// Magellan's [`SliceResult`] doesn't implement Serialize, so we provide
+/// a wrapper struct that can be serialized to JSON for CLI output.
+#[derive(Debug, Clone, Serialize)]
+pub struct SliceWrapper {
+    /// Target symbol for the slice
+    pub target: SymbolInfoJson,
+    /// Direction of slicing
+    pub direction: String, // "backward" or "forward"
+    /// Symbols included in the slice
+    pub included_symbols: Vec<SymbolInfoJson>,
+    /// Number of symbols in the slice
+    pub symbol_count: usize,
+    /// Statistics about the slice
+    pub statistics: SliceStats,
+}
+
+/// Statistics for program slicing
+#[derive(Debug, Clone, Serialize)]
+pub struct SliceStats {
+    pub total_symbols: usize,
+    pub data_dependencies: usize,
+    pub control_dependencies: usize,
+}
+
+impl From<&SliceResult> for SliceWrapper {
+    fn from(result: &SliceResult) -> Self {
+        let statistics = SliceStats {
+            total_symbols: result.statistics.total_symbols,
+            data_dependencies: result.statistics.data_dependencies,
+            control_dependencies: result.statistics.control_dependencies,
+        };
+
+        SliceWrapper {
+            target: (&result.slice.target).into(),
+            direction: format!("{:?}", result.slice.direction),
+            included_symbols: result.slice.included_symbols.iter()
+                .map(|s| s.into())
+                .collect(),
+            symbol_count: result.slice.symbol_count,
+            statistics,
+        }
+    }
+}
+
 /// Information about a call graph cycle
 ///
 /// Serializable wrapper for cycle detection results.
@@ -435,11 +481,12 @@ impl MagellanBridge {
     ///
     /// // Find what affects 'helper_function'
     /// let slice_result = bridge.backward_slice("helper_function")?;
-    /// println!("{} symbols affect this function", slice_result.slice.symbol_count);
+    /// println!("{} symbols affect this function", slice_result.symbol_count);
     /// # Ok::<(), anyhow::Error>(())
     /// ```
-    pub fn backward_slice(&self, symbol_id: &str) -> Result<SliceResult> {
-        self.graph.backward_slice(symbol_id)
+    pub fn backward_slice(&self, symbol_id: &str) -> Result<SliceWrapper> {
+        let result = self.graph.backward_slice(symbol_id)?;
+        Ok((&result).into())
     }
 
     /// Compute a forward program slice (what this symbol affects)
@@ -458,7 +505,7 @@ impl MagellanBridge {
     ///
     /// # Returns
     ///
-    /// [`SliceResult`] containing the slice and statistics
+    /// [`SliceWrapper`] containing the slice and statistics
     ///
     /// # Example
     ///
@@ -469,11 +516,12 @@ impl MagellanBridge {
     ///
     /// // Find what 'main_function' affects
     /// let slice_result = bridge.forward_slice("main_function")?;
-    /// println!("{} symbols are affected by this function", slice_result.slice.symbol_count);
+    /// println!("{} symbols are affected by this function", slice_result.symbol_count);
     /// # Ok::<(), anyhow::Error>(())
     /// ```
-    pub fn forward_slice(&self, symbol_id: &str) -> Result<SliceResult> {
-        self.graph.forward_slice(symbol_id)
+    pub fn forward_slice(&self, symbol_id: &str) -> Result<SliceWrapper> {
+        let result = self.graph.forward_slice(symbol_id)?;
+        Ok((&result).into())
     }
 
     /// Enumerate execution paths from a starting symbol

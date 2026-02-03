@@ -512,6 +512,19 @@ struct MustPassThroughResult {
     must_pass: Vec<usize>,
 }
 
+/// Response for inter-procedural dominators command
+#[derive(serde::Serialize)]
+struct InterProceduralDominanceResponse {
+    /// Target function being analyzed
+    function: String,
+    /// Kind of analysis ("inter-procedural-dominators")
+    kind: String,
+    /// Number of dominating functions found
+    dominator_count: usize,
+    /// Functions that dominate the target (on all call paths)
+    dominators: Vec<String>,
+}
+
 /// Response for unreachable command
 #[derive(serde::Serialize)]
 struct UnreachableResponse {
@@ -1412,9 +1425,15 @@ pub mod cmds {
         use crate::cfg::{DominatorTree, PostDominatorTree};
         use crate::cfg::{resolve_function_name, load_cfg_from_db};
         use crate::storage::MirageDb;
+        use crate::analysis::MagellanBridge;
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // Handle inter-procedural mode using call graph dominance
+        if args.inter_procedural {
+            return inter_procedural_dominators(args, cli, &db_path);
+        }
 
         // Open database (follows status command pattern for error handling)
         let db = match MirageDb::open(&db_path) {
@@ -1766,6 +1785,167 @@ pub mod cmds {
         for &child in post_dom_tree.children(node) {
             print_post_dominator_tree_human(cfg, post_dom_tree, child, depth + 1);
         }
+    }
+
+    /// Inter-procedural dominance analysis using call graph condensation
+    ///
+    /// Analyzes which functions dominate other functions in the call graph.
+    /// Function A dominates Function B if ALL paths from entry to B must go through A.
+    fn inter_procedural_dominators(args: &DominatorsArgs, cli: &Cli, db_path: &str) -> Result<()> {
+        use crate::analysis::MagellanBridge;
+        use std::collections::{HashMap, HashSet};
+
+        // Try to open Magellan database
+        let bridge = match MagellanBridge::open(db_path) {
+            Ok(b) => b,
+            Err(e) => {
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::new(
+                        "MagellanUnavailable",
+                        &format!("Magellan database not available: {}", e),
+                        "Run 'magellan watch' to build the call graph",
+                    );
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Magellan database not available: {}", e));
+                    output::info("Hint: Run 'magellan watch' to build the call graph");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
+            }
+        };
+
+        // Condense the call graph to get a DAG of SCCs
+        let condensed = match bridge.condense_call_graph() {
+            Ok(c) => c,
+            Err(e) => {
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::new(
+                        "CondensationError",
+                        &format!("Failed to condense call graph: {}", e),
+                        "Ensure the call graph is properly built",
+                    );
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to condense call graph: {}", e));
+                    output::info("Hint: Ensure the call graph is properly built");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
+            }
+        };
+
+        // Build adjacency list from condensation edges (for reachability analysis)
+        let mut adjacency: HashMap<i64, Vec<i64>> = HashMap::new();
+        for &(from_id, to_id) in &condensed.graph.edges {
+            adjacency.entry(from_id).or_default().push(to_id);
+        }
+
+        // Map symbols to their SCC IDs
+        let mut symbol_to_scc: HashMap<String, i64> = HashMap::new();
+        let mut scc_members: HashMap<i64, Vec<String>> = HashMap::new();
+
+        for supernode in &condensed.graph.supernodes {
+            let scc_id = supernode.id;
+            for member in &supernode.members {
+                if let Some(fqn) = &member.fqn {
+                    symbol_to_scc.insert(fqn.clone(), scc_id);
+                    scc_members.entry(scc_id).or_default().push(fqn.clone());
+                }
+            }
+        }
+
+        // Find all functions that dominate the target function
+        // In a DAG, functions in upstream SCCs dominate functions in downstream SCCs
+        let mut dominating_functions: Vec<String> = Vec::new();
+
+        if let Some(&target_scc_id) = symbol_to_scc.get(&args.function) {
+            // Find all SCCs that can reach the target SCC
+            for (&scc_id, _) in &scc_members {
+                if scc_id != target_scc_id {
+                    let mut visited = HashSet::new();
+                    if can_reach_scc(scc_id, target_scc_id, &adjacency, &mut visited) {
+                        // Add all members of this SCC as dominators
+                        if let Some(members) = scc_members.get(&scc_id) {
+                            dominating_functions.extend(members.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort for consistent output
+        dominating_functions.sort();
+
+        // Format output
+        match cli.output {
+            OutputFormat::Human => {
+                output::header(&format!("Inter-procedural Dominators: {}", args.function));
+                output::info("Functions that must execute before this function can be reached");
+                println!();
+
+                if dominating_functions.is_empty() {
+                    println!("No dominators found (this may be an entry point or not in call graph)");
+                } else {
+                    println!("Found {} dominating function(s):", dominating_functions.len());
+                    println!();
+                    for (i, dominator) in dominating_functions.iter().enumerate() {
+                        println!("{}. {}", i + 1, dominator);
+                    }
+                    println!();
+                    output::info("These functions are on all call paths to the target");
+                }
+            }
+            OutputFormat::Json => {
+                let response = InterProceduralDominanceResponse {
+                    function: args.function.clone(),
+                    kind: "inter-procedural-dominators".to_string(),
+                    dominator_count: dominating_functions.len(),
+                    dominators: dominating_functions.clone(),
+                };
+                let wrapper = output::JsonResponse::new(response);
+                println!("{}", wrapper.to_json());
+            }
+            OutputFormat::Pretty => {
+                let response = InterProceduralDominanceResponse {
+                    function: args.function.clone(),
+                    kind: "inter-procedural-dominators".to_string(),
+                    dominator_count: dominating_functions.len(),
+                    dominators: dominating_functions.clone(),
+                };
+                let wrapper = output::JsonResponse::new(response);
+                println!("{}", wrapper.to_pretty_json());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if SCC `from` can reach SCC `to` in the condensation DAG
+    fn can_reach_scc(
+        from: i64,
+        to: i64,
+        adjacency: &std::collections::HashMap<i64, Vec<i64>>,
+        visited: &mut std::collections::HashSet<i64>,
+    ) -> bool {
+        if from == to {
+            return true;
+        }
+        if visited.contains(&from) {
+            return false;
+        }
+        visited.insert(from);
+
+        if let Some(neighbors) = adjacency.get(&from) {
+            for &neighbor in neighbors {
+                if can_reach_scc(neighbor, to, adjacency, visited) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub fn loops(args: &LoopsArgs, cli: &Cli) -> Result<()> {

@@ -4,6 +4,7 @@
 
 #![allow(dead_code)]
 
+pub mod analysis;
 pub mod cli;
 pub mod cfg;
 pub mod mir;

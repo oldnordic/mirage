@@ -3261,21 +3261,24 @@ pub mod cmds {
 
         // Fallback to intra-procedural if no hotspots found or inter-procedural failed
         if hotspots.is_empty() {
-            // Get all functions from database
+            // Get all functions from database by joining with graph_entities
             let conn = db.conn_mut();
 
-            let query = "SELECT DISTINCT function_id, function_name FROM cfg_blocks";
+            let query = "SELECT DISTINCT cb.function_id, ge.name, ge.file_path
+                        FROM cfg_blocks cb
+                        JOIN graph_entities ge ON cb.function_id = ge.id";
             let mut stmt = conn.prepare(query)?;
 
             let function_rows = stmt.query_map([], |row: &rusqlite::Row| {
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
                 ))
             })?;
 
             for func_result in function_rows {
-                if let Ok((func_id, func_name)) = func_result {
+                if let Ok((func_id, func_name, file_path)) = func_result {
                     function_count += 1;
 
                     // Load CFG and enumerate paths
@@ -3300,7 +3303,7 @@ pub mod cmds {
                             path_count,
                             dominance_factor: dominance,
                             complexity,
-                            file_path: "".to_string(),
+                            file_path,
                         });
                     }
                 }

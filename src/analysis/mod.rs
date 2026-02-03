@@ -169,6 +169,8 @@ pub struct PathStatisticsJson {
     pub max_length: usize,
     /// Minimum path length
     pub min_length: usize,
+    /// Number of unique symbols across all paths
+    pub unique_symbols: usize,
 }
 
 impl From<&PathEnumerationResult> for PathEnumerationJson {
@@ -181,6 +183,7 @@ impl From<&PathEnumerationResult> for PathEnumerationJson {
                 avg_length: result.statistics.avg_length,
                 max_length: result.statistics.max_length,
                 min_length: result.statistics.min_length,
+                unique_symbols: result.statistics.unique_symbols,
             },
         }
     }
@@ -1312,17 +1315,20 @@ mod tests {
             avg_length: 3.5,
             max_length: 10,
             min_length: 1,
+            unique_symbols: 5,
         };
 
         assert_eq!(stats.avg_length, 3.5);
         assert_eq!(stats.max_length, 10);
         assert_eq!(stats.min_length, 1);
+        assert_eq!(stats.unique_symbols, 5);
 
         // Test serialization
         let json = serde_json::to_string(&stats).unwrap();
         assert!(json.contains(r#""avg_length":3.5"#));
         assert!(json.contains(r#""max_length":10"#));
         assert!(json.contains(r#""min_length":1"#));
+        assert!(json.contains(r#""unique_symbols":5"#));
     }
 
     #[test]
@@ -1347,6 +1353,7 @@ mod tests {
             avg_length: 2.0,
             max_length: 5,
             min_length: 1,
+            unique_symbols: 3,
         };
 
         // We can't directly construct PathEnumerationResult as its fields are private
@@ -1355,12 +1362,14 @@ mod tests {
             avg_length: 2.0,
             max_length: 5,
             min_length: 1,
+            unique_symbols: 3,
         };
 
         let json = serde_json::to_string(&json_stats).unwrap();
         assert!(json.contains("avg_length"));
         assert!(json.contains("max_length"));
         assert!(json.contains("min_length"));
+        assert!(json.contains("unique_symbols"));
     }
 
     #[test]

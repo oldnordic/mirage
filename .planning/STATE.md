@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 11 of 11 (Inter-procedural Dominance, Hotspots & Smart Re-indexing)
-Plan: 2 of 6
+Plan: 4 of 6
 Next Phase: None (final phase)
-Status: Phase 11 in progress, plan 11-02 complete
-Last activity: 2026-02-03 - Completed 11-02 (Path enumeration JSON wrappers)
+Status: Phase 11 in progress, plan 11-04 complete
+Last activity: 2026-02-03 - Completed 11-04 (Inter-procedural dominance)
 
-Progress: [████████████░░] 94% (10 phases complete, 51/55 plans done)
+Progress: [█████████████░] 96% (10 phases complete, 53/55 plans done)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 51
+- Total plans completed: 53
 - Average duration: 5.2 min
-- Total execution time: 4.5 hours
+- Total execution time: 4.6 hours
 
 **By Phase:**
 
@@ -39,10 +39,10 @@ Progress: [████████████░░] 94% (10 phases complete, 
 | 08-drift-remediation | 6 | 6/6 | 11.3 min |
 | 09-mir-integration-database-loading | 4 | 4/4 | 5.5 min |
 | 10-magellan-v2-integration-and-bugfixes | 5 | 5/5 | 4.0 min |
-| 11-inter-procedural-dominance-hotspots-smart-reindexing | 2 | 2/6 | 4 min |
+| 11-inter-procedural-dominance-hotspots-smart-reindexing | 4 | 4/6 | 4.3 min |
 
 **Recent Trend:**
-- Last 5 plans: 3.6 min
+- Last 5 plans: 3.8 min
 - Trend: Improved
 
 *Updated after each plan completion*
@@ -406,6 +406,14 @@ Recent decisions affecting current work:
 - largest_scc_size computed for quick tight coupling assessment
 - JSON wrapper pattern follows existing SliceWrapper/SliceStats approach for consistency
 
+**From 11-04 (Inter-procedural Dominance Command):**
+- --inter-procedural flag on dominators command enables call graph dominance analysis
+- Inter-procedural dominance uses SCC condensation DAG: upstream SCCs dominate downstream SCCs
+- can_reach_scc helper function for SCC reachability queries in condensation DAG
+- InterProceduralDominanceResponse JSON struct with function, kind, dominator_count, dominators fields
+- Graceful degradation with helpful hints when Magellan database unavailable
+- Flag-based mode switching pattern: args.inter_procedural routes to call graph analysis early
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -450,6 +458,6 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-03
-Stopped at: Completed 11-02 (Path enumeration JSON wrappers)
-Resume file: .planning/phases/11-inter-procedural-dominance-hotspots-and-smart-reindexing/11-02-SUMMARY.md
-Phase 11 in progress (2/6 plans complete). Overall: 51/55 plans done.
+Stopped at: Completed 11-04 (Inter-procedural dominance)
+Resume file: .planning/phases/11-inter-procedural-dominance-hotspots-and-smart-reindexing/11-04-SUMMARY.md
+Phase 11 in progress (4/6 plans complete). Overall: 53/55 plans done.

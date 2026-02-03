@@ -40,6 +40,8 @@ use crate::cfg::{BlockId, Cfg, Terminator};
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+#[cfg(test)]
+use std::time::Duration;
 
 /// Execution path through a CFG
 ///

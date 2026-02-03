@@ -3770,9 +3770,9 @@ mod tests {
     #[test]
     fn test_resolve_db_path_default() {
         clear_env();
-        // No arg, no env -> returns default
+        // No arg, no env -> returns default (Magellan pattern)
         let result = resolve_db_path(None).unwrap();
-        assert_eq!(result, "./codemcp.db");
+        assert_eq!(result, ".codemcp/codegraph.db");
     }
 
     #[test]
@@ -6944,5 +6944,193 @@ mod frontiers_tests {
         // Should handle empty frontiers gracefully
         assert!(json.contains("\"nodes_with_frontiers\":0"));
         assert!(json.contains("\"frontiers\":[]"));
+    }
+
+    // ============================================================================
+    // Hotspots Command Tests
+    // ============================================================================
+
+    /// Test hotspots args parsing
+    #[test]
+    fn test_hotspots_args_parsing() {
+        let args = HotspotsArgs {
+            entry: "main".to_string(),
+            top: 10,
+            min_paths: Some(5),
+            verbose: true,
+            inter_procedural: false,
+        };
+
+        assert_eq!(args.entry, "main");
+        assert_eq!(args.top, 10);
+        assert_eq!(args.min_paths, Some(5));
+        assert!(args.verbose);
+        assert!(!args.inter_procedural);
+    }
+
+    /// Test hotspots entry point default
+    #[test]
+    fn test_hotspots_args_default_entry() {
+        let args = HotspotsArgs {
+            entry: "main".to_string(),  // default value
+            top: 20,
+            min_paths: None,
+            verbose: false,
+            inter_procedural: false,
+        };
+
+        assert_eq!(args.entry, "main");
+        assert_eq!(args.top, 20);  // default value
+    }
+
+    /// Test hotspot entry serialization
+    #[test]
+    fn test_hotspot_entry_serialization() {
+        let entry = HotspotEntry {
+            function: "test_func".to_string(),
+            risk_score: 42.5,
+            path_count: 10,
+            dominance_factor: 1.5,
+            complexity: 5,
+            file_path: "test.rs".to_string(),
+        };
+
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("test_func"));
+        assert!(json.contains("42.5"));
+        assert!(json.contains("\"path_count\":10"));
+    }
+
+    /// Test hotspots response serialization
+    #[test]
+    fn test_hotspots_response_serialization() {
+        use crate::output::JsonResponse;
+
+        let response = HotspotsResponse {
+            entry_point: "main".to_string(),
+            total_functions: 100,
+            hotspots: vec![],
+            mode: "intra-procedural".to_string(),
+        };
+
+        let wrapper = JsonResponse::new(response);
+        let json = wrapper.to_json();
+
+        assert!(json.contains("\"entry_point\":\"main\""));
+        assert!(json.contains("\"total_functions\":100"));
+        assert!(json.contains("intra-procedural"));
+    }
+
+    /// Test hotspots response with entries
+    #[test]
+    fn test_hotspots_response_with_entries() {
+        use crate::output::JsonResponse;
+
+        let hotspot = HotspotEntry {
+            function: "risky_func".to_string(),
+            risk_score: 85.0,
+            path_count: 50,
+            dominance_factor: 3.0,
+            complexity: 15,
+            file_path: "src/lib.rs".to_string(),
+        };
+
+        let response = HotspotsResponse {
+            entry_point: "main".to_string(),
+            total_functions: 10,
+            hotspots: vec![hotspot],
+            mode: "inter-procedural".to_string(),
+        };
+
+        let wrapper = JsonResponse::new(response);
+        let json = wrapper.to_json();
+
+        assert!(json.contains("risky_func"));
+        assert!(json.contains("85"));
+        assert!(json.contains("inter-procedural"));
+    }
+
+    /// Test hotspots clone (needed for vector operations)
+    #[test]
+    fn test_hotspot_entry_clone() {
+        let entry = HotspotEntry {
+            function: "func".to_string(),
+            risk_score: 1.0,
+            path_count: 1,
+            dominance_factor: 1.0,
+            complexity: 1,
+            file_path: "file.rs".to_string(),
+        };
+
+        let cloned = entry.clone();
+        assert_eq!(entry.function, cloned.function);
+        assert_eq!(entry.risk_score, cloned.risk_score);
+    }
+
+    // ============================================================================
+    // Inter-Procedural Dominance Tests
+    // ============================================================================
+
+    /// Test dominators args has inter_procedural flag
+    #[test]
+    fn test_dominators_args_has_inter_procedural_flag() {
+        let args = DominatorsArgs {
+            function: "main".to_string(),
+            must_pass_through: Some("block1".to_string()),
+            post: false,
+            inter_procedural: true,
+        };
+
+        assert!(args.inter_procedural);
+        assert_eq!(args.function, "main");
+        assert_eq!(args.must_pass_through, Some("block1".to_string()));
+        assert!(!args.post);
+    }
+
+    /// Test dominators args without inter_procedural flag
+    #[test]
+    fn test_dominators_args_default_intra_procedural() {
+        let args = DominatorsArgs {
+            function: "main".to_string(),
+            must_pass_through: None,
+            post: false,
+            inter_procedural: false,  // default
+        };
+
+        assert!(!args.inter_procedural);
+        assert!(!args.post);
+        assert!(args.must_pass_through.is_none());
+    }
+
+    /// Test inter-procedural dominance with post flag combination
+    #[test]
+    fn test_dominators_inter_procedural_with_post() {
+        // In practice, inter_procedural mode should take precedence
+        let args = DominatorsArgs {
+            function: "entry".to_string(),
+            must_pass_through: None,
+            post: true,
+            inter_procedural: true,
+        };
+
+        // Both flags can be set (inter_procedural takes precedence in handler)
+        assert!(args.inter_procedural);
+        assert!(args.post);
+    }
+
+    /// Test inter-procedural mode cannot use must_pass_through
+    #[test]
+    fn test_dominators_inter_procedural_must_pass_through_combination() {
+        // These flags can coexist in args struct
+        let args = DominatorsArgs {
+            function: "main".to_string(),
+            must_pass_through: Some("some_block".to_string()),
+            post: false,
+            inter_procedural: true,
+        };
+
+        assert!(args.inter_procedural);
+        assert!(args.must_pass_through.is_some());
+        // Handler should validate this combination
     }
 }

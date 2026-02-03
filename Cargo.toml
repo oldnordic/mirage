@@ -6,9 +6,11 @@ rust-version = "1.77"
 authors = ["Mirage Contributors"]
 description = "Path-Aware Code Intelligence Engine for Rust"
 repository = "https://github.com/oldnordic/mirage"
-license = "MIT OR Apache-2.0"
-keywords = ["code-analysis", "cfg", "path-enumeration", "rust"]
-categories = ["development-tools", "development-tools::testing"]
+documentation = "https://docs.rs/mirage"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+keywords = ["code-analysis", "cfg", "path-enumeration", "rust", "mir", "control-flow"]
+categories = ["development-tools", "development-tools::testing", "command-line-utilities"]
 
 [[bin]]
 name = "mirage"
@@ -22,7 +24,7 @@ clap = { version = "4.5", features = ["derive", "env"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Magellan v2.0.0 for inter-procedural analysis
-magellan = { path = "../magellan" }
+magellan = "2.0"
 # Re-export sqlitegraph version used by Magellan
 sqlitegraph = "1.3"
 

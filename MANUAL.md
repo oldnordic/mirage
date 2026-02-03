@@ -17,13 +17,13 @@ Mirage is a path-aware code intelligence tool for Rust. It extracts control-flow
 ### Installation
 
 ```bash
+# From crates.io (binary installs as 'mirage')
+cargo install mirage-analyzer
+
 # From source
 git clone https://github.com/oldnordic/mirage
 cd mirage
 cargo install --path .
-
-# Or using cargo install
-cargo install mirage
 ```
 
 ### Requirements

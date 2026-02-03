@@ -9,7 +9,7 @@ repository = "https://github.com/oldnordic/mirage"
 documentation = "https://docs.rs/mirage-analyzer"
 readme = "README.md"
 license = "GPL-3.0-or-later"
-keywords = ["code-analysis", "cfg", "path-enumeration", "rust", "mir", "control-flow"]
+keywords = ["code-analysis", "cfg", "path-enumeration", "mir", "control-flow"]
 categories = ["development-tools", "development-tools::testing", "command-line-utilities"]
 
 [[bin]]

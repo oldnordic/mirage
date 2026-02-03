@@ -2,8 +2,8 @@
 
 **Path-Aware Code Intelligence Engine for Rust**
 
-[![Crates.io](https://img.shields.io/crates/v/mirage)](https://crates.io/crates/mirage)
-[![Documentation](https://docs.rs/mirage/badge.svg)](https://docs.rs/mirage)
+[![Crates.io](https://img.shields.io/crates/v/mirage-analyzer)](https://crates.io/crates/mirage-analyzer)
+[![Documentation](https://docs.rs/mirage-analyzer/badge.svg)](https://docs.rs/mirage-analyzer)
 
 > "An agent may only speak if it can reference a graph artifact."
 
@@ -53,7 +53,13 @@ Mirage is a command-line tool that extracts control-flow graphs (CFG) from Rust 
 ## Installation
 
 ```bash
-cargo install --path /path/to/mirage
+cargo install mirage-analyzer
+```
+
+The binary is installed as `mirage`:
+
+```bash
+mirage --help
 ```
 
 Or build from source:

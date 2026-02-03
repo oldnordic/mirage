@@ -2,6 +2,9 @@
 
 use clap::{Parser, Subcommand, ValueEnum};
 
+// Re-export for CLI use
+pub use crate::analysis::DeadSymbolJson;
+
 /// Mirage - Path-Aware Code Intelligence Engine
 ///
 /// A control-flow and logic graph engine for Rust codebases.
@@ -179,6 +182,10 @@ pub struct UnreachableArgs {
     /// Show branch details
     #[arg(long)]
     pub show_branches: bool,
+
+    /// Include uncalled functions (requires Magellan call graph)
+    #[arg(long)]
+    pub include_uncalled: bool,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -258,13 +265,13 @@ pub enum CfgFormat {
 
 /// Resolve the database path from multiple sources
 ///
-/// Priority: CLI arg > MIRAGE_DB env var > default "./codemcp.db"
-/// This follows Magellan's pattern for database path resolution.
+/// Priority: CLI arg > MIRAGE_DB env var > default ".codemcp/codegraph.db"
+/// This follows Magellan/llmgrep's pattern for database path resolution.
 pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
     match cli_db {
         Some(path) => Ok(path),
         None => std::env::var("MIRAGE_DB")
-            .or_else(|_| Ok("./codemcp.db".to_string())),
+            .or_else(|_| Ok(".codemcp/codegraph.db".to_string())),
     }
 }
 
@@ -431,6 +438,9 @@ struct UnreachableResponse {
     functions_with_unreachable: usize,
     unreachable_count: usize,
     blocks: Vec<UnreachableBlock>,
+    /// Uncalled functions (only populated when --include-uncalled is set)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uncalled_functions: Option<Vec<DeadSymbolJson>>,
 }
 
 /// Incoming edge information for unreachable blocks
@@ -1752,6 +1762,8 @@ pub mod cmds {
     }
 
     pub fn unreachable(args: &UnreachableArgs, cli: &Cli) -> Result<()> {
+        use crate::analysis::MagellanBridge;
+        use crate::analysis::DeadSymbolJson;
         use crate::cfg::reachability::find_unreachable;
         use crate::cfg::load_cfg_from_db;
         use crate::storage::MirageDb;
@@ -1759,6 +1771,33 @@ pub mod cmds {
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // For --include-uncalled, also open Magellan database
+        let uncalled_functions: Option<Vec<DeadSymbolJson>> = if args.include_uncalled {
+            match MagellanBridge::open(&db_path) {
+                Ok(bridge) => {
+                    match bridge.dead_symbols("main") {
+                        Ok(dead) => {
+                            let json_symbols: Vec<DeadSymbolJson> = dead.iter().map(|d| d.into()).collect();
+                            Some(json_symbols)
+                        }
+                        Err(e) => {
+                            // Log but continue with intra-procedural analysis
+                            eprintln!("Warning: Failed to detect uncalled functions: {}", e);
+                            None
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Magellan database not available - warn but continue
+                    eprintln!("Warning: Could not open Magellan database for --include-uncalled: {}", e);
+                    eprintln!("Note: --include-uncalled requires a Magellan code graph database");
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
         // Open database (follows status command pattern for error handling)
         let db = match MirageDb::open(&db_path) {
@@ -1910,34 +1949,29 @@ pub mod cmds {
         let functions_with_unreachable = all_results.iter().filter(|r| !r.blocks.is_empty()).count();
         let total_blocks: usize = all_results.iter().map(|r| r.blocks.len()).sum();
 
-        // If no unreachable blocks found, display message and exit
-        if total_blocks == 0 {
-            match cli.output {
-                OutputFormat::Human => {
-                    output::info("No unreachable code found");
-                }
-                OutputFormat::Json | OutputFormat::Pretty => {
-                    let response = UnreachableResponse {
-                        function: "all".to_string(),
-                        total_functions,
-                        functions_with_unreachable: 0,
-                        unreachable_count: 0,
-                        blocks: vec![],
-                    };
-                    let wrapper = output::JsonResponse::new(response);
-                    match cli.output {
-                        OutputFormat::Json => println!("{}", wrapper.to_json()),
-                        OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
-                        _ => {}
-                    }
-                }
-            }
-            return Ok(());
-        }
-
         // Format output based on cli.output
         match cli.output {
             OutputFormat::Human => {
+                // Show uncalled functions first if available
+                if let Some(ref uncalled) = uncalled_functions {
+                    println!("Uncalled Functions ({}):", uncalled.len());
+                    for dead in uncalled {
+                        let name = dead.fqn.as_deref().unwrap_or("?");
+                        println!("  - {} ({})", name, dead.kind);
+                        println!("    File: {}", dead.file_path);
+                        println!("    Reason: {}", dead.reason);
+                    }
+                    println!();
+                }
+
+                // Show unreachable blocks
+                if total_blocks == 0 {
+                    if uncalled_functions.is_none() || uncalled_functions.as_ref().map(|v| v.is_empty()).unwrap_or(false) {
+                        output::info("No unreachable code found");
+                    }
+                    return Ok(());
+                }
+
                 println!("Unreachable Code Blocks:");
                 println!("  Total blocks: {}", total_blocks);
                 println!("  Functions with unreachable: {}/{}", functions_with_unreachable, total_functions);
@@ -1987,6 +2021,7 @@ pub mod cmds {
                     functions_with_unreachable,
                     unreachable_count: total_blocks,
                     blocks: all_blocks,
+                    uncalled_functions: uncalled_functions,
                 };
                 let wrapper = output::JsonResponse::new(response);
 
@@ -3089,7 +3124,7 @@ mod status_tests {
         )?;
 
         // Create Mirage schema
-        create_schema(&mut conn)?;
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION)?;
 
         // Add sample data
         conn.execute(
@@ -3271,7 +3306,7 @@ mod status_tests {
             params![REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, 0],
         ).unwrap();
 
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         let db = MirageDb::open(file.path()).unwrap();
         let status = db.status().unwrap();
@@ -3652,7 +3687,7 @@ mod paths_tests {
         ).unwrap();
 
         // Create Mirage schema
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Get test CFG and limits
         let cfg = cmds::create_test_cfg();
@@ -3739,7 +3774,7 @@ mod paths_tests {
         ).unwrap();
 
         // Create Mirage schema
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
         // Insert a test function entity (required for foreign key constraint)
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
@@ -3846,7 +3881,7 @@ mod paths_tests {
         ).unwrap();
 
         // Create Mirage schema
-        create_schema(&mut conn).unwrap();
+        create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
         // Insert a test function entity (required for foreign key constraint)
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
@@ -4796,7 +4831,7 @@ mod verify_tests {
         )?;
 
         // Create Mirage schema
-        crate::storage::create_schema(&mut conn)?;
+        crate::storage::create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION)?;
 
         // Add a test function
         conn.execute(

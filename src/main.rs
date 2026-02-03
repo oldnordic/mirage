@@ -9,6 +9,7 @@
 use clap::Parser;
 use anyhow::Result;
 
+mod analysis;
 mod cli;
 mod cfg;
 mod mir;

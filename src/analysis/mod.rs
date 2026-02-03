@@ -1153,4 +1153,233 @@ mod tests {
         let json = serde_json::to_string(&blast_zone).unwrap();
         assert!(json.contains(r#""path_impact":null"#));
     }
+
+    #[test]
+    fn test_condensation_json_creation() {
+        // Test CondensationJson struct creation and serialization
+        use magellan::{CondensationGraph, CondensationResult, Supernode};
+        use std::collections::HashMap;
+
+        // Create test supernodes
+        let symbol1 = SymbolInfo {
+            symbol_id: Some("func_a_id".to_string()),
+            fqn: Some("func_a".to_string()),
+            file_path: "a.rs".to_string(),
+            kind: "Function".to_string(),
+        };
+
+        let symbol2 = SymbolInfo {
+            symbol_id: Some("func_b_id".to_string()),
+            fqn: Some("func_b".to_string()),
+            file_path: "b.rs".to_string(),
+            kind: "Function".to_string(),
+        };
+
+        let supernode1 = Supernode {
+            id: 0,
+            members: vec![symbol1.clone()],
+        };
+
+        let supernode2 = Supernode {
+            id: 1,
+            members: vec![symbol2.clone(), symbol1.clone()], // SCC with 2 functions
+        };
+
+        let graph = CondensationGraph {
+            supernodes: vec![supernode1, supernode2],
+            edges: vec![(0, 1)],
+        };
+
+        let mut mapping = HashMap::new();
+        mapping.insert("func_a".to_string(), 0);
+        mapping.insert("func_b".to_string(), 1);
+
+        let result = CondensationResult {
+            graph,
+            original_to_supernode: mapping,
+        };
+
+        let json: CondensationJson = (&result).into();
+
+        assert_eq!(json.supernode_count, 2);
+        assert_eq!(json.edge_count, 1);
+        assert_eq!(json.largest_scc_size, 2);
+        assert_eq!(json.supernodes.len(), 2);
+        assert_eq!(json.supernodes[0].id, "0");
+        assert_eq!(json.supernodes[0].member_count, 1);
+        assert_eq!(json.supernodes[1].id, "1");
+        assert_eq!(json.supernodes[1].member_count, 2);
+        assert!(json.supernodes[1].members.contains(&"func_b".to_string()));
+    }
+
+    #[test]
+    fn test_condensation_json_serialization() {
+        // Test CondensationJson can be serialized to JSON
+        use magellan::{CondensationGraph, CondensationResult, Supernode};
+        use std::collections::HashMap;
+
+        let supernode = Supernode {
+            id: 0,
+            members: vec![SymbolInfo {
+                symbol_id: Some("test_id".to_string()),
+                fqn: Some("test_func".to_string()),
+                file_path: "test.rs".to_string(),
+                kind: "Function".to_string(),
+            }],
+        };
+
+        let graph = CondensationGraph {
+            supernodes: vec![supernode],
+            edges: vec![],
+        };
+
+        let result = CondensationResult {
+            graph,
+            original_to_supernode: HashMap::new(),
+        };
+
+        let json: CondensationJson = (&result).into();
+        let json_string = serde_json::to_string(&json).unwrap();
+
+        assert!(json_string.contains(r#""supernode_count":1"#));
+        assert!(json_string.contains(r#""edge_count":0"#));
+        assert!(json_string.contains(r#""largest_scc_size":1"#));
+        assert!(json_string.contains(r#""id":"0""#));
+        assert!(json_string.contains("test_func"));
+    }
+
+    #[test]
+    fn test_supernode_json_creation() {
+        // Test SupernodeJson struct creation
+        let supernode = SupernodeJson {
+            id: "42".to_string(),
+            member_count: 3,
+            members: vec!["func_a".to_string(), "func_b".to_string(), "func_c".to_string()],
+        };
+
+        assert_eq!(supernode.id, "42");
+        assert_eq!(supernode.member_count, 3);
+        assert_eq!(supernode.members.len(), 3);
+
+        let json = serde_json::to_string(&supernode).unwrap();
+        assert!(json.contains(r#""id":"42""#));
+        assert!(json.contains(r#""member_count":3"#));
+        assert!(json.contains("func_a"));
+    }
+
+    #[test]
+    fn test_execution_path_json_conversion() {
+        use magellan::{SymbolInfo, ExecutionPath};
+
+        let symbols = vec![
+            SymbolInfo {
+                symbol_id: Some("main_id".to_string()),
+                fqn: Some("main".to_string()),
+                file_path: "main.rs".to_string(),
+                kind: "Function".to_string(),
+            },
+            SymbolInfo {
+                symbol_id: Some("helper_id".to_string()),
+                fqn: Some("helper".to_string()),
+                file_path: "helper.rs".to_string(),
+                kind: "Function".to_string(),
+            },
+        ];
+
+        let path = ExecutionPath {
+            symbols: symbols.clone(),
+            length: 2,
+        };
+
+        let json_path: ExecutionPathJson = (&path).into();
+
+        assert_eq!(json_path.length, 2);
+        assert_eq!(json_path.symbols.len(), 2);
+        assert_eq!(json_path.symbols[0].fqn, Some("main".to_string()));
+        assert_eq!(json_path.symbols[1].fqn, Some("helper".to_string()));
+
+        // Test serialization
+        let json = serde_json::to_string(&json_path).unwrap();
+        assert!(json.contains("symbols"));
+        assert!(json.contains("length"));
+        assert!(json.contains("main"));
+        assert!(json.contains("helper"));
+    }
+
+    #[test]
+    fn test_path_statistics_json_creation() {
+        let stats = PathStatisticsJson {
+            avg_length: 3.5,
+            max_length: 10,
+            min_length: 1,
+        };
+
+        assert_eq!(stats.avg_length, 3.5);
+        assert_eq!(stats.max_length, 10);
+        assert_eq!(stats.min_length, 1);
+
+        // Test serialization
+        let json = serde_json::to_string(&stats).unwrap();
+        assert!(json.contains(r#""avg_length":3.5"#));
+        assert!(json.contains(r#""max_length":10"#));
+        assert!(json.contains(r#""min_length":1"#));
+    }
+
+    #[test]
+    fn test_path_enumeration_json_serialization() {
+        use magellan::{ExecutionPath, PathEnumerationResult, PathStatistics};
+
+        let symbols = vec![
+            SymbolInfo {
+                symbol_id: Some("func1_id".to_string()),
+                fqn: Some("func1".to_string()),
+                file_path: "test.rs".to_string(),
+                kind: "Function".to_string(),
+            },
+        ];
+
+        let path = ExecutionPath {
+            symbols,
+            length: 1,
+        };
+
+        let stats = PathStatistics {
+            avg_length: 2.0,
+            max_length: 5,
+            min_length: 1,
+        };
+
+        // We can't directly construct PathEnumerationResult as its fields are private
+        // This test verifies the JSON structure would serialize correctly
+        let json_stats = PathStatisticsJson {
+            avg_length: 2.0,
+            max_length: 5,
+            min_length: 1,
+        };
+
+        let json = serde_json::to_string(&json_stats).unwrap();
+        assert!(json.contains("avg_length"));
+        assert!(json.contains("max_length"));
+        assert!(json.contains("min_length"));
+    }
+
+    #[test]
+    fn test_execution_path_json_empty_path() {
+        use magellan::{ExecutionPath};
+
+        let path = ExecutionPath {
+            symbols: vec![],
+            length: 0,
+        };
+
+        let json_path: ExecutionPathJson = (&path).into();
+
+        assert_eq!(json_path.length, 0);
+        assert_eq!(json_path.symbols.len(), 0);
+
+        // Test serialization with empty arrays
+        let json = serde_json::to_string(&json_path).unwrap();
+        assert!(json.contains(r#""symbols":[]"#));
+        assert!(json.contains(r#""length":0"#));
+    }
 }

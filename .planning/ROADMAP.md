@@ -22,7 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 8: Drift Remediation** - Wire unimplemented features and fix gaps ✓ Completed 2026-02-02
 - [x] **Phase 9: MIR Integration & Database Loading** - Implement index command, database loading, and blast zone ✓ Completed 2026-02-02
 - [x] **Phase 10: Magellan v2 Integration & Bugfixes** - Integrate Magellan v2.0.0 graph algorithms and fix compilation issues ✓ Completed 2026-02-03
-- [ ] **Phase 11: Inter-procedural Dominance, Hotspots & Smart Re-indexing** - Complete Magellan integration with condensation, hotspot analysis, and incremental re-indexing
+- [x] **Phase 11: Inter-procedural Dominance, Hotspots & Smart Re-indexing** - Complete Magellan integration with condensation, hotspot analysis, and incremental re-indexing ✓ Completed 2026-02-03
 
 ## Phase Details
 
@@ -322,13 +322,13 @@ Plans:
 
 Plans:
 - [x] 11-01 — Wire CondensationGraph to MagellanBridge for inter-procedural dominance (JSON wrappers)
-- [ ] 11-02 — Implement path-based hotspot analysis infrastructure (ExecutionPath wrappers)
-- [ ] 11-03 — Create hotspots CLI command combining path counts, call dominance, complexity
-- [ ] 11-04 — Add --inter-procedural flag to dominators command
-- [ ] 11-05 — Implement smart re-indexing with graph diff helpers
-- [ ] 11-06 — Clean up - remove all unused imports, verify zero warnings
+- [x] 11-02 — Implement path-based hotspot analysis infrastructure (ExecutionPath wrappers)
+- [x] 11-03 — Create hotspots CLI command combining path counts, call dominance, complexity
+- [x] 11-04 — Add --inter-procedural flag to dominators command
+- [x] 11-05 — Implement smart re-indexing with graph diff helpers
+- [x] 11-06 — Clean up - remove all unused imports, verify zero warnings
 
-**Status**: Ready to execute
+**Status**: ✓ Complete 2026-02-03
 
 ## Progress
 
@@ -347,11 +347,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 8. Drift Remediation | 6/6 | ✓ Complete | 2026-02-02 |
 | 9. MIR Integration & Database Loading | 4/4 | ✓ Complete | 2026-02-02 |
 | 10. Magellan v2 Integration & Bugfixes | 5/5 | ✓ Complete | 2026-02-03 |
-| 11. Inter-procedural Dominance, Hotspots & Smart Re-indexing | 1/6 | In progress | 2026-02-03 |
+| 11. Inter-procedural Dominance, Hotspots & Smart Re-indexing | 6/6 | ✓ Complete | 2026-02-03 |
 
 ---
 
 **Total Phases:** 11
 **Total Requirements:** 68 (68 complete, 0 pending)
 **Coverage:** 68/68 requirements complete (100%)
-**Total Plans:** 55 (50 complete, 5 planned)
+**Total Plans:** 55 (55 complete)

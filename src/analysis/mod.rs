@@ -79,6 +79,69 @@ impl From<&SymbolInfo> for SymbolInfoJson {
     }
 }
 
+/// Information about a call graph cycle
+///
+/// Serializable wrapper for cycle detection results.
+#[derive(Debug, Clone, Serialize)]
+pub struct CycleInfo {
+    /// Fully-qualified names of cycle members
+    pub members: Vec<String>,
+    /// Cycle type classification
+    pub cycle_type: String,
+    /// Number of symbols in the cycle
+    pub size: usize,
+}
+
+impl From<&Cycle> for CycleInfo {
+    fn from(cycle: &Cycle) -> Self {
+        let members: Vec<String> = cycle.members.iter()
+            .map(|m| m.fqn.as_deref().unwrap_or("<unknown>").to_string())
+            .collect();
+
+        let cycle_type = match cycle.kind {
+            CycleKind::MutualRecursion => "MutualRecursion",
+            CycleKind::SelfLoop => "SelfLoop",
+        };
+
+        Self {
+            members,
+            cycle_type: cycle_type.to_string(),
+            size: cycle.members.len(),
+        }
+    }
+}
+
+/// Information about a natural loop within a function
+///
+/// Represents intra-procedural loop structure detected via dominance analysis.
+#[derive(Debug, Clone, Serialize)]
+pub struct LoopInfo {
+    /// Loop header block ID
+    pub header: usize,
+    /// Back edge source block ID
+    pub back_edge_from: usize,
+    /// Number of blocks in the loop body
+    pub body_size: usize,
+    /// Nesting depth (0 for outermost loops)
+    pub nesting_level: usize,
+    /// Block IDs in the loop body
+    pub body_blocks: Vec<usize>,
+}
+
+/// Combined cycle detection report
+///
+/// Combines inter-procedural (call graph SCCs) and intra-procedural (natural loops)
+/// cycle detection for complete cycle visibility.
+#[derive(Debug, Clone, Serialize)]
+pub struct EnhancedCycles {
+    /// Inter-procedural: Call graph SCCs (mutual recursion)
+    pub call_graph_cycles: Vec<CycleInfo>,
+    /// Intra-procedural: Natural loops within functions
+    pub function_loops: HashMap<String, Vec<LoopInfo>>,
+    /// Total cycle count (call graph + function loops)
+    pub total_cycles: usize,
+}
+
 /// Enhanced dead code detection combining Magellan and Mirage analysis
 ///
 /// Combines inter-procedural dead code detection (uncalled functions from Magellan)

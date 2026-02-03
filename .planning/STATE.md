@@ -5,17 +5,17 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 9: MIR Integration & Database Loading
-**Last focus:** Phase 8: Drift Remediation (complete)
+**Current focus:** Phase 10: Magellan v2 Integration & Bugfixes
+**Last focus:** Phase 9: MIR Integration & Database Loading (complete)
 
 ## Current Position
 
-Phase: 9 of 9 (MIR Integration & Database Loading) - COMPLETE
-Plan: 4 of 4 (blast-zone command) - Complete
-Status: All Phase 9 features complete - MIR extraction, database loading, and blast-zone impact analysis. Mirage v1.0 feature-complete.
-Last activity: 2026-02-02 - Completed 09-04 blast-zone command
+Phase: 10 of 10 (Magellan v2 Integration & Bugfixes) - PLANNED
+Plan: 0 of 5 (ready to execute)
+Status: Phase 10 planned - Magellan v2.0.0 integration ready with 5 plans in 4 waves.
+Last activity: 2026-02-03 - Created 5 plans for Magellan v2 integration
 
-Progress: [██████████████] 100% (9 phases complete, 44/44 plans done)
+Progress: [████████████░░] 90% (9 phases complete, 44/44 plans done, Phase 10: 5 plans ready)
 
 ## Performance Metrics
 
@@ -382,6 +382,10 @@ Recent decisions affecting current work:
 - Completed: `mirage index` (MIR extraction via Charon), `mirage blast-zone` (path-based impact analysis), database loading for all CLI commands
 - Database loading: All 7 analysis commands now load CFG from database (paths, cfg, dominators, loops, unreachable, patterns, frontiers)
 - Requirements delivered: MIR-01 (Charon integration), MIR-02 (ULLBC parsing), MIR-03 (CFG storage), CLI-DB-01 (load CFG from DB), CLI-DB-02 (function lookup), BLAST-01 (block impact), BLAST-02 (path impact)
+
+**Phase 10 added (2026-02-03):** Magellan v2 Integration & Bugfixes - NOT PLANNED
+- Trigger: Integration opportunities identified with Magellan v2.0.0 + compilation errors need fixing
+- Pending: 8 integration areas (enhanced reachability, blast zone, cycles, slicing, dominance, hotspots, re-indexing, unified query) + bug fixes
 
 ### Pending Todos
 

@@ -49,6 +49,7 @@ fn run_command(cli: Cli) -> Result<()> {
         Commands::Verify(ref args) => cli::cmds::verify(args, &cli)?,
         Commands::BlastZone(ref args) => cli::cmds::blast_zone(args, &cli)?,
         Commands::Cycles(ref args) => cli::cmds::cycles(args, &cli)?,
+        Commands::Slice(ref args) => cli::cmds::slice(args, &cli)?,
         _ => {
             // Placeholder for unimplemented commands
             eprintln!("This command is not yet implemented");

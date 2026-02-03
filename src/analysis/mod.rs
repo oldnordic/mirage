@@ -625,4 +625,104 @@ mod tests {
         assert!(json.contains("unreachable_blocks"));
         assert!(json.contains("total_dead_count"));
     }
+
+    #[test]
+    fn test_cycle_info_from_cycle() {
+        // Test CycleInfo conversion from Cycle
+        use magellan::{SymbolInfo, Cycle, CycleKind};
+
+        let symbol1 = SymbolInfo {
+            symbol_id: Some("func_a_id".to_string()),
+            fqn: Some("func_a".to_string()),
+            file_path: "test.rs".to_string(),
+            kind: "Function".to_string(),
+        };
+
+        let symbol2 = SymbolInfo {
+            symbol_id: Some("func_b_id".to_string()),
+            fqn: Some("func_b".to_string()),
+            file_path: "test.rs".to_string(),
+            kind: "Function".to_string(),
+        };
+
+        // Test MutualRecursion cycle
+        let mutual_recursion_cycle = Cycle {
+            members: vec![symbol1.clone(), symbol2.clone()],
+            kind: CycleKind::MutualRecursion,
+        };
+
+        let cycle_info: CycleInfo = (&mutual_recursion_cycle).into();
+        assert_eq!(cycle_info.cycle_type, "MutualRecursion");
+        assert_eq!(cycle_info.size, 2);
+        assert_eq!(cycle_info.members, vec!["func_a", "func_b"]);
+
+        // Test SelfLoop cycle
+        let self_loop_cycle = Cycle {
+            members: vec![symbol1],
+            kind: CycleKind::SelfLoop,
+        };
+
+        let cycle_info: CycleInfo = (&self_loop_cycle).into();
+        assert_eq!(cycle_info.cycle_type, "SelfLoop");
+        assert_eq!(cycle_info.size, 1);
+        assert_eq!(cycle_info.members, vec!["func_a"]);
+    }
+
+    #[test]
+    fn test_enhanced_cycles_serialization() {
+        // Test EnhancedCycles can be serialized to JSON
+        use std::collections::HashMap;
+
+        let mut function_loops = HashMap::new();
+        function_loops.insert("test_func".to_string(), vec![
+            LoopInfo {
+                header: 1,
+                back_edge_from: 2,
+                body_size: 3,
+                nesting_level: 0,
+                body_blocks: vec![1, 2, 3],
+            }
+        ]);
+
+        let call_graph_cycles = vec![
+            CycleInfo {
+                members: vec!["func_a".to_string(), "func_b".to_string()],
+                cycle_type: "MutualRecursion".to_string(),
+                size: 2,
+            }
+        ];
+
+        let enhanced = EnhancedCycles {
+            call_graph_cycles,
+            function_loops,
+            total_cycles: 2,
+        };
+
+        // Test serialization
+        let json = serde_json::to_string(&enhanced).unwrap();
+        assert!(json.contains("call_graph_cycles"));
+        assert!(json.contains("function_loops"));
+        assert!(json.contains("total_cycles"));
+        assert!(json.contains("MutualRecursion"));
+    }
+
+    #[test]
+    fn test_loop_info_serialization() {
+        // Test LoopInfo can be serialized to JSON
+        let loop_info = LoopInfo {
+            header: 1,
+            back_edge_from: 3,
+            body_size: 5,
+            nesting_level: 2,
+            body_blocks: vec![1, 2, 3, 4, 5],
+        };
+
+        // Test serialization
+        let json = serde_json::to_string(&loop_info).unwrap();
+        assert!(json.contains(r#""header":1"#));
+        assert!(json.contains(r#""back_edge_from":3"#));
+        assert!(json.contains(r#""body_size":5"#));
+        assert!(json.contains(r#""nesting_level":2"#));
+        assert!(json.contains(r#"body_blocks"#));
+    }
 }

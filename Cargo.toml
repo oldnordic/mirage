@@ -1,12 +1,12 @@
 [package]
-name = "mirage"
+name = "mirage-analyzer"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.77"
 authors = ["Mirage Contributors"]
 description = "Path-Aware Code Intelligence Engine for Rust"
 repository = "https://github.com/oldnordic/mirage"
-documentation = "https://docs.rs/mirage"
+documentation = "https://docs.rs/mirage-analyzer"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 keywords = ["code-analysis", "cfg", "path-enumeration", "rust", "mir", "control-flow"]

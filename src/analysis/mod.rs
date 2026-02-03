@@ -52,6 +52,33 @@ impl From<&DeadSymbol> for DeadSymbolJson {
     }
 }
 
+/// Serializable wrapper for [`SymbolInfo`]
+///
+/// Magellan's [`SymbolInfo`] doesn't implement Serialize, so we provide
+/// a wrapper struct that can be serialized to JSON for CLI output.
+#[derive(Debug, Clone, Serialize)]
+pub struct SymbolInfoJson {
+    /// Stable symbol ID (32-char BLAKE3 hash)
+    pub symbol_id: Option<String>,
+    /// Fully-qualified name of the symbol
+    pub fqn: Option<String>,
+    /// File path containing the symbol
+    pub file_path: String,
+    /// Symbol kind (Function, Method, Class, etc.)
+    pub kind: String,
+}
+
+impl From<&SymbolInfo> for SymbolInfoJson {
+    fn from(symbol: &SymbolInfo) -> Self {
+        Self {
+            symbol_id: symbol.symbol_id.clone(),
+            fqn: symbol.fqn.clone(),
+            file_path: symbol.file_path.clone(),
+            kind: symbol.kind.clone(),
+        }
+    }
+}
+
 /// Enhanced dead code detection combining Magellan and Mirage analysis
 ///
 /// Combines inter-procedural dead code detection (uncalled functions from Magellan)
@@ -70,6 +97,38 @@ pub struct EnhancedDeadCode {
     pub unreachable_blocks: HashMap<String, Vec<usize>>,
     /// Total count of dead code items
     pub total_dead_count: usize,
+}
+
+/// Enhanced blast zone combining call graph and CFG impact analysis
+///
+/// This struct provides a comprehensive impact analysis by combining:
+/// - **Inter-procedural impact** (call graph): Which functions are affected
+/// - **Intra-procedural impact** (CFG): Which blocks/paths are affected within functions
+#[derive(Debug, Clone, Serialize)]
+pub struct EnhancedBlastZone {
+    /// Target function/block being analyzed
+    pub target: String,
+    /// Forward: What functions this affects (via call graph)
+    pub forward_reachable: Vec<SymbolInfoJson>,
+    /// Backward: What functions affect this (reverse call graph)
+    pub backward_reachable: Vec<SymbolInfoJson>,
+    /// Intra-procedural: Path-based impact within function
+    pub path_impact: Option<PathImpactSummary>,
+}
+
+/// Summary of path-based impact within a function
+///
+/// This represents the CFG-level impact analysis for blocks within a single function.
+#[derive(Debug, Clone, Serialize)]
+pub struct PathImpactSummary {
+    /// Path ID being analyzed
+    pub path_id: Option<String>,
+    /// Path length in blocks
+    pub path_length: usize,
+    /// Block IDs affected by the path
+    pub blocks_affected: Vec<usize>,
+    /// Count of unique blocks affected
+    pub unique_blocks_count: usize,
 }
 
 /// Bridge to Magellan's inter-procedural graph algorithms

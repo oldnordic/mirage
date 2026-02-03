@@ -773,4 +773,90 @@ mod tests {
         assert!(json.contains(r#""nesting_level":2"#));
         assert!(json.contains(r#"body_blocks"#));
     }
+
+    #[test]
+    fn test_slice_wrapper_serialization() {
+        // Test SliceWrapper can be serialized to JSON
+        use magellan::{ProgramSlice, SliceDirection, SliceResult, SliceStatistics};
+
+        let target = SymbolInfo {
+            symbol_id: Some("target_id".to_string()),
+            fqn: Some("target_function".to_string()),
+            file_path: "test.rs".to_string(),
+            kind: "Function".to_string(),
+        };
+
+        let included_symbols = vec![
+            SymbolInfo {
+                symbol_id: Some("sym1_id".to_string()),
+                fqn: Some("sym1".to_string()),
+                file_path: "test.rs".to_string(),
+                kind: "Function".to_string(),
+            },
+            SymbolInfo {
+                symbol_id: Some("sym2_id".to_string()),
+                fqn: Some("sym2".to_string()),
+                file_path: "test.rs".to_string(),
+                kind: "Function".to_string(),
+            },
+        ];
+
+        let program_slice = ProgramSlice {
+            target: target.clone(),
+            direction: SliceDirection::Backward,
+            included_symbols: included_symbols.clone(),
+            symbol_count: 3,
+        };
+
+        let statistics = SliceStatistics {
+            total_symbols: 3,
+            data_dependencies: 2,
+            control_dependencies: 1,
+        };
+
+        let slice_result = SliceResult {
+            slice: program_slice,
+            statistics,
+        };
+
+        let wrapper: SliceWrapper = (&slice_result).into();
+
+        // Test wrapper fields
+        assert_eq!(wrapper.target.fqn, Some("target_function".to_string()));
+        assert_eq!(wrapper.direction, "Backward");
+        assert_eq!(wrapper.symbol_count, 3);
+        assert_eq!(wrapper.statistics.total_symbols, 3);
+        assert_eq!(wrapper.statistics.data_dependencies, 2);
+        assert_eq!(wrapper.statistics.control_dependencies, 1);
+        assert_eq!(wrapper.included_symbols.len(), 2);
+
+        // Test serialization
+        let json = serde_json::to_string(&wrapper).unwrap();
+        assert!(json.contains("target"));
+        assert!(json.contains("direction"));
+        assert!(json.contains("Backward"));
+        assert!(json.contains("included_symbols"));
+        assert!(json.contains("statistics"));
+        assert!(json.contains("data_dependencies"));
+    }
+
+    #[test]
+    fn test_slice_stats_creation() {
+        // Test SliceStats struct creation
+        let stats = SliceStats {
+            total_symbols: 10,
+            data_dependencies: 5,
+            control_dependencies: 3,
+        };
+
+        assert_eq!(stats.total_symbols, 10);
+        assert_eq!(stats.data_dependencies, 5);
+        assert_eq!(stats.control_dependencies, 3);
+
+        // Test serialization
+        let json = serde_json::to_string(&stats).unwrap();
+        assert!(json.contains(r#""total_symbols":10"#));
+        assert!(json.contains(r#""data_dependencies":5"#));
+        assert!(json.contains(r#""control_dependencies":3"#));
+    }
 }

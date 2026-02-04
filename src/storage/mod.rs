@@ -43,6 +43,7 @@ pub const REQUIRED_MAGELLAN_SCHEMA_VERSION: i32 = TEST_MAGELLAN_SCHEMA_VERSION;
 pub const REQUIRED_SQLITEGRAPH_SCHEMA_VERSION: i32 = 3;
 
 /// Database connection wrapper
+#[derive(Debug)]
 pub struct MirageDb {
     conn: Connection,
 }
@@ -1952,5 +1953,186 @@ mod tests {
         assert_eq!(impact.path_length, 3);
         // Block 2 is not in the path but is reachable from block 1
         assert!(impact.unique_blocks_affected.contains(&2));
+    }
+
+    // Graceful degradation tests for missing CFG data
+
+    #[test]
+    fn test_load_cfg_missing_cfg_blocks_table() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        // Create Magellan tables WITHOUT cfg_blocks
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                file_path TEXT,
+                data TEXT NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, ?, ?, ?)",
+            params![6, 3, 0],  // Magellan v6 (too old, no cfg_blocks)
+        ).unwrap();
+
+        // Insert a function
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "test_func", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Try to load CFG - should fail with helpful error
+        let result = load_cfg_from_db(&conn, function_id);
+        assert!(result.is_err(), "Should fail when cfg_blocks table missing");
+
+        let err_msg = result.unwrap_err().to_string();
+        // Error should mention the problem (either cfg_blocks or prepare failed)
+        assert!(err_msg.contains("cfg_blocks") || err_msg.contains("prepare"),
+                "Error should mention cfg_blocks or prepare: {}", err_msg);
+    }
+
+    #[test]
+    fn test_load_cfg_function_not_found() {
+        let conn = create_test_db_with_schema();
+
+        // Try to load CFG for non-existent function
+        let result = load_cfg_from_db(&conn, 99999);
+        assert!(result.is_err(), "Should fail for non-existent function");
+
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("No CFG blocks found") || err_msg.contains("not found"),
+                "Error should mention missing CFG: {}", err_msg);
+        assert!(err_msg.contains("magellan watch"),
+                "Error should suggest running magellan watch: {}", err_msg);
+    }
+
+    #[test]
+    fn test_load_cfg_empty_blocks() {
+        let conn = create_test_db_with_schema();
+
+        // Insert a function but no CFG blocks
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "func_without_cfg", "test.rs", "{}"),
+        ).unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Try to load CFG - should fail with helpful error
+        let result = load_cfg_from_db(&conn, function_id);
+        assert!(result.is_err(), "Should fail when no CFG blocks exist");
+
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("No CFG blocks found"),
+                "Error should mention no CFG blocks: {}", err_msg);
+        assert!(err_msg.contains("magellan watch"),
+                "Error should suggest running magellan watch: {}", err_msg);
+    }
+
+    #[test]
+    fn test_resolve_function_missing_with_helpful_message() {
+        let conn = create_test_db_with_schema();
+
+        // Try to resolve a non-existent function
+        let result = resolve_function_name(&conn, "nonexistent_function");
+        assert!(result.is_err(), "Should fail for non-existent function");
+
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("not found") || err_msg.contains("not found in database"),
+                "Error should mention function not found: {}", err_msg);
+    }
+
+    #[test]
+    fn test_open_database_old_magellan_schema() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        // Create Magellan v6 database (too old)
+        conn.execute(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+             VALUES (1, 6, 3, 0)",  // Magellan v6 < required v7
+            [],
+        ).unwrap();
+
+        // Create cfg_blocks table (but wrong schema version)
+        conn.execute(
+            "CREATE TABLE cfg_blocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                function_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                terminator TEXT NOT NULL,
+                byte_start INTEGER NOT NULL,
+                byte_end INTEGER NOT NULL,
+                start_line INTEGER NOT NULL,
+                start_col INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+                end_col INTEGER NOT NULL,
+                FOREIGN KEY (function_id) REFERENCES graph_entities(id)
+            )",
+            [],
+        ).unwrap();
+
+        // Try to open via MirageDb - should fail with schema version error
+        drop(conn);
+        let db_file = tempfile::NamedTempFile::new().unwrap();
+        {
+            let conn = Connection::open(db_file.path()).unwrap();
+            conn.execute(
+                "CREATE TABLE magellan_meta (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    magellan_schema_version INTEGER NOT NULL,
+                    sqlitegraph_schema_version INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                )",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+                 VALUES (1, 6, 3, 0)",
+                [],
+            ).unwrap();
+            conn.execute(
+                "CREATE TABLE graph_entities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    kind TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    file_path TEXT,
+                    data TEXT NOT NULL
+                )",
+                [],
+            ).unwrap();
+        }
+
+        let result = MirageDb::open(db_file.path());
+        assert!(result.is_err(), "Should fail with old Magellan schema");
+
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("too old") || err_msg.contains("minimum"),
+                "Error should mention schema too old: {}", err_msg);
+        assert!(err_msg.contains("magellan watch"),
+                "Error should suggest running magellan watch: {}", err_msg);
     }
 }

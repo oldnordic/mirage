@@ -166,37 +166,6 @@ fn byte_to_line_column(source: &str, byte_offset: usize) -> (usize, usize) {
     (line, column)
 }
 
-/// Span from Charon ULLBC
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CharonSpan {
-    pub file_id: usize,
-    pub start_line: usize,
-    pub start_column: usize,
-    pub end_line: usize,
-    pub end_column: usize,
-}
-
-impl SourceLocation {
-    /// Convert from Charon span
-    ///
-    /// Note: Charon uses file IDs, not paths. You'll need to
-    /// map file IDs to paths using the ULLBC file table.
-    pub fn from_charon_span(
-        file_path: PathBuf,
-        span: &CharonSpan,
-    ) -> Self {
-        Self {
-            file_path,
-            byte_start: 0,  // Charon doesn't provide bytes
-            byte_end: 0,
-            start_line: span.start_line,
-            start_column: span.start_column,
-            end_line: span.end_line,
-            end_column: span.end_column,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,27 +263,6 @@ mod tests {
         assert_eq!(loc.start_column, 5);
         assert_eq!(loc.end_line, 15);
         assert_eq!(loc.end_column, 20);
-    }
-
-    #[test]
-    fn test_from_charon_span() {
-        let span = CharonSpan {
-            file_id: 0,
-            start_line: 5,
-            start_column: 3,
-            end_line: 7,
-            end_column: 10,
-        };
-
-        let loc = SourceLocation::from_charon_span(PathBuf::from("src/lib.rs"), &span);
-
-        assert_eq!(loc.file_path, PathBuf::from("src/lib.rs"));
-        assert_eq!(loc.byte_start, 0); // Charon doesn't provide bytes
-        assert_eq!(loc.byte_end, 0);
-        assert_eq!(loc.start_line, 5);
-        assert_eq!(loc.start_column, 3);
-        assert_eq!(loc.end_line, 7);
-        assert_eq!(loc.end_column, 10);
     }
 
     #[test]

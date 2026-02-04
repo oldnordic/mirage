@@ -7,7 +7,6 @@ pub mod dominators;
 pub mod edge;
 pub mod export;
 pub mod loops;
-pub mod mir;
 pub mod paths;
 pub mod patterns;
 pub mod post_dominators;
@@ -28,8 +27,7 @@ pub use paths::{Path, PathKind, PathLimits, enumerate_paths, enumerate_paths_cac
 pub use patterns::{detect_if_else_patterns, detect_match_patterns};
 pub use reachability::{find_reachable_from_block, compute_path_impact, PathImpact};
 pub use summary::summarize_path;
-pub use mir::ullbc_to_cfg;
-pub use source::{CharonSpan, SourceLocation};
+pub use source::SourceLocation;
 
 use anyhow::Result;
 use petgraph::graph::DiGraph;

@@ -1,6 +1,5 @@
-//! MIR extraction via Charon
-
-pub mod charon;
-
-#[allow(unused_imports)] // Used in tests
-pub use charon::{parse_ullbc, run_charon, UllbcBlock, UllbcBody, UllbcSpan, UllbcTerminator};
+//! MIR extraction module
+//!
+//! This module is reserved for future AST-based MIR alternatives.
+//! The current implementation uses Magellan's AST-based CFG extraction,
+//! which doesn't require a separate MIR layer.

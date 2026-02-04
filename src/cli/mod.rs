@@ -686,7 +686,7 @@ struct HotspotEntry {
 pub mod cmds {
     use super::*;
     use crate::output;
-    use anyhow::{Context, Result};
+    use anyhow::Result;
 
 
     pub fn status(_args: StatusArgs, cli: &Cli) -> Result<()> {
@@ -725,7 +725,7 @@ pub mod cmds {
                 println!("Mirage Database Status:");
                 println!("  Schema version: {} (Magellan: {})", status.mirage_schema_version, status.magellan_schema_version);
                 println!("  cfg_blocks: {}", status.cfg_blocks);
-                println!("  cfg_edges: {}", status.cfg_edges);
+                // cfg_edges are computed in memory, not stored
                 println!("  cfg_paths: {}", status.cfg_paths);
                 println!("  cfg_dominators: {}", status.cfg_dominators);
             }

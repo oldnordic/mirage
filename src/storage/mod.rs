@@ -1558,10 +1558,16 @@ mod tests {
     }
 
     // Helper function to create a test database with Magellan + Mirage schema
+    //
+    // Creates a Magellan v7-compatible database with Mirage extensions.
+    // The cfg_blocks table uses Magellan v7 schema:
+    // - kind: TEXT (lowercase: "entry", "block", "return", "if", etc.)
+    // - terminator: TEXT (lowercase: "fallthrough", "conditional", "return", etc.)
+    // - Includes line/column fields for source locations
     fn create_test_db_with_schema() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();
 
-        // Create Magellan tables
+        // Create Magellan v7 tables
         conn.execute(
             "CREATE TABLE magellan_meta (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -1583,13 +1589,45 @@ mod tests {
             [],
         ).unwrap();
 
+        // Insert Magellan v7 meta
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
              VALUES (1, ?, ?, ?)",
-            params![REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, 0],
+            params![7, 3, 0],  // Magellan v7, sqlitegraph v3
         ).unwrap();
 
-        // Create Mirage schema
+        // Create Magellan's cfg_blocks table (v7 schema)
+        // This is the authoritative table for CFG data in Magellan v7+
+        conn.execute(
+            "CREATE TABLE cfg_blocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                function_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                terminator TEXT NOT NULL,
+                byte_start INTEGER NOT NULL,
+                byte_end INTEGER NOT NULL,
+                start_line INTEGER NOT NULL,
+                start_col INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+                end_col INTEGER NOT NULL,
+                FOREIGN KEY (function_id) REFERENCES graph_entities(id)
+            )",
+            [],
+        ).unwrap();
+
+        // Create graph_edges for CFG edges
+        conn.execute(
+            "CREATE TABLE graph_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_id INTEGER NOT NULL,
+                to_id INTEGER NOT NULL,
+                edge_type TEXT NOT NULL,
+                data TEXT
+            )",
+            [],
+        ).unwrap();
+
+        // Create Mirage schema (mirage_meta and additional tables)
         create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Enable foreign key enforcement for tests

@@ -700,7 +700,7 @@ pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cf
 pub fn store_cfg(
     conn: &mut Connection,
     function_id: i64,
-    function_hash: &str,
+    _function_hash: &str,  // Unused: Magellan manages its own caching
     cfg: &crate::cfg::Cfg,
 ) -> Result<()> {
     use crate::cfg::{BlockKind, EdgeType, Terminator};

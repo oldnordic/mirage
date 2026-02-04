@@ -432,20 +432,13 @@ pub fn invalidate_function_paths(conn: &mut Connection, function_id: i64) -> Res
 pub fn update_function_paths_if_changed(
     conn: &mut Connection,
     function_id: i64,
-    new_hash: &str,
+    _new_hash: &str,
     paths: &[Path],
 ) -> Result<bool> {
-    // Check current function_hash in cfg_blocks
-    let current_hash: Option<String> = conn.query_row(
-        "SELECT function_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
-        params![function_id],
-        |row| row.get(0),
-    ).unwrap_or(None);
-
     // Note: Hash-based cache invalidation is not available with Magellan's schema
     // since cfg_blocks doesn't have a function_hash column.
     // Magellan manages its own caching and re-indexing when source files change.
-    // For now, we always invalidate and store new paths when this function is called.
+    // We always invalidate and store new paths when this function is called.
     // Future enhancement: integrate with Magellan's change detection.
 
     // Invalidate old paths

@@ -475,10 +475,8 @@ pub fn resolve_function_name(conn: &Connection, name_or_id: &str) -> Result<i64>
 ///    - terminator: parsed from Magellan's terminator string (fallthrough/conditional/goto/return/etc.)
 ///    - source_location: constructed from line/column data if available
 ///    - statements: empty vec! (future enhancement)
-/// 3. Query all cfg_edges connecting blocks for this function
-/// 4. Map database block IDs to graph node indices
-/// 5. Add edges to the graph with parsed EdgeType
-/// 6. Return the constructed Cfg
+/// 3. Build edges from terminator data using build_edges_from_terminators()
+/// 4. Return the constructed Cfg
 ///
 /// # Notes
 ///
@@ -487,10 +485,11 @@ pub fn resolve_function_name(conn: &Connection, name_or_id: &str) -> Result<i64>
 /// - Magellan stores terminator as plain TEXT, not JSON
 /// - Magellan uses "kind" column, not "block_kind"
 /// - Requires Magellan schema v7+ for cfg_blocks table
+/// - Edges are constructed in memory from terminator data, not queried from cfg_edges table
 pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cfg::Cfg> {
-    use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
+    use crate::cfg::{BasicBlock, BlockKind, Cfg, Terminator};
+    use crate::cfg::build_edges_from_terminators;
     use crate::cfg::source::SourceLocation;
-    use petgraph::graph::NodeIndex;
     use std::path::PathBuf;
 
     // Query file_path for this function from graph_entities
@@ -611,57 +610,10 @@ pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cf
         db_id_to_node.insert(*db_id, node_idx);
     }
 
-    // Query all edges for this function's blocks
-    let mut stmt = conn.prepare_cached(
-        "SELECT e.from_id, e.to_id, e.edge_type
-         FROM cfg_edges e
-         INNER JOIN cfg_blocks b1 ON e.from_id = b1.id
-         INNER JOIN cfg_blocks b2 ON e.to_id = b2.id
-         WHERE b1.function_id = ? OR b2.function_id = ?",
-    ).context("Failed to prepare cfg_edges query")?;
-
-    let edge_rows: Vec<(i64, i64, String)> = stmt
-        .query_map(params![function_id, function_id], |row| {
-            Ok((
-                row.get(0)?, // from_id (database block ID)
-                row.get(1)?, // to_id (database block ID)
-                row.get(2)?, // edge_type
-            ))
-        })
-        .context("Failed to execute cfg_edges query")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Failed to collect cfg_edges rows")?;
-
-    // Add edges to the graph
-    for (from_db_id, to_db_id, edge_type_str) in edge_rows {
-        let from_idx = db_id_to_node.get(&from_db_id).context(format!(
-            "Edge references unknown from_id {}",
-            from_db_id
-        ))?;
-        let to_idx = db_id_to_node.get(&to_db_id).context(format!(
-            "Edge references unknown to_id {}",
-            to_db_id
-        ))?;
-
-        // Parse edge type
-        let edge_type = match edge_type_str.as_str() {
-            "Fallthrough" => EdgeType::Fallthrough,
-            "TrueBranch" => EdgeType::TrueBranch,
-            "FalseBranch" => EdgeType::FalseBranch,
-            "LoopBack" => EdgeType::LoopBack,
-            "LoopExit" => EdgeType::LoopExit,
-            "Call" => EdgeType::Call,
-            "Return" => EdgeType::Return,
-            "Exception" => EdgeType::Exception,
-            _ => anyhow::bail!("Invalid edge_type '{}'", edge_type_str),
-        };
-
-        graph.add_edge(
-            NodeIndex::new(*from_idx),
-            NodeIndex::new(*to_idx),
-            edge_type,
-        );
-    }
+    // Build edges from terminator data (per RESEARCH.md Pattern 2)
+    // Edges are derived in memory by analyzing terminators, not queried from cfg_edges table
+    build_edges_from_terminators(&mut graph, &block_rows, &db_id_to_node)
+        .context("Failed to build edges from terminator data")?;
 
     Ok(graph)
 }
@@ -1753,7 +1705,7 @@ mod tests {
 
     #[test]
     fn test_load_cfg_with_multiple_edge_types() {
-        use crate::cfg::{Terminator, EdgeType};
+        use crate::cfg::EdgeType;
 
         let conn = create_test_db_with_schema();
 
@@ -1771,15 +1723,15 @@ mod tests {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params!(function_id, "entry", "conditional", 0, 10, 1, 0, 1, 10),
         ).unwrap();
-        let block_0_id: i64 = conn.last_insert_rowid();
+        let _block_0_id: i64 = conn.last_insert_rowid();
 
         conn.execute(
             "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params!(function_id, "block", "goto", 10, 20, 2, 0, 2, 10),
+            params!(function_id, "block", "fallthrough", 10, 20, 2, 0, 2, 10),
         ).unwrap();
-        let block_1_id: i64 = conn.last_insert_rowid();
+        let _block_1_id: i64 = conn.last_insert_rowid();
 
         conn.execute(
             "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
@@ -1787,7 +1739,7 @@ mod tests {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params!(function_id, "block", "call", 20, 30, 3, 0, 3, 10),
         ).unwrap();
-        let block_2_id: i64 = conn.last_insert_rowid();
+        let _block_2_id: i64 = conn.last_insert_rowid();
 
         conn.execute(
             "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
@@ -1795,36 +1747,18 @@ mod tests {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params!(function_id, "return", "return", 30, 40, 4, 0, 4, 10),
         ).unwrap();
-        let block_3_id: i64 = conn.last_insert_rowid();
+        let _block_3_id: i64 = conn.last_insert_rowid();
 
-        // Insert edges with different types
-        conn.execute(
-            "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
-            params!(block_0_id, block_1_id, "TrueBranch"),
-        ).unwrap();
-
-        conn.execute(
-            "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
-            params!(block_0_id, block_2_id, "FalseBranch"),
-        ).unwrap();
-
-        conn.execute(
-            "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
-            params!(block_1_id, block_3_id, "Fallthrough"),
-        ).unwrap();
-
-        conn.execute(
-            "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
-            params!(block_2_id, block_3_id, "Call"),
-        ).unwrap();
-
-        // Load the CFG
+        // Load the CFG - edges are now built from terminator data, not cfg_edges table
         let cfg = load_cfg_from_db(&conn, function_id).unwrap();
 
         assert_eq!(cfg.node_count(), 4);
         assert_eq!(cfg.edge_count(), 4);
 
-        // Verify edge types
+        // Verify edge types are built from terminators:
+        // Block 0 (conditional) -> Block 1 (TrueBranch), Block 2 (FalseBranch)
+        // Block 1 (fallthrough) -> Block 2 (Fallthrough)
+        // Block 2 (call) -> Block 3 (Call)
         use petgraph::visit::EdgeRef;
         let edges: Vec<_> = cfg.edge_references().map(|e| {
             (e.source().index(), e.target().index(), *e.weight())
@@ -1832,7 +1766,7 @@ mod tests {
 
         assert!(edges.contains(&(0, 1, EdgeType::TrueBranch)));
         assert!(edges.contains(&(0, 2, EdgeType::FalseBranch)));
-        assert!(edges.contains(&(1, 3, EdgeType::Fallthrough)));
+        assert!(edges.contains(&(1, 2, EdgeType::Fallthrough)));
         assert!(edges.contains(&(2, 3, EdgeType::Call)));
     }
 

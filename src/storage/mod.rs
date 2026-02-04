@@ -238,7 +238,8 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
         [],
     )?;
 
-    // Create cfg_edges table
+    // Create cfg_edges table (kept for backward compatibility with tests and existing databases)
+    // Note: New code should compute edges in memory using build_edges_from_terminators()
     conn.execute(
         "CREATE TABLE IF NOT EXISTS cfg_edges (
             from_id INTEGER NOT NULL,
@@ -327,6 +328,7 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DatabaseStatus {
     pub cfg_blocks: i64,
+    #[deprecated(note = "Edges are now computed in memory, not stored")]
     pub cfg_edges: i64,
     pub cfg_paths: i64,
     pub cfg_dominators: i64,
@@ -336,6 +338,9 @@ pub struct DatabaseStatus {
 
 impl MirageDb {
     /// Get database statistics
+    ///
+    /// Note: cfg_edges count is included for backward compatibility but edges
+    /// are now computed in memory from terminator data, not stored.
     pub fn status(&self) -> Result<DatabaseStatus> {
         let cfg_blocks: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM cfg_blocks",
@@ -343,6 +348,8 @@ impl MirageDb {
             |row| row.get(0),
         ).unwrap_or(0);
 
+        // Edges are now computed in memory from terminator data (per RESEARCH.md Pattern 2)
+        // This count is kept for backward compatibility but will always be 0 for new databases
         let cfg_edges: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM cfg_edges",
             [],
@@ -373,6 +380,7 @@ impl MirageDb {
             |row| row.get(0),
         ).unwrap_or(0);
 
+        #[allow(deprecated)]
         Ok(DatabaseStatus {
             cfg_blocks,
             cfg_edges,
@@ -639,16 +647,17 @@ pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cf
 /// 3. Insert each BasicBlock as a row in cfg_blocks:
 ///    - Serialize terminator as JSON string
 ///    - Store source location byte ranges if available
-/// 4. Insert each edge as a row in cfg_edges:
-///    - Use database row IDs from inserted blocks
-///    - Serialize edge type as string
+/// 4. Insert each edge as a row in cfg_edges (for backward compatibility)
 /// 5. Commit transaction
 ///
 /// # Notes
 ///
+/// - DEPRECATED: Magellan handles CFG storage via cfg_blocks. Edges are now computed in memory.
+/// - This function is kept for backward compatibility with existing tests.
 /// - Uses BEGIN IMMEDIATE to acquire write lock early (prevents write conflicts)
 /// - Existing blocks/edges are cleared for incremental updates
 /// - Block IDs are AUTOINCREMENT in the database
+#[deprecated(note = "Magellan handles CFG storage via cfg_blocks. Edges are computed in memory.")]
 pub fn store_cfg(
     conn: &mut Connection,
     function_id: i64,
@@ -737,7 +746,7 @@ pub fn store_cfg(
         block_id_map.insert(node_idx, db_id);
     }
 
-    // Insert each edge
+    // Insert each edge (for backward compatibility, though edges are now computed in memory)
     let mut insert_edge = conn.prepare_cached(
         "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
     ).context("Failed to prepare edge insert statement")?;

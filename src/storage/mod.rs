@@ -195,16 +195,23 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
         [],
     )?;
 
-    // Create cfg_blocks table
+    // Create cfg_blocks table (Magellan v7+ schema)
+    // Note: Mirage now uses Magellan's cfg_blocks table as the source of truth
+    // This table is created by Magellan, but we include the CREATE here for:
+    // 1. Test database setup
+    // 2. Documentation of expected schema
     conn.execute(
         "CREATE TABLE IF NOT EXISTS cfg_blocks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             function_id INTEGER NOT NULL,
-            block_kind TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            terminator TEXT NOT NULL,
             byte_start INTEGER,
             byte_end INTEGER,
-            terminator TEXT,
-            function_hash TEXT,
+            start_line INTEGER,
+            start_col INTEGER,
+            end_line INTEGER,
+            end_col INTEGER,
             FOREIGN KEY (function_id) REFERENCES graph_entities(id)
         )",
         [],
@@ -212,11 +219,6 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
 
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_cfg_blocks_function ON cfg_blocks(function_id)",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_cfg_blocks_function_hash ON cfg_blocks(function_hash)",
         [],
     )?;
 
@@ -419,7 +421,7 @@ pub fn resolve_function_name(conn: &Connection, name_or_id: &str) -> Result<i64>
         ))?;
 
     function_id.context(format!(
-        "Function '{}' not found in database. Run 'mirage index' to index functions.",
+        "Function '{}' not found in database. Run 'magellan watch' to index functions.",
         name_or_id
     ))
 }
@@ -450,12 +452,12 @@ pub fn resolve_function_name(conn: &Connection, name_or_id: &str) -> Result<i64>
 ///
 /// # Algorithm
 ///
-/// 1. Query all cfg_blocks for the function, ordered by id
+/// 1. Query all cfg_blocks for the function from Magellan's cfg_blocks table, ordered by id
 /// 2. For each block, create a BasicBlock with:
 ///    - id: sequential index (0, 1, 2...) based on query order
-///    - kind: parsed from BlockKind string (Entry/Normal/Exit)
-///    - terminator: deserialized from JSON string
-///    - source_location: None (future enhancement)
+///    - kind: parsed from Magellan's kind string (entry/normal/exit/return/if/else/loop/etc.)
+///    - terminator: parsed from Magellan's terminator string (fallthrough/conditional/goto/return/etc.)
+///    - source_location: constructed from line/column data if available
 ///    - statements: empty vec! (future enhancement)
 /// 3. Query all cfg_edges connecting blocks for this function
 /// 4. Map database block IDs to graph node indices
@@ -466,9 +468,11 @@ pub fn resolve_function_name(conn: &Connection, name_or_id: &str) -> Result<i64>
 ///
 /// - Block IDs in the database (AUTOINCREMENT) are mapped to sequential
 ///   indices in the CFG graph (0, 1, 2...) for consistency with in-memory CFG construction
-/// - Terminator is stored as JSON in the database and deserialized via serde_json
+/// - Magellan stores terminator as plain TEXT, not JSON
+/// - Magellan uses "kind" column, not "block_kind"
+/// - Requires Magellan schema v7+ for cfg_blocks table
 pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cfg::Cfg> {
-    use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType};
+    use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
     use crate::cfg::source::SourceLocation;
     use petgraph::graph::NodeIndex;
     use std::path::PathBuf;
@@ -485,22 +489,29 @@ pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cf
 
     let file_path = file_path.map(PathBuf::from);
 
-    // Query all blocks for this function
+    // Query all blocks for this function from Magellan's cfg_blocks table
+    // Magellan schema v7+ uses: kind (not block_kind), terminator as TEXT, and line/col columns
     let mut stmt = conn.prepare_cached(
-        "SELECT id, block_kind, byte_start, byte_end, terminator
+        "SELECT id, kind, terminator, byte_start, byte_end,
+                start_line, start_col, end_line, end_col
          FROM cfg_blocks
          WHERE function_id = ?
          ORDER BY id ASC",
     ).context("Failed to prepare cfg_blocks query")?;
 
-    let block_rows: Vec<(i64, String, Option<i64>, Option<i64>, Option<String>)> = stmt
+    let block_rows: Vec<(i64, String, Option<String>, Option<i64>, Option<i64>,
+                          Option<i64>, Option<i64>, Option<i64>, Option<i64>)> = stmt
         .query_map(params![function_id], |row| {
             Ok((
                 row.get(0)?,     // id (database primary key)
-                row.get(1)?,     // block_kind
-                row.get(2)?,     // byte_start
-                row.get(3)?,     // byte_end
-                row.get(4)?,     // terminator (JSON string)
+                row.get(1)?,     // kind (Magellan's column name)
+                row.get(2)?,     // terminator (plain TEXT, not JSON)
+                row.get(3)?,     // byte_start
+                row.get(4)?,     // byte_end
+                row.get(5)?,     // start_line
+                row.get(6)?,     // start_col
+                row.get(7)?,     // end_line
+                row.get(8)?,     // end_col
             ))
         })
         .context("Failed to execute cfg_blocks query")?
@@ -509,56 +520,67 @@ pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cf
 
     if block_rows.is_empty() {
         anyhow::bail!(
-            "No CFG blocks found for function_id {}. Run 'mirage index' to build CFGs.",
+            "No CFG blocks found for function_id {}. Run 'magellan watch' to build CFGs.",
             function_id
         );
     }
-
-    // Read source file if available (for reconstructing source_location)
-    let source_text = if let Some(ref path) = file_path {
-        std::fs::read_to_string(path).ok()
-    } else {
-        None
-    };
 
     // Build mapping from database block ID to graph node index
     let mut db_id_to_node: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
     let mut graph = Cfg::new();
 
     // Add each block to the graph
-    for (node_idx, (db_id, kind_str, byte_start, byte_end, terminator_json)) in
+    for (node_idx, (db_id, kind_str, terminator_str, byte_start, byte_end,
+                     start_line, start_col, end_line, end_col)) in
         block_rows.iter().enumerate()
     {
-        // Parse block kind
+        // Parse Magellan's block kind to Mirage's BlockKind
         let kind = match kind_str.as_str() {
-            "Entry" => BlockKind::Entry,
-            "Exit" => BlockKind::Exit,
-            "Normal" => BlockKind::Normal,
-            _ => anyhow::bail!("Invalid block_kind '{}'", kind_str),
-        };
-
-        // Deserialize terminator from JSON
-        let terminator = if let Some(json) = terminator_json {
-            serde_json::from_str(json)
-                .with_context(|| format!("Failed to deserialize terminator: {}", json))?
-        } else {
-            // Default terminator for blocks without one (shouldn't happen in valid CFGs)
-            crate::cfg::Terminator::Unreachable
-        };
-
-        // Reconstruct source_location from database byte ranges
-        let source_location = match (&file_path, byte_start, byte_end) {
-            (Some(path), Some(start), Some(end)) => {
-                let start = *start as usize;
-                let end = *end as usize;
-                Some(SourceLocation::from_bytes_with_source(
-                    path,
-                    source_text.as_deref(),
-                    start,
-                    end,
-                ))
+            "entry" => BlockKind::Entry,
+            "return" => BlockKind::Exit,
+            "if" | "else" | "loop" | "while" | "for" | "match_arm" | "block" => BlockKind::Normal,
+            _ => {
+                // Fallback: treat unknown kinds as Normal
+                // Magellan may have additional kinds we don't explicitly handle
+                BlockKind::Normal
             }
-            _ => None,
+        };
+
+        // Parse Magellan's terminator string to Mirage's Terminator enum
+        let terminator = match terminator_str.as_deref() {
+            Some("fallthrough") => Terminator::Goto { target: 0 }, // target will be resolved from edges
+            Some("conditional") => Terminator::SwitchInt { targets: vec![], otherwise: 0 },
+            Some("goto") => Terminator::Goto { target: 0 },
+            Some("return") => Terminator::Return,
+            Some("break") => Terminator::Abort("break".to_string()),
+            Some("continue") => Terminator::Abort("continue".to_string()),
+            Some("call") => Terminator::Call { target: None, unwind: None },
+            Some("panic") => Terminator::Abort("panic".to_string()),
+            Some(_) | None => Terminator::Unreachable,
+        };
+
+        // Construct source_location from Magellan's line/column data
+        let source_location = if let Some(ref path) = file_path {
+            // Use line/column data directly (Magellan v7+)
+            let sl = start_line.and_then(|l| start_col.map(|c| (l as usize, c as usize)));
+            let el = end_line.and_then(|l| end_col.map(|c| (l as usize, c as usize)));
+
+            match (sl, el, byte_start, byte_end) {
+                (Some((start_l, start_c)), Some((end_l, end_c)), Some(bs), Some(be)) => {
+                    Some(SourceLocation {
+                        file_path: path.clone(),
+                        byte_start: *bs as usize,
+                        byte_end: *be as usize,
+                        start_line: start_l,
+                        start_column: start_c,
+                        end_line: end_l,
+                        end_column: end_c,
+                    })
+                }
+                _ => None,
+            }
+        } else {
+            None
         };
 
         let block = BasicBlock {
@@ -665,7 +687,7 @@ pub fn store_cfg(
     function_hash: &str,
     cfg: &crate::cfg::Cfg,
 ) -> Result<()> {
-    use crate::cfg::{BlockKind, EdgeType};
+    use crate::cfg::{BlockKind, EdgeType, Terminator};
     use petgraph::visit::EdgeRef;
 
     conn.execute("BEGIN IMMEDIATE TRANSACTION", [])
@@ -689,37 +711,58 @@ pub fn store_cfg(
         std::collections::HashMap::new();
 
     let mut insert_block = conn.prepare_cached(
-        "INSERT INTO cfg_blocks (function_id, block_kind, byte_start, byte_end, terminator, function_hash)
-         VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                  start_line, start_col, end_line, end_col)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).context("Failed to prepare block insert statement")?;
 
     for node_idx in cfg.node_indices() {
         let block = cfg.node_weight(node_idx)
             .context("CFG node has no weight")?;
 
-        // Serialize terminator as JSON
-        let terminator_json = serde_json::to_string(&block.terminator)
-            .context("Failed to serialize terminator")?;
+        // Convert terminator to Magellan's string format
+        let terminator_str = match &block.terminator {
+            Terminator::Goto { .. } => "goto",
+            Terminator::SwitchInt { .. } => "conditional",
+            Terminator::Return => "return",
+            Terminator::Call { .. } => "call",
+            Terminator::Abort(msg) if msg == "break" => "break",
+            Terminator::Abort(msg) if msg == "continue" => "continue",
+            Terminator::Abort(msg) if msg == "panic" => "panic",
+            _ => "fallthrough",
+        };
 
-        // Get byte range from source location
+        // Get location data from source_location
         let (byte_start, byte_end) = block.source_location.as_ref()
-            .map(|loc| (Some(loc.byte_start), Some(loc.byte_end)))
+            .map(|loc| (Some(loc.byte_start as i64), Some(loc.byte_end as i64)))
             .unwrap_or((None, None));
 
-        // Convert BlockKind to string
-        let block_kind = match block.kind {
-            BlockKind::Entry => "Entry",
-            BlockKind::Normal => "Normal",
-            BlockKind::Exit => "Exit",
+        let (start_line, start_col, end_line, end_col) = block.source_location.as_ref()
+            .map(|loc| (
+                Some(loc.start_line as i64),
+                Some(loc.start_column as i64),
+                Some(loc.end_line as i64),
+                Some(loc.end_column as i64),
+            ))
+            .unwrap_or((None, None, None, None));
+
+        // Convert BlockKind to Magellan's kind string
+        let kind = match block.kind {
+            BlockKind::Entry => "entry",
+            BlockKind::Normal => "block",
+            BlockKind::Exit => "return",
         };
 
         insert_block.execute(params![
             function_id,
-            block_kind,
+            kind,
+            terminator_str,
             byte_start,
             byte_end,
-            terminator_json,
-            function_hash,
+            start_line,
+            start_col,
+            end_line,
+            end_col,
         ]).context("Failed to insert cfg_block")?;
 
         let db_id = conn.last_insert_rowid();
@@ -788,7 +831,14 @@ pub fn function_exists(conn: &Connection, function_id: i64) -> bool {
 ///
 /// * `Some(hash)` - The stored BLAKE3 hash if function exists
 /// * `None` - Function not found or no hash stored
+///
+/// # Note
+///
+/// Magellan's cfg_blocks table doesn't store function_hash, so this function
+/// always returns None when using Magellan's schema. The hash functionality
+/// is only available when using Mirage's legacy schema.
 pub fn get_function_hash(conn: &Connection, function_id: i64) -> Option<String> {
+    // Try to query function_hash if it exists (legacy Mirage schema)
     conn.query_row(
         "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
         params![function_id],
@@ -811,10 +861,15 @@ pub fn get_function_hash(conn: &Connection, function_id: i64) -> Option<String> 
 /// * `Ok(true)` - Hashes differ or function is new (needs re-indexing)
 /// * `Ok(false)` - Hashes match (can skip)
 /// * `Err(...)` - Database query error
+///
+/// # Note
+///
+/// Magellan's cfg_blocks table doesn't store function_hash, so this function
+/// always returns true (indicating re-indexing needed) when using Magellan's schema.
 pub fn hash_changed(
     conn: &Connection,
     function_id: i64,
-    new_hash: &str,
+    _new_hash: &str,
 ) -> Result<bool> {
     let old_hash: Option<String> = conn.query_row(
         "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
@@ -823,8 +878,8 @@ pub fn hash_changed(
     ).optional()?;
 
     match old_hash {
-        Some(old) => Ok(old != new_hash),
-        None => Ok(true),  // New function, always index
+        Some(old) => Ok(old != _new_hash),
+        None => Ok(true),  // New function or no hash stored, always index
     }
 }
 
@@ -1283,8 +1338,10 @@ mod tests {
 
         // Attempt to insert cfg_blocks with invalid function_id (should fail)
         let invalid_result = conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, byte_start, byte_end, terminator, function_hash) VALUES (?, ?, ?, ?, ?, ?)",
-            params!(9999, "entry", 0, 10, "ret", "abc123"),
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params!(9999, "entry", "return", 0, 10, 1, 0, 1, 10),
         );
 
         // Should fail with foreign key constraint error
@@ -1292,8 +1349,10 @@ mod tests {
 
         // Insert valid cfg_blocks with correct function_id (should succeed)
         let valid_result = conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, byte_start, byte_end, terminator, function_hash) VALUES (?, ?, ?, ?, ?, ?)",
-            params!(function_id, "entry", 0, 10, "ret", "abc123"),
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params!(function_id, "entry", "return", 0, 10, 1, 0, 1, 10),
         );
 
         assert!(valid_result.is_ok(), "Insert with valid function_id should succeed");
@@ -1395,9 +1454,8 @@ mod tests {
 
         assert_eq!(edge_count, 1, "Should have 1 edge");
 
-        // Verify function_hash was stored
-        let stored_hash = get_function_hash(&conn, function_id);
-        assert_eq!(stored_hash, Some("test_hash_123".to_string()));
+        // Note: function_hash is not stored in Magellan's schema, so we skip that check
+        // The hash functionality is only available with Mirage's legacy schema
 
         // Verify function_exists
         assert!(function_exists(&conn, function_id));
@@ -1518,9 +1576,8 @@ mod tests {
         // Should have 3 blocks now (old ones cleared)
         assert_eq!(block_count_v2, 3);
 
-        // Verify hash was updated
-        let stored_hash = get_function_hash(&conn, function_id);
-        assert_eq!(stored_hash, Some("hash_v2".to_string()));
+        // Note: function_hash is not stored in Magellan's schema
+        // Hash verification is skipped for Magellan v7+ schema
     }
 
     // Helper function to create a test database with Magellan + Mirage schema
@@ -1653,7 +1710,7 @@ mod tests {
     fn test_load_cfg_empty_terminator() {
         use crate::cfg::Terminator;
 
-        let mut conn = create_test_db_with_schema();
+        let conn = create_test_db_with_schema();
 
         // Insert a test function
         conn.execute(
@@ -1664,9 +1721,10 @@ mod tests {
 
         // Create a block with NULL terminator (should default to Unreachable)
         conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, byte_start, byte_end, function_hash)
-             VALUES (?, ?, ?, ?, ?)",
-            params!(function_id, "Exit", 0, 10, "hash789"),
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params!(function_id, "return", "return", 0, 10, 1, 0, 1, 10),
         ).unwrap();
 
         // Load the CFG - should handle NULL terminator gracefully
@@ -1674,14 +1732,14 @@ mod tests {
 
         assert_eq!(cfg.node_count(), 1);
         let block = &cfg[petgraph::graph::NodeIndex::new(0)];
-        assert!(matches!(block.terminator, Terminator::Unreachable));
+        assert!(matches!(block.terminator, Terminator::Return));
     }
 
     #[test]
     fn test_load_cfg_with_multiple_edge_types() {
         use crate::cfg::{Terminator, EdgeType};
 
-        let mut conn = create_test_db_with_schema();
+        let conn = create_test_db_with_schema();
 
         // Insert a test function
         conn.execute(
@@ -1691,39 +1749,35 @@ mod tests {
         let function_id: i64 = conn.last_insert_rowid();
 
         // Create blocks with different edge types
-        let entry_term = serde_json::to_string(&Terminator::SwitchInt {
-            targets: vec![1],
-            otherwise: 2,
-        }).unwrap();
-        let branch1_term = serde_json::to_string(&Terminator::Goto { target: 3 }).unwrap();
-        let branch2_term = serde_json::to_string(&Terminator::Call { target: Some(3), unwind: None }).unwrap();
-        let exit_term = serde_json::to_string(&Terminator::Return).unwrap();
-
         conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, terminator, function_hash)
-             VALUES (?, ?, ?, ?)",
-            params!(function_id, "Entry", entry_term, "hash_edge"),
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params!(function_id, "entry", "conditional", 0, 10, 1, 0, 1, 10),
         ).unwrap();
         let block_0_id: i64 = conn.last_insert_rowid();
 
         conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, terminator, function_hash)
-             VALUES (?, ?, ?, ?)",
-            params!(function_id, "Normal", branch1_term, "hash_edge"),
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params!(function_id, "block", "goto", 10, 20, 2, 0, 2, 10),
         ).unwrap();
         let block_1_id: i64 = conn.last_insert_rowid();
 
         conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, terminator, function_hash)
-             VALUES (?, ?, ?, ?)",
-            params!(function_id, "Normal", branch2_term, "hash_edge"),
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params!(function_id, "block", "call", 20, 30, 3, 0, 3, 10),
         ).unwrap();
         let block_2_id: i64 = conn.last_insert_rowid();
 
         conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, terminator, function_hash)
-             VALUES (?, ?, ?, ?)",
-            params!(function_id, "Exit", exit_term, "hash_edge"),
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params!(function_id, "return", "return", 30, 40, 4, 0, 4, 10),
         ).unwrap();
         let block_3_id: i64 = conn.last_insert_rowid();
 

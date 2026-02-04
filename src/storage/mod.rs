@@ -30,7 +30,8 @@ pub use paths::{
 pub const MIRAGE_SCHEMA_VERSION: i32 = 1;
 
 /// Minimum Magellan schema version we require
-pub const MIN_MAGELLAN_SCHEMA_VERSION: i32 = 4;
+/// Magellan v7+ includes cfg_blocks table with AST-based CFG
+pub const MIN_MAGELLAN_SCHEMA_VERSION: i32 = 7;
 
 /// Magellan schema version used in tests (for consistency)
 pub const TEST_MAGELLAN_SCHEMA_VERSION: i32 = MIN_MAGELLAN_SCHEMA_VERSION;
@@ -96,8 +97,23 @@ impl MirageDb {
 
         if magellan_version < MIN_MAGELLAN_SCHEMA_VERSION {
             anyhow::bail!(
-                "Magellan schema version {} is too old (minimum {}). Please update Magellan.",
+                "Magellan schema version {} is too old (minimum {}). \
+                 Please update Magellan and run 'magellan watch' to rebuild CFGs.",
                 magellan_version, MIN_MAGELLAN_SCHEMA_VERSION
+            );
+        }
+
+        // Check for cfg_blocks table existence (Magellan v7+)
+        let cfg_blocks_exists: bool = conn.query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cfg_blocks'",
+            [],
+            |row| row.get(0),
+        ).optional()?.unwrap_or(0) == 1;
+
+        if !cfg_blocks_exists {
+            anyhow::bail!(
+                "CFG blocks table not found. Magellan schema v7+ required. \
+                 Run 'magellan watch' to build CFGs."
             );
         }
 

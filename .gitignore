@@ -21,11 +21,13 @@ Cargo.lock
 codemcp/
 
 # Documentation (local only)
-docs/*.md !README.md !MANUAL.md !CHANGELOG.md
+docs/
+scripts/
 
 # Planning files (local development)
 .planning/
-!.planning/ROADMAP.md
+CONTEXT.md
+MAGELLAN_V2_INTEGRATION.md
 
 # Logs
 *.log

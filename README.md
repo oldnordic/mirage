@@ -7,22 +7,32 @@
 
 > "An agent may only speak if it can reference a graph artifact."
 
-## Part of the Code Intelligence Toolset
+## ⚠️ Requires Magellan
 
-Mirage is one of five complementary tools designed to work together for comprehensive code analysis:
+**Mirage requires [Magellan](https://github.com/oldnordic/magellan) to function.**
 
-| Tool | Purpose | Install |
-|------|---------|---------|
-| **[Magellan](https://github.com/oldnordic/magellan)** | Call graph indexing and symbol navigation | `cargo install magellan` |
-| **[llmgrep](https://github.com/oldnordic/llmgrep)** | Semantic code search over indexed symbols | `cargo install llmgrep` |
-| **[Mirage](https://github.com/oldnordic/mirage)** | Control-flow analysis and path enumeration | `cargo install mirage-analyzer` |
-| **[sqlitegraph](https://crates.io/crates/sqlitegraph)** | Shared graph database library (dependency) | Included automatically |
-| **[splice](https://github.com/oldnordic/splice)** | Source code transformation with span precision | `cargo install splice` |
+Magellan provides the AST-based control flow graph (CFG) data that Mirage analyzes. You must run `magellan watch` on your codebase before using Mirage.
+
+```bash
+# Install Magellan first
+cargo install magellan
+
+# Watch your project (builds CFG)
+magellan watch --root ./src --db .codemcp/codegraph.db
+
+# Now Mirage can analyze
+mirage status
+```
+
+## The Code Intelligence Toolset
+
+Mirage is part of a coordinated toolset built on [sqlitegraph](https://github.com/oldnordic/sqlitegraph). All tools share a common SQLite graph database and are designed to work together for AI-assisted code understanding.
 
 ```
 ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
 │  Magellan   │ ───► │  llmgrep    │ ───► │   Mirage    │
-│ (Call Graph)│      │  (Search)   │      │  (CFG/Paths)│
+│(Symbols &   │      │ (Semantic   │      │(CFG & Paths)│
+│  Call Graph)│      │  Search)    │      │             │
 └─────────────┘      └─────────────┘      └─────────────┘
        │                    │                     │
        └────────────────────┴─────────────────────┘
@@ -31,13 +41,29 @@ Mirage is one of five complementary tools designed to work together for comprehe
               │ sqlitegraph │
               │  (Database) │
               └─────────────┘
+                     │
+              ┌──────▼──────┐
+              │   splice    │
+              │(Edit using  │
+              │   spans)    │
+              └─────────────┘
 ```
 
-**Important:** Mirage provides its full capabilities when used together with Magellan. Inter-procedural analysis features (call graph dominance, hotspots, cross-function slicing) require Magellan's call graph data.
+| Tool | Purpose | Repository | Install |
+|------|---------|------------|---------|
+| **sqlitegraph** | Graph database foundation | [github.com/oldnordic/sqlitegraph](https://github.com/oldnordic/sqlitegraph) | `cargo add sqlitegraph` |
+| **Magellan** | Call graph indexing, symbol navigation | [github.com/oldnordic/magellan](https://github.com/oldnordic/magellan) | `cargo install magellan` |
+| **llmgrep** | Semantic code search | [github.com/oldnordic/llmgrep](https://github.com/oldnordic/llmgrep) | `cargo install llmgrep` |
+| **Mirage** | CFG analysis, path enumeration | [github.com/oldnordic/mirage](https://github.com/oldnordic/mirage) | `cargo install mirage-analyzer` |
+| **splice** | Precision code editing | [github.com/oldnordic/splice](https://github.com/oldnordic/splice) | `cargo install splice` |
 
 ## What is Mirage?
 
-Mirage is a command-line tool that analyzes control-flow graphs (CFG) extracted by Magellan, enumerates execution paths, and provides graph-based reasoning capabilities. It stores analysis results in a SQLite database for incremental updates.
+Mirage analyzes control-flow graphs extracted by Magellan to answer questions like:
+- What execution paths exist through this function?
+- What code MUST execute on any path from entry to exit?
+- Which blocks are unreachable (dead code)?
+- What is the impact of changing this code?
 
 ### What Mirage is NOT
 
@@ -49,13 +75,13 @@ Mirage is a command-line tool that analyzes control-flow graphs (CFG) extracted 
 
 ### What Mirage IS
 
-- ✅ CFG analysis from Magellan AST-based data
-- ✅ Path enumeration with caching
+- ✅ CFG analysis from Magellan's AST-based data
+- ✅ Path enumeration with BLAKE3 caching
 - ✅ Dominance analysis (dominators, post-dominators, frontiers)
 - ✅ Loop detection (natural loops within functions)
 - ✅ Dead code detection (unreachable blocks)
 - ✅ Impact analysis (blast zones, program slicing)
-- ✅ Inter-procedural analysis (with Magellan: call graph condensation, hotspots)
+- ✅ Inter-procedural analysis (hotspots, call graph condensation)
 
 ## Installation
 
@@ -79,308 +105,150 @@ cargo install --path .
 
 ## Quick Start
 
-### 1. Index a Rust Project
+### 1. Install the Toolset
 
 ```bash
-# First, index your project with Magellan (builds CFG)
-magellan watch --root ./src --db ./codemcp/mirage.db
+# Install all tools for complete workflow
+cargo install magellan        # Call graph & CFG extraction (REQUIRED)
+cargo install llmgrep         # Semantic search
+cargo install mirage-analyzer # Path-aware analysis
+cargo install splice          # Precision editing
+```
 
-# Then analyze with Mirage
-mirage status
+### 2. Index Your Project
+
+```bash
+# Magellan watches your source and builds CFG
+magellan watch --root ./src --db .codemcp/codegraph.db
 ```
 
 Magellan will:
-1. Parse your source code
-2. Build AST-based CFG for each function
-3. Store CFG data in the database
+1. Parse your source code with tree-sitter
+2. Build AST-based control flow graphs for each function
+3. Store everything in a SQLite database
 
-Mirage then provides:
-4. Path enumeration and caching
-5. Dominance and loop analysis
-6. Dead code detection
-7. Impact analysis
-
-### 2. Query Execution Paths
+### 3. Analyze with Mirage
 
 ```bash
-# Show all paths through a function
-mirage paths --function "my_crate::function_name"
+# Check database status
+mirage status
 
-# Show only error-returning paths
-mirage paths --function "my_crate::function_name" --show-errors
+# Show all execution paths through a function
+mirage paths --function "my_crate::main"
 
-# Limit path exploration depth
-mirage paths --function "my_crate::function_name" --max-length 10
-```
-
-### 3. Visualize Control Flow
-
-```bash
-# Human-readable CFG
-mirage cfg --function "my_crate::function_name"
-
-# Export to Graphviz DOT
-mirage cfg --function "my_crate::function_name" --format dot > cfg.dot
-dot -Tpng cfg.dot -o cfg.png
-```
-
-### 4. Dominance Analysis
-
-```bash
-# Show dominance tree
-mirage dominators --function "my_crate::function_name"
-
-# Find blocks that must pass through a specific block
-mirage dominators --function "my_crate::function_name" --must-pass-through 5
-
-# Inter-procedural dominance (call graph level)
-mirage dominators --function "my_crate::function_name" --inter-procedural
-```
-
-### 5. Find Dead Code
-
-```bash
-# Find unreachable code blocks
+# Find unreachable code
 mirage unreachable
 
-# Include uncalled functions (requires Magellan call graph)
-mirage unreachable --include-uncalled
+# Visualize control flow
+mirage cfg --function "my_crate::main" --format dot | dot -Tpng -o cfg.png
 ```
 
-### 6. Impact Analysis
+## CLI Commands
 
-```bash
-# What does this code affect? (blast zone from a block)
-mirage blast-zone --function "my_crate::function_name" --block-id 0
-
-# What affects this code? (backward slicing)
-mirage slice --symbol "my_crate::function_name" --direction backward
-
-# What does this affect? (forward slicing)
-mirage slice --symbol "my_crate::function_name" --direction forward
-```
-
-## CLI Reference
+| Command | Description |
+|---------|-------------|
+| `status` | Database statistics and CFG availability |
+| `paths` | Enumerate execution paths through a function |
+| `cfg` | Visualize control-flow graph (human/dot/json) |
+| `dominators` | Dominance relationships (must-pass-through analysis) |
+| `loops` | Detect natural loops within functions |
+| `unreachable` | Find dead code (unreachable blocks) |
+| `patterns` | Recover if/else and match branching patterns |
+| `frontiers` | Compute dominance frontiers |
+| `verify` | Verify cached path is still valid |
+| `blast-zone` | Impact analysis from a block or path |
+| `cycles` | Detect call graph SCCs and function loops |
+| `slice` | Program slicing (backward/forward) |
+| `hotspots` | Risk scoring based on paths and dominance |
 
 ### Global Options
 
 | Option | Description |
 |--------|-------------|
-| `--db <DB>` | Path to the database (default: `./codemcp/mirage.db`) |
-| `--output <FORMAT>` | Output format: `human`, `json`, `pretty` |
+| `--db <DB>` | Path to database (default: `.codemcp/codegraph.db`) |
+| `--output <FORMAT>` | Output: `human`, `json`, `pretty` |
 | `-h, --help` | Print help |
 | `-V, --version` | Print version |
 
-### Commands
+## Examples
 
-#### `status` - Show Database Statistics
+### Path Enumeration
 
-```
-mirage status
-
-Shows: function count, CFG blocks, paths, dominators stored
-Verifies Magellan CFG data is available
-```
-
-#### `analyze` - Analyze a Project
-
-```
-mirage analyze [OPTIONS]
-
-Options:
-  --project <PROJECT>    Path to the project to analyze
-  --db <DB>              Path to the database (default: ./codemcp/mirage.db)
-
-Note: This command verifies Magellan CFG data exists and provides guidance if missing.
-```
-
-#### `paths` - Show Execution Paths
-
-```
-mirage paths --function <FUNCTION> [OPTIONS]
-
-Options:
-  --show-errors          Show only error-returning paths
-  --max-length <N>       Maximum path length (default: 1000)
-  --with-blocks          Show block details for each path
-```
-
-#### `cfg` - Show Control-Flow Graph
-
-```
-mirage cfg --function <FUNCTION> [OPTIONS]
-
-Options:
-  --format <FORMAT>      Output format: human, dot, json
-```
-
-#### `dominators` - Dominance Analysis
-
-```
-mirage dominators --function <FUNCTION> [OPTIONS]
-
-Options:
-  --must-pass-through <ID>  Show blocks that must pass through this block
-  --post                    Show post-dominators instead
-  --inter-procedural        Use call graph dominance (requires Magellan)
-```
-
-#### `loops` - Natural Loop Detection
-
-```
-mirage loops --function <FUNCTION> [OPTIONS]
-
-Options:
-  --verbose                Show detailed loop body blocks
-```
-
-#### `unreachable` - Dead Code Detection
-
-```
-mirage unreachable [OPTIONS]
-
-Options:
-  --within-functions        Group unreachable code by function
-  --show-branches           Show incoming edge details
-  --include-uncalled         Include uncalled functions (Magellan)
-```
-
-#### `patterns` - Branching Pattern Detection
-
-```
-mirage patterns --function <FUNCTION> [OPTIONS]
-
-Options:
-  --if-else                Show only if/else patterns
-  --match                  Show only match patterns
-```
-
-#### `frontiers` - Dominance Frontiers
-
-```
-mirage frontiers --function <FUNCTION> [OPTIONS]
-
-Options:
-  --node <ID>              Show frontiers for specific node only
-  --iterated               Show iterated dominance frontier
-```
-
-#### `verify` - Path Verification
-
-```
-mirage verify --path-id <PATH_ID>
-
-Verifies a cached path is still valid after code changes.
-```
-
-#### `blast-zone` - Impact Analysis
-
-```
-mirage blast-zone [OPTIONS]
-
-Options:
-  --function <FUNCTION>    Function to analyze
-  --block-id <ID>          Block ID to analyze from (default: 0)
-  --path-id <PATH_ID>      Analyze impact from specific path
-  --max-depth <N>           Maximum traversal depth (default: 100)
-  --include-errors         Include error paths
-  --use-call-graph         Use call graph for inter-procedural analysis
-```
-
-#### `cycles` - Cycle Detection
-
-```
-mirage cycles [OPTIONS]
-
-Options:
-  --call-graph             Show call graph cycles (SCCs)
-  --function-loops         Show function loops (within CFG)
-  --both                   Show both types (default)
-  --verbose                Show cycle/loop members
-```
-
-#### `slice` - Program Slicing
-
-```
-mirage slice --symbol <SYMBOL> --direction <DIRECTION> [OPTIONS]
-
-Options:
-  --direction <DIR>        backward (what affects) or forward (what is affected)
-  --verbose                Show detailed symbol information
-```
-
-#### `hotspots` - High-Risk Function Analysis
-
-```
-mirage hotspots [OPTIONS]
-
-Options:
-  --entry <SYMBOL>         Entry point (default: main)
-  --top <N>                 Max hotspots to return (default: 20)
-  --min-paths <N>          Minimum path count threshold
-  --verbose                Show detailed metrics
-  --inter-procedural        Use call graph analysis (requires Magellan)
-```
-
-## Output Formats
-
-All commands support three output formats:
-
-| Format | Description |
-|--------|-------------|
-| `human` | Readable text output (default) |
-| `json` | Compact JSON for scripting |
-| `pretty` | Formatted JSON with indentation |
-
-Example:
 ```bash
-mirage paths --function foo --output json | jq '.paths[].path_id'
+# All paths through a function
+mirage paths --function "my_crate::process"
+
+# Only error-returning paths
+mirage paths --function "my_crate::process" --show-errors
+
+# Limit exploration depth
+mirage paths --function "my_crate::process" --max-length 10
+
+# JSON output for scripting
+mirage paths --function "my_crate::process" --output json | jq '.paths[].path_id'
 ```
 
-## Database
+### Dominance Analysis
 
-Mirage stores analysis in a SQLite database with the following tables:
+```bash
+# Show dominance tree
+mirage dominators --function "my_crate::process"
+
+# What MUST execute before this block?
+mirage dominators --function "my_crate::process" --must-pass-through 5
+
+# Post-dominators (what must execute after)
+mirage dominators --function "my_crate::process" --post
+
+# Inter-procedural (call graph level)
+mirage dominators --function "my_crate::main" --inter-procedural
+```
+
+### Impact Analysis
+
+```bash
+# What does this block affect?
+mirage blast-zone --function "my_crate::process" --block-id 0
+
+# What affects this function? (backward slice)
+mirage slice --symbol "my_crate::process" --direction backward
+
+# What does this function affect? (forward slice)
+mirage slice --symbol "my_crate::process" --direction forward
+
+# High-risk functions
+mirage hotspots --entry main --top 10
+```
+
+## Database Schema
+
+Mirage extends the Magellan database with:
 
 | Table | Purpose |
 |-------|---------|
-| `cfg_blocks` | Basic blocks within functions |
-| `cfg_edges` | Control flow edges between blocks |
-| `cfg_paths` | Enumerated execution paths |
+| `cfg_blocks` | Basic blocks within functions (from Magellan) |
+| `cfg_paths` | Enumerated execution paths with BLAKE3 IDs |
 | `cfg_dominators` | Dominance relationships |
-| `graph_entities` | Function metadata |
 
-The default database location is `./codemcp/mirage.db`. Use the `MIRAGE_DB` environment variable or `--db` flag to override.
+The default database location is `.codemcp/codegraph.db`. This is shared with Magellan.
 
 ## Requirements
 
-- Rust 1.77+
-- **Required:** [Magellan](https://github.com/oldnordic/magellan) for CFG extraction
+- **Rust 1.77+**
+- **[Magellan](https://github.com/oldnordic/magellan)** — Required for CFG extraction
   ```bash
   cargo install magellan
-  magellan watch --root ./src --db ./codemcp/mirage.db
+  magellan watch --root ./src --db .codemcp/codegraph.db
   ```
-- **Recommended for full workflow:**
-  - [llmgrep](https://crates.io/crates/llmgrep) - `cargo install llmgrep`
-  - [splice](https://github.com/oldnordic/splice) - `cargo install splice`
+- **[sqlitegraph](https://crates.io/crates/sqlitegraph)** — Included automatically as dependency
 
 ## License
 
 GPL-3.0-or-later
 
-## The Complete Toolset
+## Related Projects
 
-Mirage is part of a coordinated set of tools for AI-assisted code understanding:
-
-| Tool | Function |
-|------|----------|
-| [Magellan](https://github.com/oldnordic/magellan) | Builds call graphs, indexes all symbols |
-| [llmgrep](https://github.com/oldnordic/llmgrep) | Searches symbols semantically |
-| [Mirage](https://github.com/oldnordic/mirage) | Analyzes control flow and execution paths |
-| [sqlitegraph](https://crates.io/crates/sqlitegraph) | Shared graph database format |
-| [splice](https://github.com/oldnordic/splice) | Precision code editing using spans |
-
-These tools share a common database format and are designed to be used together by AI agents and developers.
-
-## External Dependencies
-
-- [Magellan](https://github.com/oldnordic/magellan) - AST-based CFG extraction (required)
+- [sqlitegraph](https://github.com/oldnordic/sqlitegraph) — Graph database library
+- [Magellan](https://github.com/oldnordic/magellan) — Call graph indexer
+- [llmgrep](https://github.com/oldnordic/llmgrep) — Semantic search
+- [splice](https://github.com/oldnordic/splice) — Precision editing

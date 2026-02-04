@@ -37,7 +37,7 @@ Mirage is one of five complementary tools designed to work together for comprehe
 
 ## What is Mirage?
 
-Mirage is a command-line tool that extracts control-flow graphs (CFG) from Rust code via MIR, enumerates execution paths, and provides graph-based reasoning capabilities. It stores analysis results in a SQLite database for incremental updates.
+Mirage is a command-line tool that analyzes control-flow graphs (CFG) extracted by Magellan, enumerates execution paths, and provides graph-based reasoning capabilities. It stores analysis results in a SQLite database for incremental updates.
 
 ### What Mirage is NOT
 
@@ -49,7 +49,7 @@ Mirage is a command-line tool that extracts control-flow graphs (CFG) from Rust 
 
 ### What Mirage IS
 
-- ✅ CFG extraction from Rust MIR via Charon
+- ✅ CFG analysis from Magellan AST-based data
 - ✅ Path enumeration with caching
 - ✅ Dominance analysis (dominators, post-dominators, frontiers)
 - ✅ Loop detection (natural loops within functions)
@@ -82,14 +82,23 @@ cargo install --path .
 ### 1. Index a Rust Project
 
 ```bash
-mirage index --project /path/to/rust/project
+# First, index your project with Magellan (builds CFG)
+magellan watch --root ./src --db ./codemcp/mirage.db
+
+# Then analyze with Mirage
+mirage status
 ```
 
-This requires [Charon](https://github.com/AeneasVerif/charon) to be installed and in your PATH. Mirage will:
-1. Extract MIR from the Rust project
-2. Build CFG for each function
-3. Enumerate and cache execution paths
-4. Store results in `./codemcp/mirage.db` (or use `--db` to specify)
+Magellan will:
+1. Parse your source code
+2. Build AST-based CFG for each function
+3. Store CFG data in the database
+
+Mirage then provides:
+4. Path enumeration and caching
+5. Dominance and loop analysis
+6. Dead code detection
+7. Impact analysis
 
 ### 2. Query Execution Paths
 
@@ -164,24 +173,25 @@ mirage slice --symbol "my_crate::function_name" --direction forward
 
 ### Commands
 
-#### `index` - Index a Rust Project
-
-```
-mirage index [OPTIONS]
-
-Options:
-  --project <PROJECT>    Path to the Rust project to index
-  --crate <CRATE>        Index specific crate
-  --incremental           Only re-index changed functions
-  --reindex <REINDEX>     Re-index only this function (by symbol_id)
-```
-
 #### `status` - Show Database Statistics
 
 ```
 mirage status
 
 Shows: function count, CFG blocks, paths, dominators stored
+Verifies Magellan CFG data is available
+```
+
+#### `analyze` - Analyze a Project
+
+```
+mirage analyze [OPTIONS]
+
+Options:
+  --project <PROJECT>    Path to the project to analyze
+  --db <DB>              Path to the database (default: ./codemcp/mirage.db)
+
+Note: This command verifies Magellan CFG data exists and provides guidance if missing.
 ```
 
 #### `paths` - Show Execution Paths
@@ -344,10 +354,12 @@ The default database location is `./codemcp/mirage.db`. Use the `MIRAGE_DB` envi
 ## Requirements
 
 - Rust 1.77+
-- [Charon](https://github.com/AeneasVerif/charon) binary in PATH (for MIR extraction)
-- **For inter-procedural features:** [Magellan](https://github.com/oldnordic/magellan) indexed database
+- **Required:** [Magellan](https://github.com/oldnordic/magellan) for CFG extraction
+  ```bash
+  cargo install magellan
+  magellan watch --root ./src --db ./codemcp/mirage.db
+  ```
 - **Recommended for full workflow:**
-  - [Magellan](https://crates.io/crates/magellan) - `cargo install magellan`
   - [llmgrep](https://crates.io/crates/llmgrep) - `cargo install llmgrep`
   - [splice](https://github.com/oldnordic/splice) - `cargo install splice`
 
@@ -371,4 +383,4 @@ These tools share a common database format and are designed to be used together 
 
 ## External Dependencies
 
-- [Charon](https://github.com/AeneasVerif/charon) - Rust MIR extraction (required)
+- [Magellan](https://github.com/oldnordic/magellan) - AST-based CFG extraction (required)

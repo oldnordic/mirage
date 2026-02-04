@@ -442,42 +442,17 @@ pub fn update_function_paths_if_changed(
         |row| row.get(0),
     ).unwrap_or(None);
 
-    // If hash matches, no update needed (cache hit)
-    if let Some(ref hash) = current_hash {
-        if hash == new_hash {
-            return Ok(false);
-        }
-    }
+    // Note: Hash-based cache invalidation is not available with Magellan's schema
+    // since cfg_blocks doesn't have a function_hash column.
+    // Magellan manages its own caching and re-indexing when source files change.
+    // For now, we always invalidate and store new paths when this function is called.
+    // Future enhancement: integrate with Magellan's change detection.
 
-    // Cache miss or hash changed - invalidate old paths
+    // Invalidate old paths
     invalidate_function_paths(conn, function_id)?;
 
     // Store new paths
     store_paths(conn, function_id, paths)?;
-
-    // Update function_hash in cfg_blocks
-    // First check if a cfg_blocks entry exists for this function
-    let block_exists: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM cfg_blocks WHERE function_id = ?1)",
-        params![function_id],
-        |row| row.get(0),
-    ).unwrap_or(false);
-
-    if block_exists {
-        // Update existing entry
-        conn.execute(
-            "UPDATE cfg_blocks SET function_hash = ?1 WHERE function_id = ?2",
-            params![new_hash, function_id],
-        ).context("Failed to update function_hash")?;
-    } else {
-        // Insert a placeholder cfg_blocks entry for hash tracking
-        // This allows caching paths even before full CFG is stored
-        conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, function_hash)
-             VALUES (?1, ?2, ?3)",
-            params![function_id, "placeholder", new_hash],
-        ).context("Failed to insert function_hash placeholder")?;
-    }
 
     Ok(true)
 }
@@ -512,10 +487,10 @@ mod tests {
             [],
         ).unwrap();
 
-        // Insert Magellan meta
+        // Insert Magellan meta (use version 7 for cfg_blocks support)
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
-             VALUES (1, 4, 3, 0)",
+             VALUES (1, 7, 3, 0)",
             [],
         ).unwrap();
 
@@ -1038,13 +1013,6 @@ mod tests {
         ).unwrap();
         assert_eq!(count, 3);
 
-        // Verify hash was stored
-        let stored_hash: String = conn.query_row(
-            "SELECT function_hash FROM cfg_blocks WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
-        assert_eq!(stored_hash, hash);
     }
 
     #[test]
@@ -1060,7 +1028,7 @@ mod tests {
 
         // Second call with same hash - should NOT update
         let updated2 = update_function_paths_if_changed(&mut conn, function_id, hash, &paths).unwrap();
-        assert!(!updated2, "Same hash should return false (no update)");
+        assert!(updated2, "Same hash should return true (hash caching not available with Magellan)");
     }
 
     #[test]
@@ -1096,13 +1064,7 @@ mod tests {
         ).unwrap();
         assert_eq!(count2, 1, "Old paths should be invalidated and replaced");
 
-        // Verify hash was updated
-        let stored_hash: String = conn.query_row(
-            "SELECT function_hash FROM cfg_blocks WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
-        assert_eq!(stored_hash, "hash2");
+        // Note: Hash verification removed - function_hash not in Magellan schema
     }
 
     #[test]
@@ -1117,7 +1079,7 @@ mod tests {
 
         // Call 2: same hash -> no update
         let u2 = update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths).unwrap();
-        assert!(!u2);
+        assert!(u2);
 
         // Call 3: different hash -> update
         let u3 = update_function_paths_if_changed(&mut conn, function_id, "hash2", &paths).unwrap();
@@ -1125,7 +1087,7 @@ mod tests {
 
         // Call 4: same hash again -> no update
         let u4 = update_function_paths_if_changed(&mut conn, function_id, "hash2", &paths).unwrap();
-        assert!(!u4);
+        assert!(u4);
     }
 
     #[test]
@@ -1135,32 +1097,25 @@ mod tests {
 
         // Insert a cfg_blocks entry first (simulating existing CFG)
         conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, function_hash)
-             VALUES (?, ?, ?)",
-            params![function_id, "entry", "old_hash"],
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![function_id, "entry", "return", 0, 10, 1, 0, 1, 10],
         ).unwrap();
 
         let paths = create_mock_paths();
 
-        // Update with new hash
+        // Update with new hash (note: hash not stored in Magellan schema)
         let updated = update_function_paths_if_changed(&mut conn, function_id, "new_hash", &paths).unwrap();
         assert!(updated);
 
-        // Verify hash was updated (not inserted as new row)
-        let hash: String = conn.query_row(
-            "SELECT function_hash FROM cfg_blocks WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
-        assert_eq!(hash, "new_hash");
-
-        // Verify only one cfg_blocks entry exists
+        // Verify only one cfg_blocks entry exists (we didn't create a new one)
         let count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
             params![function_id],
             |row| row.get(0),
         ).unwrap();
-        assert_eq!(count, 1, "Should update existing row, not insert new");
+        assert_eq!(count, 1, "Should still have only one cfg_blocks entry");
     }
 
     #[test]
@@ -1169,32 +1124,20 @@ mod tests {
         let function_id: i64 = 1;
         let paths = create_mock_paths();
 
-        // No cfg_blocks entry exists initially
-        let count_before: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
-        assert_eq!(count_before, 0);
+        // Note: With Magellan's schema, we don't create placeholder entries
+        // The path caching now works differently - paths are stored independently
+        // This test verifies that paths are stored even without cfg_blocks entries
 
-        // Update paths
+        // Update paths (should work without cfg_blocks entry)
         update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths).unwrap();
 
-        // Verify placeholder was created
-        let count_after: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+        // Verify paths were stored in cfg_paths table
+        let path_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
             params![function_id],
             |row| row.get(0),
         ).unwrap();
-        assert_eq!(count_after, 1, "Should create placeholder cfg_blocks entry");
-
-        // Verify placeholder has correct hash
-        let hash: String = conn.query_row(
-            "SELECT function_hash FROM cfg_blocks WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
-        assert_eq!(hash, "hash1");
+        assert_eq!(path_count, 3, "Should store all paths without cfg_blocks entry");
     }
 
     #[test]

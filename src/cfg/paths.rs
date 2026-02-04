@@ -1190,25 +1190,8 @@ pub fn get_or_enumerate_paths(
     store_paths(db_conn, function_id, &paths)
         .map_err(|e| format!("Failed to store enumerated paths: {}", e))?;
 
-    // Update function_hash in cfg_blocks
-    let block_exists: bool = db_conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM cfg_blocks WHERE function_id = ?1)",
-        rusqlite::params![function_id],
-        |row| row.get(0),
-    ).unwrap_or(false);
-
-    if block_exists {
-        db_conn.execute(
-            "UPDATE cfg_blocks SET function_hash = ?1 WHERE function_id = ?2",
-            rusqlite::params![function_hash, function_id],
-        ).map_err(|e| format!("Failed to update function_hash: {}", e))?;
-    } else {
-        db_conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, function_hash)
-             VALUES (?1, ?2, ?3)",
-            rusqlite::params![function_id, "placeholder", function_hash],
-        ).map_err(|e| format!("Failed to insert function_hash: {}", e))?;
-    }
+    // Note: function_hash tracking removed - not available in Magellan's cfg_blocks schema
+    // Magellan manages its own caching and re-indexing when source files change
 
     Ok(paths)
 }

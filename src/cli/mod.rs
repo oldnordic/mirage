@@ -1097,7 +1097,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1154,7 +1154,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1171,7 +1171,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'mirage index' to index your code");
+                    output::info("Hint: Run 'magellan watch' to index your code");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1192,7 +1192,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to load CFG for function '{}'", args.function));
-                    output::info("The function may be corrupted. Try re-running 'mirage index'");
+                    output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1219,7 +1219,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function hash not found for '{}'", args.function));
-                    output::info("The function data may be incomplete. Try re-running 'mirage index'");
+                    output::info("The function data may be incomplete. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1319,7 +1319,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1336,7 +1336,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'mirage index' to index your code");
+                    output::info("Hint: Run 'magellan watch' to index your code");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1357,7 +1357,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to load CFG for function '{}'", args.function));
-                    output::info("The function may be corrupted. Try re-running 'mirage index'");
+                    output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1468,7 +1468,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1485,7 +1485,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'mirage index' to index your code");
+                    output::info("Hint: Run 'magellan watch' to index your code");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1506,7 +1506,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to load CFG for function '{}'", args.function));
-                    output::info("The function may be corrupted. Try re-running 'mirage index'");
+                    output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1989,7 +1989,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -2006,7 +2006,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'mirage index' to index your code");
+                    output::info("Hint: Run 'magellan watch' to index your code");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -2027,7 +2027,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to load CFG for function '{}'", args.function));
-                    output::info("The function may be corrupted. Try re-running 'mirage index'");
+                    output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -2143,7 +2143,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -2388,7 +2388,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -2459,7 +2459,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to load CFG for function_id {}", function_id));
-                    output::info("The function data may be corrupted. Try re-running 'mirage index'");
+                    output::info("The function data may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -2533,7 +2533,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -2620,7 +2620,7 @@ pub mod cmds {
                         std::process::exit(output::EXIT_DATABASE);
                     } else {
                         output::error(&msg);
-                        output::info("The function may be corrupted. Try re-running 'mirage index'");
+                        output::info("The function may be corrupted. Try re-running 'magellan watch'");
                         std::process::exit(output::EXIT_DATABASE);
                     }
                 }
@@ -2759,7 +2759,7 @@ pub mod cmds {
                         std::process::exit(output::EXIT_DATABASE);
                     } else {
                         output::error(&format!("Function '{}' not found in database", function_ref));
-                        output::info("Hint: Run 'mirage index' to index your code");
+                        output::info("Hint: Run 'magellan watch' to index your code");
                         std::process::exit(output::EXIT_DATABASE);
                     }
                 }
@@ -2784,7 +2784,7 @@ pub mod cmds {
                         std::process::exit(output::EXIT_DATABASE);
                     } else {
                         output::error(&format!("Failed to load CFG for function '{}'", function_ref));
-                        output::info("The function may be corrupted. Try re-running 'mirage index'");
+                        output::info("The function may be corrupted. Try re-running 'magellan watch'");
                         std::process::exit(output::EXIT_DATABASE);
                     }
                 }
@@ -2968,7 +2968,7 @@ pub mod cmds {
                         std::process::exit(output::EXIT_DATABASE);
                     } else {
                         output::error(&format!("Failed to open database: {}", db_path));
-                        output::info("Hint: Run 'mirage index' to create the database");
+                        output::info("Hint: Run 'magellan watch' to create the database");
                         std::process::exit(output::EXIT_DATABASE);
                     }
                 }
@@ -3213,7 +3213,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", e));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -3392,7 +3392,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -3409,7 +3409,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'mirage index' to index your code");
+                    output::info("Hint: Run 'magellan watch' to index your code");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -3430,7 +3430,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to load CFG for function '{}'", args.function));
-                    output::info("The function may be corrupted. Try re-running 'mirage index'");
+                    output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -3556,7 +3556,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'mirage index' to create the database");
+                    output::info("Hint: Run 'magellan watch' to create the database");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -3573,7 +3573,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'mirage index' to index your code");
+                    output::info("Hint: Run 'magellan watch' to index your code");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -3594,7 +3594,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Failed to load CFG for function '{}'", args.function));
-                    output::info("The function may be corrupted. Try re-running 'mirage index'");
+                    output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -4035,14 +4035,14 @@ mod status_tests {
 
         // Add test blocks
         conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, byte_start, byte_end, terminator, function_hash)
-             VALUES (?, ?, ?, ?, ?, ?)",
-            params!(function_id, "entry", 0, 10, "goto", "abc123"),
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end, start_line, start_col, end_line, end_col)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params!(function_id, "entry", "goto", 0, 10, 1, 0, 1, 10),
         )?;
         conn.execute(
-            "INSERT INTO cfg_blocks (function_id, block_kind, byte_start, byte_end, terminator, function_hash)
-             VALUES (?, ?, ?, ?, ?, ?)",
-            params!(function_id, "exit", 10, 20, "ret", "abc123"),
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end, start_line, start_col, end_line, end_col)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params!(function_id, "return", "return", 10, 20, 2, 0, 2, 10),
         )?;
 
         // Add test edges
@@ -4079,7 +4079,7 @@ mod status_tests {
         assert_eq!(status.cfg_paths, 1, "Should have 1 cfg_path");
         assert_eq!(status.cfg_dominators, 1, "Should have 1 cfg_dominator");
         assert_eq!(status.mirage_schema_version, 1, "Schema version should be 1");
-        assert_eq!(status.magellan_schema_version, 4, "Magellan version should be 4");
+        assert_eq!(status.magellan_schema_version, 7, "Magellan version should be 7");
     }
 
     /// Test that human output format contains expected fields
@@ -4625,14 +4625,7 @@ mod paths_tests {
 
         assert_eq!(path_count, 2, "Paths should be stored in database after first call");
 
-        // Verify function_hash was stored
-        let stored_hash: Option<String> = conn.query_row(
-            "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
-            rusqlite::params![test_function_id],
-            |row| row.get(0),
-        ).unwrap();
-
-        assert_eq!(stored_hash.as_deref(), Some(test_function_hash), "Function hash should be stored");
+        // Note: function_hash verification removed - not available in Magellan schema
     }
 
     /// Test that second call returns cached paths (cache hit)
@@ -4698,13 +4691,6 @@ mod paths_tests {
             &limits,
             &mut conn,
         ).unwrap();
-        // Verify hash was stored after first call
-        let stored_hash: Option<String> = conn.query_row(
-            "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
-            rusqlite::params![test_function_id],
-            |row| row.get(0),
-        ).unwrap();
-        assert_eq!(stored_hash.as_deref(), Some(test_function_hash), "Hash should be stored after first call");
 
         // Verify paths were stored
         let path_count: i64 = conn.query_row(
@@ -4808,15 +4794,17 @@ mod paths_tests {
         ).unwrap();
 
         // Verify paths were stored
-        let stored_hash_v1: Option<String> = conn.query_row(
-            "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
+        let path_count_v1: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
             rusqlite::params![test_function_id],
             |row| row.get(0),
         ).unwrap();
 
-        assert_eq!(stored_hash_v1.as_deref(), Some(test_function_hash_v1), "Hash v1 should be stored");
+        assert_eq!(path_count_v1, 2, "Should have 2 paths after first call");
 
         // Second call with different hash - cache invalidation, should re-enumerate
+        // Note: With Magellan schema, hash-based caching is not available
+        // Paths are always invalidated and re-stored on each call
         let paths2 = get_or_enumerate_paths(
             &cfg,
             test_function_id,
@@ -4825,27 +4813,18 @@ mod paths_tests {
             &mut conn,
         ).unwrap();
 
-        // Should still return paths (re-enumerated with new hash)
-        assert!(!paths2.is_empty(), "Should re-enumerate after hash change");
+        // Should still return paths (re-enumerated)
+        assert!(!paths2.is_empty(), "Should re-enumerate");
         assert_eq!(paths2.len(), paths1.len(), "Re-enumeration should produce same paths");
 
-        // Verify hash was updated in database
-        let stored_hash_v2: Option<String> = conn.query_row(
-            "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
-            rusqlite::params![test_function_id],
-            |row| row.get(0),
-        ).unwrap();
-
-        assert_eq!(stored_hash_v2.as_deref(), Some(test_function_hash_v2), "Hash v2 should replace v1");
-
-        // Verify old paths were invalidated
+        // Verify paths were updated (old invalidated, new stored)
         let path_count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
             rusqlite::params![test_function_id],
             |row| row.get(0),
         ).unwrap();
 
-        assert_eq!(path_count, 2, "Should have 2 paths after invalidation (old replaced with new)");
+        assert_eq!(path_count, 2, "Should have 2 paths after re-enumeration");
     }
 }
 
@@ -5316,7 +5295,7 @@ mod dominators_tests {
             "CREATE TABLE cfg_blocks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 function_id INTEGER NOT NULL,
-                block_kind TEXT NOT NULL,
+                kind TEXT NOT NULL,
                 byte_start INTEGER NOT NULL,
                 byte_end INTEGER NOT NULL,
                 terminator TEXT NOT NULL,

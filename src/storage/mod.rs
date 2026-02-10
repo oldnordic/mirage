@@ -10,6 +10,18 @@
 
 pub mod paths;
 
+// Backend-agnostic storage trait and implementations (Phase 069-01)
+#[cfg(feature = "backend-sqlite")]
+pub mod sqlite_backend;
+#[cfg(feature = "backend-native-v2")]
+pub mod kv_backend;
+
+// Also support the aliased feature names for convenience
+#[cfg(feature = "sqlite")]
+pub mod sqlite_backend;
+#[cfg(feature = "native-v2")]
+pub mod kv_backend;
+
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
@@ -18,8 +30,14 @@ use std::path::Path;
 use sqlitegraph::{GraphBackend, GraphConfig, SnapshotId, open_graph};
 
 // Magellan KV helper for native-v2 backend
-#[cfg(feature = "native-v2")]
+#[cfg(feature = "backend-native-v2")]
 use magellan::graph::get_cfg_blocks_kv;
+
+// Backend implementations (Phase 069-01)
+#[cfg(feature = "backend-sqlite")]
+pub use sqlite_backend::SqliteStorage;
+#[cfg(feature = "backend-native-v2")]
+pub use kv_backend::KvStorage;
 
 // Re-export path caching functions
 // Note: Some exports like PathCache, store_paths, etc. are not currently used
@@ -33,9 +51,233 @@ pub use paths::{
     update_function_paths_if_changed,
 };
 
-/// Database backend format detected in a graph database file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// ============================================================================
+// Backend-Agnostic Storage Trait (Phase 069-01)
+// ============================================================================
+
+/// Backend-agnostic storage trait for CFG data
+///
+/// This trait abstracts over SQLite and Native-V2 storage backends,
+/// enabling runtime backend detection and zero breaking changes.
+///
+/// # Design
+///
+/// - Follows llmgrep's Backend pattern for consistency
+/// - All methods take `&self` (not `&mut self`) to enable shared access
+/// - Errors are returned as `anyhow::Error` for flexibility
+///
+/// # Examples
+///
+/// ```ignore
+/// # use mirage_analyzer::storage::{StorageTrait, Backend};
+/// # fn main() -> anyhow::Result<()> {
+/// // Auto-detect and open backend
+/// let backend = Backend::detect_and_open("/path/to/db")?;
+///
+/// // Query CFG blocks (works with both SQLite and native-v2)
+/// let blocks = backend.get_cfg_blocks(123)?;
+/// # Ok(())
+/// # }
+/// ```
+pub trait StorageTrait {
+    /// Get CFG blocks for a function
+    ///
+    /// Returns all basic blocks for the given function_id.
+    /// For SQLite: queries cfg_blocks table
+    /// For native-v2: uses KV store with key "cfg:func:{function_id}"
+    ///
+    /// # Arguments
+    ///
+    /// * `function_id` - ID of the function in graph_entities
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<CfgBlockData>)` - Vector of CFG block data
+    /// * `Err(...)` - Error if query fails
+    fn get_cfg_blocks(&self, function_id: i64) -> Result<Vec<CfgBlockData>>;
+
+    /// Get entity by ID
+    ///
+    /// Returns the entity with the given ID from graph_entities.
+    ///
+    /// # Arguments
+    ///
+    /// * `entity_id` - ID of the entity
+    ///
+    /// # Returns
+    ///
+    /// * `Some(GraphEntity)` - Entity if found
+    /// * `None` - Entity not found
+    fn get_entity(&self, entity_id: i64) -> Option<sqlitegraph::GraphEntity>;
+
+    /// Get cached paths for a function (optional)
+    ///
+    /// Returns cached enumerated paths if available.
+    /// Default implementation returns None (no caching).
+    ///
+    /// # Arguments
+    ///
+    /// * `function_id` - ID of the function
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(paths))` - Cached paths if available
+    /// * `Ok(None)` - No cached paths
+    /// * `Err(...)` - Error if query fails
+    fn get_cached_paths(&self, _function_id: i64) -> Result<Option<Vec<crate::cfg::Path>>> {
+        Ok(None) // Default: no caching
+    }
+}
+
+/// CFG block data (backend-agnostic representation)
+///
+/// This struct represents the data returned by `StorageTrait::get_cfg_blocks`.
+/// It is a simplified version of Magellan's CfgBlock that contains only the
+/// fields needed by Mirage for CFG analysis.
+#[derive(Debug, Clone)]
+pub struct CfgBlockData {
+    /// Block kind (entry, conditional, loop, match, return, etc.)
+    pub kind: String,
+    /// Terminator kind (how control exits this block)
+    pub terminator: String,
+    /// Byte offset where block starts
+    pub byte_start: u64,
+    /// Byte offset where block ends
+    pub byte_end: u64,
+    /// Line where block starts (1-indexed)
+    pub start_line: u64,
+    /// Column where block starts (0-indexed)
+    pub start_col: u64,
+    /// Line where block ends (1-indexed)
+    pub end_line: u64,
+    /// Column where block ends (0-indexed)
+    pub end_col: u64,
+}
+
+/// Storage backend enum (Phase 069-01)
+///
+/// This enum wraps either SqliteStorage or KvStorage and delegates
+/// StorageTrait methods to the appropriate implementation.
+///
+/// Follows llmgrep's Backend pattern for consistency across tools.
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // KvStorage may contain CodeGraph
 pub enum Backend {
+    /// SQLite storage backend (traditional, always available)
+    #[cfg(feature = "backend-sqlite")]
+    Sqlite(SqliteStorage),
+    /// Native-V2 storage backend (high-performance, requires native-v2 feature)
+    #[cfg(feature = "backend-native-v2")]
+    NativeV2(KvStorage),
+}
+
+impl Backend {
+    /// Detect backend format from database file and open appropriate backend
+    ///
+    /// Uses `magellan::migrate_backend_cmd::detect_backend_format` for
+    /// consistent backend detection across tools.
+    ///
+    /// # Arguments
+    ///
+    /// * `db_path` - Path to the database file
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Backend)` - Appropriate backend variant
+    /// * `Err(...)` - Error if detection or opening fails
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use mirage_analyzer::storage::Backend;
+    /// # fn main() -> anyhow::Result<()> {
+    /// let backend = Backend::detect_and_open("/path/to/codegraph.db")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn detect_and_open(db_path: &Path) -> Result<Self> {
+        use magellan::migrate_backend_cmd::{detect_backend_format, BackendFormat as MagellanBackendFormat};
+
+        let format = detect_backend_format(db_path)
+            .map_err(|e| anyhow::anyhow!("Backend detection failed: {}", e))?;
+
+        #[cfg(feature = "backend-sqlite")]
+        {
+            match format {
+                MagellanBackendFormat::Sqlite => {
+                    SqliteStorage::open(db_path).map(Backend::Sqlite)
+                }
+                MagellanBackendFormat::NativeV2 => {
+                    Err(anyhow::anyhow!("Native-V2 backend detected but SQLite feature enabled"))
+                }
+            }
+        }
+
+        #[cfg(feature = "backend-native-v2")]
+        {
+            match format {
+                MagellanBackendFormat::Sqlite => {
+                    Err(anyhow::anyhow!("SQLite backend detected but Native-V2 feature enabled"))
+                }
+                MagellanBackendFormat::NativeV2 => {
+                    KvStorage::open(db_path).map(Backend::NativeV2)
+                }
+            }
+        }
+    }
+
+    /// Delegate get_cfg_blocks to inner backend
+    pub fn get_cfg_blocks(&self, function_id: i64) -> Result<Vec<CfgBlockData>> {
+        match self {
+            #[cfg(feature = "backend-sqlite")]
+            Backend::Sqlite(s) => s.get_cfg_blocks(function_id),
+            #[cfg(feature = "backend-native-v2")]
+            Backend::NativeV2(k) => k.get_cfg_blocks(function_id),
+        }
+    }
+
+    /// Delegate get_entity to inner backend
+    pub fn get_entity(&self, entity_id: i64) -> Option<sqlitegraph::GraphEntity> {
+        match self {
+            #[cfg(feature = "backend-sqlite")]
+            Backend::Sqlite(s) => s.get_entity(entity_id),
+            #[cfg(feature = "backend-native-v2")]
+            Backend::NativeV2(k) => k.get_entity(entity_id),
+        }
+    }
+
+    /// Delegate get_cached_paths to inner backend
+    pub fn get_cached_paths(&self, function_id: i64) -> Result<Option<Vec<crate::cfg::Path>>> {
+        match self {
+            #[cfg(feature = "backend-sqlite")]
+            Backend::Sqlite(s) => s.get_cached_paths(function_id),
+            #[cfg(feature = "backend-native-v2")]
+            Backend::NativeV2(k) => k.get_cached_paths(function_id),
+        }
+    }
+}
+
+// Implement StorageTrait for Backend (delegates to inner storage)
+impl StorageTrait for Backend {
+    fn get_cfg_blocks(&self, function_id: i64) -> Result<Vec<CfgBlockData>> {
+        self.get_cfg_blocks(function_id)
+    }
+
+    fn get_entity(&self, entity_id: i64) -> Option<sqlitegraph::GraphEntity> {
+        self.get_entity(entity_id)
+    }
+
+    fn get_cached_paths(&self, function_id: i64) -> Result<Option<Vec<crate::cfg::Path>>> {
+        self.get_cached_paths(function_id)
+    }
+}
+
+/// Database backend format detected in a graph database file.
+///
+/// This is the legacy format detection enum. For new code, use the
+/// `Backend` enum (with StorageTrait) which provides full backend abstraction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendFormat {
     /// SQLite-based backend (default, backward compatible)
     SQLite,
     /// Native-v2 backend (requires native-v2 feature)
@@ -44,14 +286,17 @@ pub enum Backend {
     Unknown,
 }
 
-impl Backend {
+impl BackendFormat {
     /// Detect which backend format a database file uses.
     ///
     /// Checks the file header to determine if the database is SQLite or native-v2 format.
     /// Returns Unknown if the file doesn't exist or has an unrecognized header.
+    ///
+    /// **Deprecated:** Use `Backend::detect_and_open()` for new code which provides
+    /// full backend abstraction, not just format detection.
     pub fn detect(path: &Path) -> Result<Self> {
         if !path.exists() {
-            return Ok(Backend::Unknown);
+            return Ok(BackendFormat::Unknown);
         }
 
         let mut file = std::fs::File::open(path)?;
@@ -59,15 +304,15 @@ impl Backend {
         let bytes_read = std::io::Read::read(&mut file, &mut header)?;
 
         if bytes_read < header.len() {
-            return Ok(Backend::Unknown);
+            return Ok(BackendFormat::Unknown);
         }
 
         // SQLite databases start with "SQLite format 3"
         Ok(if &header[..15] == b"SQLite format 3" {
-            Backend::SQLite
+            BackendFormat::SQLite
         } else {
             // If it exists but isn't SQLite, assume native-v2
-            Backend::NativeV2
+            BackendFormat::NativeV2
         })
     }
 }
@@ -89,14 +334,24 @@ pub const REQUIRED_MAGELLAN_SCHEMA_VERSION: i32 = TEST_MAGELLAN_SCHEMA_VERSION;
 pub const REQUIRED_SQLITEGRAPH_SCHEMA_VERSION: i32 = 3;
 
 /// Database connection wrapper
+///
+/// Uses Backend enum for CFG queries (Phase 069-02) and GraphBackend for entity queries.
+/// This dual-backend approach allows gradual migration from direct Connection usage.
 pub struct MirageDb {
-    /// Backend-agnostic graph interface
-    backend: Box<dyn GraphBackend>,
+    /// Storage backend for CFG queries (Phase 069-02)
+    /// Wraps either SqliteStorage or KvStorage for backend-agnostic CFG access.
+    storage: Backend,
+
+    /// Backend-agnostic graph interface for entity queries
+    /// Used for entity_ids(), get_node(), kv_get() and other GraphBackend operations.
+    graph_backend: Box<dyn GraphBackend>,
+
     /// Snapshot ID for consistent reads
     snapshot_id: SnapshotId,
 
     // SQLite-specific connection (only available with sqlite feature)
-    #[cfg(feature = "sqlite")]
+    // DEPRECATED: Use storage field instead for new code
+    #[cfg(feature = "backend-sqlite")]
     conn: Option<Connection>,
 }
 
@@ -104,7 +359,8 @@ impl std::fmt::Debug for MirageDb {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MirageDb")
             .field("snapshot_id", &self.snapshot_id)
-            .field("backend", &"<GraphBackend>")
+            .field("storage", &self.storage)
+            .field("graph_backend", &"<GraphBackend>")
             .finish()
     }
 }
@@ -116,22 +372,26 @@ impl MirageDb {
     /// - A Mirage database (with mirage_meta table)
     /// - A Magellan database (extends it with Mirage tables)
     ///
-    /// Uses Backend::detect() to determine the file format and open_graph()
-    /// to create the appropriate backend.
+    /// Phase 069-02: Uses Backend::detect_and_open() for CFG queries
+    /// and open_graph() for entity queries (GraphBackend).
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         if !path.exists() {
             anyhow::bail!("Database not found: {}", path.display());
         }
 
-        // Detect backend format from file header
-        let detected_backend = Backend::detect(path)
+        // Phase 069-02: Use Backend::detect_and_open() for storage layer
+        let storage = Backend::detect_and_open(path)
+            .context("Failed to open storage backend")?;
+
+        // Detect backend format from file header for GraphBackend creation
+        let detected_backend = BackendFormat::detect(path)
             .context("Failed to detect backend format")?;
 
         // Validate that detected backend matches compile-time feature
-        #[cfg(feature = "sqlite")]
+        #[cfg(feature = "backend-sqlite")]
         {
-            if detected_backend == Backend::NativeV2 {
+            if detected_backend == BackendFormat::NativeV2 {
                 anyhow::bail!(
                     "Database file '{}' uses native-v2 format, but this binary was built \
                      with SQLite backend. Rebuild with: cargo build --release --no-default-features --features native-v2",
@@ -140,9 +400,9 @@ impl MirageDb {
             }
         }
 
-        #[cfg(feature = "native-v2")]
+        #[cfg(feature = "backend-native-v2")]
         {
-            if detected_backend == Backend::SQLite {
+            if detected_backend == BackendFormat::SQLite {
                 anyhow::bail!(
                     "Database file '{}' uses SQLite format, but this binary was built \
                      with native-v2 backend. Rebuild with: cargo build --release",
@@ -153,9 +413,9 @@ impl MirageDb {
 
         // Select appropriate GraphConfig based on detected backend
         let cfg = match detected_backend {
-            Backend::SQLite => GraphConfig::sqlite(),
-            Backend::NativeV2 => GraphConfig::native(),
-            Backend::Unknown => {
+            BackendFormat::SQLite => GraphConfig::sqlite(),
+            BackendFormat::NativeV2 => GraphConfig::native(),
+            BackendFormat::Unknown => {
                 anyhow::bail!(
                     "Unknown database format: {}. Cannot determine backend.",
                     path.display()
@@ -163,14 +423,14 @@ impl MirageDb {
             }
         };
 
-        // Use open_graph factory to create backend
-        let backend = open_graph(path, &cfg)
+        // Use open_graph factory to create GraphBackend for entity queries
+        let graph_backend = open_graph(path, &cfg)
             .context("Failed to open graph database")?;
 
         let snapshot_id = SnapshotId::current();
 
         // For SQLite backend, open Connection and validate schema
-        #[cfg(feature = "sqlite")]
+        #[cfg(feature = "backend-sqlite")]
         let conn = {
             let mut conn = Connection::open(path)
                 .context("Failed to open SQLite connection")?;
@@ -179,22 +439,23 @@ impl MirageDb {
         };
 
         // For native-v2 backend, schema validation will be added in future plans
-        #[cfg(feature = "native-v2")]
+        #[cfg(feature = "backend-native-v2")]
         {
             // TODO: Add native-v2 schema validation via GraphBackend methods
             // For now, we trust the native-v2 backend has the required tables
         }
 
         Ok(Self {
-            backend,
+            storage,
+            graph_backend,
             snapshot_id,
-            #[cfg(feature = "sqlite")]
+            #[cfg(feature = "backend-sqlite")]
             conn,
         })
     }
 
     /// Validate database schema for SQLite backend
-    #[cfg(feature = "sqlite")]
+    #[cfg(feature = "backend-sqlite")]
     fn validate_schema_sqlite(conn: &mut Connection, _path: &Path) -> Result<()> {
         // Check if mirage_meta table exists
         let mirage_meta_exists: bool = conn.query_row(
@@ -264,60 +525,80 @@ impl MirageDb {
 
     /// Get a reference to the underlying Connection (SQLite backend only)
     ///
+    /// Phase 069-02: DEPRECATED - Use storage() for CFG queries, backend() for entity queries.
     /// For SQLite backend, returns the Connection directly.
     /// For native-v2 backend, returns an error.
-    #[cfg(feature = "sqlite")]
+    #[cfg(feature = "backend-sqlite")]
     pub fn conn(&self) -> Result<&Connection, anyhow::Error> {
         self.conn.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Connection not available. Backend may not be SQLite.")
+            anyhow::anyhow!(
+                "Direct Connection access deprecated. Use storage() for CFG queries or backend() for entity queries."
+            )
         })
     }
 
     /// Get a mutable reference to the underlying Connection (SQLite backend only)
     ///
+    /// Phase 069-02: DEPRECATED - Use storage() for CFG queries, backend() for entity queries.
     /// For SQLite backend, returns the Connection directly.
     /// For native-v2 backend, returns an error.
-    #[cfg(feature = "sqlite")]
+    #[cfg(feature = "backend-sqlite")]
     pub fn conn_mut(&mut self) -> Result<&mut Connection, anyhow::Error> {
         self.conn.as_mut().ok_or_else(|| {
-            anyhow::anyhow!("Connection not available. Backend may not be SQLite.")
+            anyhow::anyhow!(
+                "Direct Connection access deprecated. Use storage() for CFG queries or backend() for entity queries."
+            )
         })
     }
 
     /// Get a reference to the underlying Connection (native-v2 backend)
     ///
+    /// Phase 069-02: DEPRECATED - Use storage() for CFG queries, backend() for entity queries.
     /// For native-v2 backend, this always returns an error since Connection
     /// is only available with SQLite backend.
-    #[cfg(feature = "native-v2")]
+    #[cfg(feature = "backend-native-v2")]
     pub fn conn(&self) -> Result<&Connection, anyhow::Error> {
         Err(anyhow::anyhow!(
-            "Direct Connection access not available for native-v2 backend. \
-             Use GraphBackend methods instead."
+            "Direct Connection access deprecated. Use storage() for CFG queries or backend() for entity queries."
         ))
     }
 
     /// Get a mutable reference to the underlying Connection (native-v2 backend)
     ///
+    /// Phase 069-02: DEPRECATED - Use storage() for CFG queries, backend() for entity queries.
     /// For native-v2 backend, this always returns an error since Connection
     /// is only available with SQLite backend.
-    #[cfg(feature = "native-v2")]
+    #[cfg(feature = "backend-native-v2")]
     pub fn conn_mut(&mut self) -> Result<&mut Connection, anyhow::Error> {
         Err(anyhow::anyhow!(
-            "Direct Connection access not available for native-v2 backend. \
-             Use GraphBackend methods instead."
+            "Direct Connection access deprecated. Use storage() for CFG queries or backend() for entity queries."
         ))
     }
 
+    /// Get a reference to the storage backend for CFG queries
+    ///
+    /// Phase 069-02: Use this to access CFG-specific storage operations
+    /// like get_cfg_blocks(), get_entity(), and get_cached_paths().
+    ///
+    /// This is the preferred way to access CFG data in new code.
+    pub fn storage(&self) -> &Backend {
+        &self.storage
+    }
+
     /// Get a reference to the backend-agnostic GraphBackend interface
+    ///
+    /// Use this for entity queries (entity_ids, get_node, kv_get, etc.).
+    /// Phase 069-02: This now returns the GraphBackend used for entity queries,
+    /// while storage() provides the Backend enum for CFG queries.
     pub fn backend(&self) -> &dyn GraphBackend {
-        self.backend.as_ref()
+        self.graph_backend.as_ref()
     }
 
     /// Check if the database backend is SQLite
     ///
     /// This is useful for runtime checks when certain features
     /// are only available with specific backends (e.g., path caching).
-    #[cfg(feature = "sqlite")]
+    #[cfg(feature = "backend-sqlite")]
     pub fn is_sqlite(&self) -> bool {
         self.conn.is_some()
     }
@@ -325,7 +606,7 @@ impl MirageDb {
     /// Check if the database backend is SQLite
     ///
     /// For native-v2, this always returns false.
-    #[cfg(feature = "native-v2")]
+    #[cfg(feature = "backend-native-v2")]
     pub fn is_sqlite(&self) -> bool {
         false
     }
@@ -533,7 +814,7 @@ impl MirageDb {
     ///
     /// Note: cfg_edges count is included for backward compatibility but edges
     /// are now computed in memory from terminator data, not stored.
-    #[cfg(feature = "sqlite")]
+    #[cfg(feature = "backend-sqlite")]
     pub fn status(&self) -> Result<DatabaseStatus> {
         let conn = self.conn()?;
 
@@ -589,22 +870,22 @@ impl MirageDb {
     /// Get database statistics (native-v2 backend)
     ///
     /// Uses GraphBackend methods to query entity and KV store data.
-    #[cfg(feature = "native-v2")]
+    #[cfg(feature = "backend-native-v2")]
     pub fn status(&self) -> Result<DatabaseStatus> {
         let snapshot = SnapshotId::current();
         let mut cfg_blocks_count: i64 = 0;
 
         // Count CFG blocks by iterating through entities and checking KV store
         // CFG blocks are stored with keys like "cfg:func:{function_id}"
-        if let Ok(entity_ids) = self.backend.entity_ids() {
+        if let Ok(entity_ids) = self.backend().entity_ids() {
             for entity_id in entity_ids {
                 // Check if this entity is a Function
-                if let Ok(entity) = self.backend.get_node(snapshot, entity_id) {
+                if let Ok(entity) = self.backend().get_node(snapshot, entity_id) {
                     if entity.kind == "Symbol"
                         && entity.data.get("kind").and_then(|v| v.as_str()) == Some("Function")
                     {
                         // Use Magellan's helper to get CFG blocks and count them
-                        match magellan::graph::get_cfg_blocks_kv(self.backend.as_ref(), entity_id) {
+                        match magellan::graph::get_cfg_blocks_kv(self.backend().as_ref(), entity_id) {
                             Ok(blocks) => {
                                 cfg_blocks_count += blocks.len() as i64;
                             }
@@ -666,7 +947,7 @@ impl MirageDb {
     /// # Ok(())
     /// # }
     /// ```
-    #[cfg(feature = "sqlite")]
+    #[cfg(feature = "backend-sqlite")]
     pub fn resolve_function_name(&self, name_or_id: &str) -> Result<i64> {
         // Try to parse as numeric ID first
         if let Ok(id) = name_or_id.parse::<i64>() {
@@ -680,7 +961,7 @@ impl MirageDb {
     /// Resolve a function name or ID to a function_id (native-v2 backend)
     ///
     /// This method uses the native-v2 backend to resolve function names.
-    #[cfg(feature = "native-v2")]
+    #[cfg(feature = "backend-native-v2")]
     pub fn resolve_function_name(&self, name_or_id: &str) -> Result<i64> {
         // Try to parse as numeric ID first
         if let Ok(id) = name_or_id.parse::<i64>() {
@@ -692,11 +973,11 @@ impl MirageDb {
         let snapshot = SnapshotId::current();
 
         // Get all entities and filter for functions
-        let entity_ids = self.backend.entity_ids()
+        let entity_ids = self.backend().entity_ids()
             .context("Failed to query entities from backend")?;
 
         for entity_id in entity_ids {
-            if let Ok(entity) = self.backend.get_node(snapshot, entity_id) {
+            if let Ok(entity) = self.backend().get_node(snapshot, entity_id) {
                 // Check if this is a function with matching name
                 if entity.name == name_or_id {
                     // Check kind data for Function type
@@ -740,7 +1021,7 @@ impl MirageDb {
     /// # Ok(())
     /// # }
     /// ```
-    #[cfg(feature = "sqlite")]
+    #[cfg(feature = "backend-sqlite")]
     pub fn load_cfg(&self, function_id: i64) -> Result<crate::cfg::Cfg> {
         let conn = self.conn()?;
         load_cfg_from_sqlite(conn, function_id)
@@ -749,9 +1030,9 @@ impl MirageDb {
     /// Load a CFG from the database (native-v2 backend)
     ///
     /// This method uses the native-v2 KV store to load CFG data.
-    #[cfg(feature = "native-v2")]
+    #[cfg(feature = "backend-native-v2")]
     pub fn load_cfg(&self, function_id: i64) -> Result<crate::cfg::Cfg> {
-        load_cfg_from_native_v2(self.backend.as_ref(), function_id)
+        load_cfg_from_native_v2(self.backend().as_ref(), function_id)
     }
 
     /// Get the function name for a given function_id (backend-agnostic)
@@ -770,7 +1051,7 @@ impl MirageDb {
     /// * `None` - Function not found
     pub fn get_function_name(&self, function_id: i64) -> Option<String> {
         let snapshot = SnapshotId::current();
-        self.backend.get_node(snapshot, function_id)
+        self.backend().get_node(snapshot, function_id)
             .ok()
             .and_then(|entity| {
                 // Return the name if this is a function
@@ -800,7 +1081,7 @@ impl MirageDb {
     /// * `None` - File path not available
     pub fn get_function_file(&self, function_id: i64) -> Option<String> {
         let snapshot = SnapshotId::current();
-        self.backend.get_node(snapshot, function_id)
+        self.backend().get_node(snapshot, function_id)
             .ok()
             .and_then(|entity| entity.file_path)
     }
@@ -819,7 +1100,7 @@ impl MirageDb {
     ///
     /// * `true` - Function has CFG blocks
     /// * `false` - Function not indexed or no CFG blocks
-    #[cfg(feature = "sqlite")]
+    #[cfg(feature = "backend-sqlite")]
     pub fn function_exists(&self, function_id: i64) -> bool {
         use crate::storage::function_exists;
         self.conn()
@@ -830,13 +1111,13 @@ impl MirageDb {
     /// Check if a function has CFG blocks (native-v2 backend)
     ///
     /// For native-v2, checks the KV store for CFG blocks.
-    #[cfg(feature = "native-v2")]
+    #[cfg(feature = "backend-native-v2")]
     pub fn function_exists(&self, function_id: i64) -> bool {
         use sqlitegraph::backend::native::v2::kv_store::types::KvValue;
 
         let snapshot = SnapshotId::current();
         let key = format!("cfg:func:{}", function_id).into_bytes();
-        self.backend.kv_get(snapshot, &key)
+        self.backend().kv_get(snapshot, &key)
             .ok()
             .flatten()
             .is_some()
@@ -856,7 +1137,7 @@ impl MirageDb {
     ///
     /// * `Some(hash)` - The function hash if available (SQLite only)
     /// * `None` - Hash not available or native-v2 backend
-    #[cfg(feature = "sqlite")]
+    #[cfg(feature = "backend-sqlite")]
     pub fn get_function_hash(&self, function_id: i64) -> Option<String> {
         use crate::storage::get_function_hash;
         self.conn()
@@ -868,7 +1149,7 @@ impl MirageDb {
     /// Get the function hash for path caching (native-v2 backend)
     ///
     /// For native-v2, always returns None since Magellan manages its own caching.
-    #[cfg(feature = "native-v2")]
+    #[cfg(feature = "backend-native-v2")]
     pub fn get_function_hash(&self, _function_id: i64) -> Option<String> {
         // Magellan manages its own caching, so Mirage's hash-based caching is not used
         None
@@ -879,7 +1160,7 @@ impl MirageDb {
 ///
 /// This is a helper function for the SQLite backend. For backend-agnostic
 /// resolution, use `MirageDb::resolve_function_name` which takes `&MirageDb`.
-#[cfg(feature = "sqlite")]
+#[cfg(feature = "backend-sqlite")]
 fn resolve_function_name_sqlite(conn: &Connection, name_or_id: &str) -> Result<i64> {
     // Query by function name
     // Note: Magellan v7 stores functions as kind='Symbol' with data.kind='Function'
@@ -908,7 +1189,7 @@ fn resolve_function_name_sqlite(conn: &Connection, name_or_id: &str) -> Result<i
 /// Load CFG blocks from SQLite backend
 ///
 /// This helper function loads CFG blocks using SQL queries from the cfg_blocks table.
-#[cfg(feature = "sqlite")]
+#[cfg(feature = "backend-sqlite")]
 fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cfg::Cfg> {
     use std::path::PathBuf;
 
@@ -967,7 +1248,7 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
 ///
 /// This helper function loads CFG blocks from the native-v2 KV store using
 /// Magellan's `get_cfg_blocks_kv` function.
-#[cfg(feature = "native-v2")]
+#[cfg(feature = "backend-native-v2")]
 fn load_cfg_from_native_v2(
     backend: &dyn GraphBackend,
     function_id: i64,
@@ -1244,7 +1525,7 @@ pub fn get_function_hash_db(db: &MirageDb, function_id: i64) -> Option<String> {
 ///
 /// This is the legacy function that takes a direct Connection reference.
 /// For new code supporting both backends, use `resolve_function_name` which takes `&MirageDb`.
-#[cfg(feature = "sqlite")]
+#[cfg(feature = "backend-sqlite")]
 pub fn resolve_function_name_with_conn(conn: &Connection, name_or_id: &str) -> Result<i64> {
     // Try to parse as numeric ID first
     if let Ok(id) = name_or_id.parse::<i64>() {
@@ -1343,7 +1624,7 @@ pub fn load_cfg_from_db(db: &MirageDb, function_id: i64) -> Result<crate::cfg::C
 /// - For backend-agnostic loading, use `load_cfg_from_db(&db, function_id)` instead
 /// - Requires Magellan schema v7+ for cfg_blocks table
 /// - Edges are constructed in memory from terminator data, not queried from cfg_edges table
-#[cfg(feature = "sqlite")]
+#[cfg(feature = "backend-sqlite")]
 pub fn load_cfg_from_db_with_conn(conn: &Connection, function_id: i64) -> Result<crate::cfg::Cfg> {
     load_cfg_from_sqlite(conn, function_id)
 }
@@ -2870,8 +3151,8 @@ mod tests {
         file.write_all(b"SQLite format 3\0").unwrap();
         file.sync_all().unwrap();
 
-        let backend = Backend::detect(temp_file.path()).unwrap();
-        assert_eq!(backend, Backend::SQLite, "Should detect SQLite format");
+        let backend = BackendFormat::detect(temp_file.path()).unwrap();
+        assert_eq!(backend, BackendFormat::SQLite, "Should detect SQLite format");
     }
 
     #[test]
@@ -2884,14 +3165,14 @@ mod tests {
         file.write_all(b"MIRAGE-NATIVE-V2\0").unwrap();
         file.sync_all().unwrap();
 
-        let backend = Backend::detect(temp_file.path()).unwrap();
-        assert_eq!(backend, Backend::NativeV2, "Should detect native-v2 format");
+        let backend = BackendFormat::detect(temp_file.path()).unwrap();
+        assert_eq!(backend, BackendFormat::NativeV2, "Should detect native-v2 format");
     }
 
     #[test]
     fn test_backend_detect_nonexistent_file() {
-        let backend = Backend::detect(Path::new("/nonexistent/path/to/file.db")).unwrap();
-        assert_eq!(backend, Backend::Unknown, "Non-existent file should be Unknown");
+        let backend = BackendFormat::detect(Path::new("/nonexistent/path/to/file.db")).unwrap();
+        assert_eq!(backend, BackendFormat::Unknown, "Non-existent file should be Unknown");
     }
 
     #[test]
@@ -2900,8 +3181,8 @@ mod tests {
         let temp_file = tempfile::NamedTempFile::new().unwrap();
         // File is empty (0 bytes)
 
-        let backend = Backend::detect(temp_file.path()).unwrap();
-        assert_eq!(backend, Backend::Unknown, "Empty file should be Unknown");
+        let backend = BackendFormat::detect(temp_file.path()).unwrap();
+        assert_eq!(backend, BackendFormat::Unknown, "Empty file should be Unknown");
     }
 
     #[test]
@@ -2914,18 +3195,18 @@ mod tests {
         file.write_all(b"SQLite").unwrap(); // Only 7 bytes
         file.sync_all().unwrap();
 
-        let backend = Backend::detect(temp_file.path()).unwrap();
-        assert_eq!(backend, Backend::Unknown, "Partial header should be Unknown");
+        let backend = BackendFormat::detect(temp_file.path()).unwrap();
+        assert_eq!(backend, BackendFormat::Unknown, "Partial header should be Unknown");
     }
 
     #[test]
     fn test_backend_equality() {
-        assert_eq!(Backend::SQLite, Backend::SQLite);
-        assert_eq!(Backend::NativeV2, Backend::NativeV2);
-        assert_eq!(Backend::Unknown, Backend::Unknown);
+        assert_eq!(BackendFormat::SQLite, BackendFormat::SQLite);
+        assert_eq!(BackendFormat::NativeV2, BackendFormat::NativeV2);
+        assert_eq!(BackendFormat::Unknown, BackendFormat::Unknown);
 
-        assert_ne!(Backend::SQLite, Backend::NativeV2);
-        assert_ne!(Backend::SQLite, Backend::Unknown);
-        assert_ne!(Backend::NativeV2, Backend::Unknown);
+        assert_ne!(BackendFormat::SQLite, BackendFormat::NativeV2);
+        assert_ne!(BackendFormat::SQLite, BackendFormat::Unknown);
+        assert_ne!(BackendFormat::NativeV2, BackendFormat::Unknown);
     }
 }

@@ -771,7 +771,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn()?, &args.function) {
+        let function_id = match resolve_function_name(&db, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -788,7 +788,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
+        let cfg = match load_cfg_from_db(&db, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -936,7 +936,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn()?, &args.function) {
+        let function_id = match resolve_function_name(&db, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -953,7 +953,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
+        let cfg = match load_cfg_from_db(&db, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1085,7 +1085,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn()?, &args.function) {
+        let function_id = match resolve_function_name(&db, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1102,7 +1102,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
+        let cfg = match load_cfg_from_db(&db, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1606,7 +1606,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn()?, &args.function) {
+        let function_id = match resolve_function_name(&db, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1623,7 +1623,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
+        let cfg = match load_cfg_from_db(&db, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1835,7 +1835,7 @@ pub mod cmds {
         // Load CFG for each function and find unreachable blocks
         let mut all_results = Vec::new();
         for (function_name, function_id) in function_rows {
-            match load_cfg_from_db(db.conn()?, function_id) {
+            match load_cfg_from_db(&db, function_id) {
                 Ok(cfg) => {
                     let unreachable_indices = find_unreachable(&cfg);
                     if !unreachable_indices.is_empty() {
@@ -2055,7 +2055,7 @@ pub mod cmds {
 
         // Path exists in cache - verify it still exists in current enumeration
         // Load CFG from database for this function
-        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
+        let cfg = match load_cfg_from_db(&db, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -2219,7 +2219,7 @@ pub mod cmds {
             }
 
             // Load CFG for the function
-            let cfg = match load_cfg_from_db(db.conn()?, function_id) {
+            let cfg = match load_cfg_from_db(&db, function_id) {
                 Ok(cfg) => cfg,
                 Err(_e) => {
                     let msg = format!("Failed to load CFG for function_id {}", function_id);
@@ -2359,7 +2359,7 @@ pub mod cmds {
             let function_ref = args.function.as_ref().expect("--function is required for block-based analysis");
 
             // Resolve function name/ID to function_id
-            let function_id = match resolve_function_name(db.conn()?, function_ref) {
+            let function_id = match resolve_function_name(&db, function_ref) {
                 Ok(id) => id,
                 Err(_e) => {
                     if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -2380,7 +2380,7 @@ pub mod cmds {
                 .unwrap_or_else(|| format!("<function_{}>", function_id));
 
             // Load CFG from database
-            let cfg = match load_cfg_from_db(db.conn()?, function_id) {
+            let cfg = match load_cfg_from_db(&db, function_id) {
                 Ok(cfg) => cfg,
                 Err(_e) => {
                     if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -2613,7 +2613,7 @@ pub mod cmds {
                     for row in rows {
                         if let Ok((function_name, function_id)) = row {
                             // Load CFG for this function
-                            if let Ok(cfg) = load_cfg_from_db(db.conn()?, function_id) {
+                            if let Ok(cfg) = load_cfg_from_db(&db, function_id) {
                                 // Detect natural loops
                                 let natural_loops = detect_natural_loops(&cfg);
 
@@ -2802,9 +2802,10 @@ pub mod cmds {
 
     pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
         use crate::analysis::MagellanBridge;
-        use crate::cfg::{load_cfg_from_db, enumerate_paths_with_context, EnumerationContext, PathLimits};
-        use crate::storage::MirageDb;
+        #[cfg(feature = "sqlite")]
+        use crate::cfg::{enumerate_paths_with_context, EnumerationContext, PathLimits, load_cfg_from_db_with_conn};
         use std::collections::HashMap;
+        use crate::storage::MirageDb;
 
         let db_path = super::resolve_db_path(cli.db.clone())?;
 
@@ -2830,6 +2831,7 @@ pub mod cmds {
         };
 
         let mut hotspots: Vec<HotspotEntry> = Vec::new();
+        #[cfg(feature = "sqlite")]
         let mut function_count = 0;
 
         if args.inter_procedural {
@@ -2891,6 +2893,7 @@ pub mod cmds {
         }
 
         // Fallback to intra-procedural if no hotspots found or inter-procedural failed
+        #[cfg(feature = "sqlite")]
         if hotspots.is_empty() {
             // Get all functions from database by joining with graph_entities
             let conn = db.conn_mut()?;
@@ -2913,7 +2916,7 @@ pub mod cmds {
                     function_count += 1;
 
                     // Load CFG and enumerate paths
-                    if let Ok(cfg) = load_cfg_from_db(conn, func_id) {
+                    if let Ok(cfg) = load_cfg_from_db_with_conn(conn, func_id) {
                         let ctx = EnumerationContext::new(&cfg);
                         let limits = PathLimits::quick_analysis();
                         let paths = enumerate_paths_with_context(&cfg, &limits, &ctx);
@@ -2946,6 +2949,11 @@ pub mod cmds {
 
         // Limit to top N
         hotspots.truncate(args.top);
+
+        #[cfg(feature = "sqlite")]
+        let function_count = function_count;
+        #[cfg(not(feature = "sqlite"))]
+        let function_count = 0;
 
         let response = HotspotsResponse {
             entry_point: args.entry.clone(),
@@ -3009,7 +3017,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn()?, &args.function) {
+        let function_id = match resolve_function_name(&db, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3026,7 +3034,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
+        let cfg = match load_cfg_from_db(&db, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3173,7 +3181,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn()?, &args.function) {
+        let function_id = match resolve_function_name(&db, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3190,7 +3198,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
+        let cfg = match load_cfg_from_db(&db, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {

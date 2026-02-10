@@ -17,6 +17,10 @@ use std::path::Path;
 // GraphBackend imports for dual backend support
 use sqlitegraph::{GraphBackend, GraphConfig, SnapshotId, open_graph};
 
+// Magellan KV helper for native-v2 backend
+#[cfg(feature = "native-v2")]
+use magellan::graph::get_cfg_blocks_kv;
+
 // Re-export path caching functions
 // Note: Some exports like PathCache, store_paths, etc. are not currently used
 // but are kept for potential future use and API completeness
@@ -580,47 +584,129 @@ impl MirageDb {
             magellan_schema_version: MIN_MAGELLAN_SCHEMA_VERSION,
         })
     }
-}
 
-/// Resolve a function name or ID to a function_id
-///
-/// # Arguments
-///
-/// * `conn` - Database connection
-/// * `name_or_id` - Function name (string) or function_id (numeric string)
-///
-/// # Returns
-///
-/// * `Ok(i64)` - The function_id if found
-/// * `Err(...)` - Error if function not found or query fails
-///
-/// # Examples
-///
-/// ```no_run
-/// # use mirage::storage::resolve_function_name;
-/// # use rusqlite::Connection;
-/// # fn main() -> anyhow::Result<()> {
-/// # let conn = Connection::open_in_memory()?;
-/// // Resolve by numeric ID
-/// let func_id = resolve_function_name(&conn, "123")?;
-///
-/// // Resolve by function name
-/// let func_id = resolve_function_name(&conn, "my_function")?;
-/// # Ok(())
-/// # }
-/// ```
-///
-/// # Algorithm
-///
-/// 1. If input parses as i64, return it directly (it's already a function_id)
-/// 2. Otherwise, query graph_entities for a function with matching name
-/// 3. Return the ID if found, error if not found
-pub fn resolve_function_name(conn: &Connection, name_or_id: &str) -> Result<i64> {
-    // Try to parse as numeric ID first
-    if let Ok(id) = name_or_id.parse::<i64>() {
-        return Ok(id);
+    /// Resolve a function name or ID to a function_id (backend-agnostic)
+    ///
+    /// This method works with both SQLite and native-v2 backends.
+    ///
+    /// # Arguments
+    ///
+    /// * `name_or_id` - Function name (string) or function_id (numeric string)
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(i64)` - The function_id if found
+    /// * `Err(...)` - Error if function not found or query fails
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use mirage_analyzer::storage::MirageDb;
+    /// # fn main() -> anyhow::Result<()> {
+    /// # let db = MirageDb::open("test.db")?;
+    /// // Resolve by numeric ID
+    /// let func_id = db.resolve_function_name("123")?;
+    ///
+    /// // Resolve by function name
+    /// let func_id = db.resolve_function_name("my_function")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "sqlite")]
+    pub fn resolve_function_name(&self, name_or_id: &str) -> Result<i64> {
+        // Try to parse as numeric ID first
+        if let Ok(id) = name_or_id.parse::<i64>() {
+            return Ok(id);
+        }
+
+        let conn = self.conn()?;
+        resolve_function_name_sqlite(conn, name_or_id)
     }
 
+    /// Resolve a function name or ID to a function_id (native-v2 backend)
+    ///
+    /// This method uses the native-v2 backend to resolve function names.
+    #[cfg(feature = "native-v2")]
+    pub fn resolve_function_name(&self, name_or_id: &str) -> Result<i64> {
+        // Try to parse as numeric ID first
+        if let Ok(id) = name_or_id.parse::<i64>() {
+            return Ok(id);
+        }
+
+        // For native-v2, query using GraphBackend
+        use sqlitegraph::SnapshotId;
+        let snapshot = SnapshotId::current();
+
+        // Get all entities and filter for functions
+        let entity_ids = self.backend.entity_ids()
+            .context("Failed to query entities from backend")?;
+
+        for entity_id in entity_ids {
+            if let Ok(entity) = self.backend.get_node(snapshot, entity_id) {
+                // Check if this is a function with matching name
+                if entity.name == name_or_id {
+                    // Check kind data for Function type
+                    if let Some(kind) = entity.data.get("kind").and_then(|k| k.as_str()) {
+                        if kind == "Function" {
+                            return Ok(entity_id);
+                        }
+                    }
+                }
+            }
+        }
+
+        anyhow::bail!(
+            "Function '{}' not found in database. Run 'magellan watch' to index functions.",
+            name_or_id
+        )
+    }
+
+    /// Load a CFG from the database (backend-agnostic)
+    ///
+    /// This method works with both SQLite and native-v2 backends.
+    /// For SQLite backend: uses SQL query on cfg_blocks table
+    /// For native-v2 backend: uses Magellan's KV store via get_cfg_blocks_kv()
+    ///
+    /// # Arguments
+    ///
+    /// * `function_id` - ID of the function to load CFG for
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Cfg)` - The reconstructed control flow graph
+    /// * `Err(...)` - Error if query fails or CFG data is invalid
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use mirage_analyzer::storage::MirageDb;
+    /// # fn main() -> anyhow::Result<()> {
+    /// # let db = MirageDb::open("test.db")?;
+    /// let cfg = db.load_cfg(123)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "sqlite")]
+    pub fn load_cfg(&self, function_id: i64) -> Result<crate::cfg::Cfg> {
+        let conn = self.conn()?;
+        load_cfg_from_sqlite(conn, function_id)
+    }
+
+    /// Load a CFG from the database (native-v2 backend)
+    ///
+    /// This method uses the native-v2 KV store to load CFG data.
+    #[cfg(feature = "native-v2")]
+    pub fn load_cfg(&self, function_id: i64) -> Result<crate::cfg::Cfg> {
+        load_cfg_from_native_v2(self.backend.as_ref(), function_id)
+    }
+}
+
+/// Resolve a function name or ID to a function_id (SQLite backend)
+///
+/// This is a helper function for the SQLite backend. For backend-agnostic
+/// resolution, use `MirageDb::resolve_function_name` which takes `&MirageDb`.
+#[cfg(feature = "sqlite")]
+fn resolve_function_name_sqlite(conn: &Connection, name_or_id: &str) -> Result<i64> {
     // Query by function name
     // Note: Magellan v7 stores functions as kind='Symbol' with data.kind='Function'
     let function_id: Option<i64> = conn
@@ -645,54 +731,11 @@ pub fn resolve_function_name(conn: &Connection, name_or_id: &str) -> Result<i64>
     ))
 }
 
-/// Load a CFG from the database for a given function_id
+/// Load CFG blocks from SQLite backend
 ///
-/// # Arguments
-///
-/// * `conn` - Database connection
-/// * `function_id` - ID of the function to load CFG for
-///
-/// # Returns
-///
-/// * `Ok(Cfg)` - The reconstructed control flow graph
-/// * `Err(...)` - Error if query fails or CFG data is invalid
-///
-/// # Examples
-///
-/// ```no_run
-/// # use mirage::storage::load_cfg_from_db;
-/// # use rusqlite::Connection;
-/// # fn main() -> anyhow::Result<()> {
-/// # let conn = Connection::open_in_memory()?;
-/// let cfg = load_cfg_from_db(&conn, 123)?;
-/// # Ok(())
-/// # }
-/// ```
-///
-/// # Algorithm
-///
-/// 1. Query all cfg_blocks for the function from Magellan's cfg_blocks table, ordered by id
-/// 2. For each block, create a BasicBlock with:
-///    - id: sequential index (0, 1, 2...) based on query order
-///    - kind: parsed from Magellan's kind string (entry/normal/exit/return/if/else/loop/etc.)
-///    - terminator: parsed from Magellan's terminator string (fallthrough/conditional/goto/return/etc.)
-///    - source_location: constructed from line/column data if available
-///    - statements: empty vec! (future enhancement)
-/// 3. Build edges from terminator data using build_edges_from_terminators()
-/// 4. Return the constructed Cfg
-///
-/// # Notes
-///
-/// - Block IDs in the database (AUTOINCREMENT) are mapped to sequential
-///   indices in the CFG graph (0, 1, 2...) for consistency with in-memory CFG construction
-/// - Magellan stores terminator as plain TEXT, not JSON
-/// - Magellan uses "kind" column, not "block_kind"
-/// - Requires Magellan schema v7+ for cfg_blocks table
-/// - Edges are constructed in memory from terminator data, not queried from cfg_edges table
-pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cfg::Cfg> {
-    use crate::cfg::{BasicBlock, BlockKind, Cfg, Terminator};
-    use crate::cfg::build_edges_from_terminators;
-    use crate::cfg::source::SourceLocation;
+/// This helper function loads CFG blocks using SQL queries from the cfg_blocks table.
+#[cfg(feature = "sqlite")]
+fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cfg::Cfg> {
     use std::path::PathBuf;
 
     // Query file_path for this function from graph_entities
@@ -743,8 +786,81 @@ pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cf
         );
     }
 
+    load_cfg_from_rows(block_rows, file_path)
+}
+
+/// Load CFG from native-v2 backend using Magellan's KV helper
+///
+/// This helper function loads CFG blocks from the native-v2 KV store using
+/// Magellan's `get_cfg_blocks_kv` function.
+#[cfg(feature = "native-v2")]
+fn load_cfg_from_native_v2(
+    backend: &dyn GraphBackend,
+    function_id: i64,
+) -> Result<crate::cfg::Cfg> {
+    use std::path::PathBuf;
+
+    // Query file_path for this function from graph_entities
+    let snapshot = SnapshotId::current();
+    let file_path: Option<String> = backend
+        .get_node(snapshot, function_id)
+        .ok()
+        .and_then(|entity| entity.file_path);
+
+    let file_path = file_path.map(PathBuf::from);
+
+    // Get CFG blocks from KV store using Magellan's helper
+    let magellan_blocks = get_cfg_blocks_kv(backend, function_id)
+        .context("Failed to load CFG blocks from KV store")?;
+
+    if magellan_blocks.is_empty() {
+        anyhow::bail!(
+            "No CFG blocks found for function_id {}. Run 'magellan watch' to build CFGs.",
+            function_id
+        );
+    }
+
+    // Convert Magellan's CfgBlock to the tuple format expected by load_cfg_from_rows
+    // Magellan CfgBlock has: kind, terminator, byte_start, byte_end, start_line, start_col, end_line, end_col
+    let block_rows: Vec<(i64, String, Option<String>, Option<i64>, Option<i64>,
+                          Option<i64>, Option<i64>, Option<i64>, Option<i64>)> =
+        magellan_blocks
+            .iter()
+            .enumerate()
+            .map(|(idx, block)| {
+                (
+                    idx as i64, // Use sequential index as db_id
+                    block.kind.clone(),
+                    Some(block.terminator.clone()),
+                    Some(block.byte_start as i64),
+                    Some(block.byte_end as i64),
+                    Some(block.start_line as i64),
+                    Some(block.start_col as i64),
+                    Some(block.end_line as i64),
+                    Some(block.end_col as i64),
+                )
+            })
+            .collect();
+
+    load_cfg_from_rows(block_rows, file_path)
+}
+
+/// Common CFG loading logic used by both SQLite and native-v2 backends
+///
+/// This function takes pre-fetched block rows and builds the CFG structure.
+/// It is shared between both backend implementations to ensure consistency.
+fn load_cfg_from_rows(
+    block_rows: Vec<(i64, String, Option<String>, Option<i64>, Option<i64>,
+                     Option<i64>, Option<i64>, Option<i64>, Option<i64>)>,
+    file_path: Option<std::path::PathBuf>,
+) -> Result<crate::cfg::Cfg> {
+    use crate::cfg::{BasicBlock, BlockKind, Cfg, Terminator};
+    use crate::cfg::build_edges_from_terminators;
+    use crate::cfg::source::SourceLocation;
+    use std::collections::HashMap;
+
     // Build mapping from database block ID to graph node index
-    let mut db_id_to_node: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
+    let mut db_id_to_node: HashMap<i64, usize> = HashMap::new();
     let mut graph = Cfg::new();
 
     // Add each block to the graph
@@ -819,6 +935,147 @@ pub fn load_cfg_from_db(conn: &Connection, function_id: i64) -> Result<crate::cf
         .context("Failed to build edges from terminator data")?;
 
     Ok(graph)
+}
+
+/// Resolve a function name or ID to a function_id (backend-agnostic)
+///
+/// This is the main entry point for resolving function names. It works with both
+/// SQLite and native-v2 backends.
+///
+/// # Arguments
+///
+/// * `db` - Database reference (works with both backends)
+/// * `name_or_id` - Function name (string) or function_id (numeric string)
+///
+/// # Returns
+///
+/// * `Ok(i64)` - The function_id if found
+/// * `Err(...)` - Error if function not found or query fails
+///
+/// # Examples
+///
+/// ```no_run
+/// # use mirage_analyzer::storage::{resolve_function_name, MirageDb};
+/// # fn main() -> anyhow::Result<()> {
+/// # let db = MirageDb::open("test.db")?;
+/// // Resolve by numeric ID
+/// let func_id = resolve_function_name(&db, "123")?;
+///
+/// // Resolve by function name
+/// let func_id = resolve_function_name(&db, "my_function")?;
+/// # Ok(())
+/// # }
+/// ```
+pub fn resolve_function_name(db: &MirageDb, name_or_id: &str) -> Result<i64> {
+    db.resolve_function_name(name_or_id)
+}
+
+/// Resolve a function name or ID to a function_id (SQLite backend, legacy)
+///
+/// This is the legacy function that takes a direct Connection reference.
+/// For new code supporting both backends, use `resolve_function_name` which takes `&MirageDb`.
+#[cfg(feature = "sqlite")]
+pub fn resolve_function_name_with_conn(conn: &Connection, name_or_id: &str) -> Result<i64> {
+    // Try to parse as numeric ID first
+    if let Ok(id) = name_or_id.parse::<i64>() {
+        return Ok(id);
+    }
+
+    // Query by function name
+    // Note: Magellan v7 stores functions as kind='Symbol' with data.kind='Function'
+    let function_id: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM graph_entities
+             WHERE kind = 'Symbol'
+             AND json_extract(data, '$.kind') = 'Function'
+             AND name = ?
+             LIMIT 1",
+            params![name_or_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .context(format!(
+            "Failed to query function with name '{}'",
+            name_or_id
+        ))?;
+
+    function_id.context(format!(
+        "Function '{}' not found in database. Run 'magellan watch' to index functions.",
+        name_or_id
+    ))
+}
+
+/// Load a CFG from the database for a given function_id (backend-agnostic)
+///
+/// This is the main entry point for loading CFGs. It works with both SQLite and native-v2 backends.
+///
+/// # Arguments
+///
+/// * `db` - Database reference (works with both backends)
+/// * `function_id` - ID of the function to load CFG for
+///
+/// # Returns
+///
+/// * `Ok(Cfg)` - The reconstructed control flow graph
+/// * `Err(...)` - Error if query fails or CFG data is invalid
+///
+/// # Examples
+///
+/// ```no_run
+/// # use mirage_analyzer::storage::{load_cfg_from_db, MirageDb};
+/// # fn main() -> anyhow::Result<()> {
+/// # let db = MirageDb::open("test.db")?;
+/// let cfg = load_cfg_from_db(&db, 123)?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Notes
+///
+/// - For SQLite backend: uses SQL query on cfg_blocks table
+/// - For native-v2 backend: uses Magellan's KV store via get_cfg_blocks_kv()
+/// - Requires Magellan schema v7+ for cfg_blocks table
+/// - Edges are constructed in memory from terminator data, not queried from cfg_edges table
+pub fn load_cfg_from_db(db: &MirageDb, function_id: i64) -> Result<crate::cfg::Cfg> {
+    db.load_cfg(function_id)
+}
+
+/// Load a CFG from the database for a given function_id (SQLite backend)
+///
+/// This is the legacy function that takes a direct Connection reference.
+/// For new code supporting both backends, use `load_cfg_from_db` which takes `&MirageDb`.
+///
+/// # Arguments
+///
+/// * `conn` - Database connection (SQLite only)
+/// * `function_id` - ID of the function to load CFG for
+///
+/// # Returns
+///
+/// * `Ok(Cfg)` - The reconstructed control flow graph
+/// * `Err(...)` - Error if query fails or CFG data is invalid
+///
+/// # Examples
+///
+/// ```no_run
+/// # use mirage_analyzer::storage::load_cfg_from_db_with_conn;
+/// # use rusqlite::Connection;
+/// # fn main() -> anyhow::Result<()> {
+/// # let conn = Connection::open_in_memory()?;
+/// let cfg = load_cfg_from_db_with_conn(&conn, 123)?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Notes
+///
+/// - This function only works with SQLite backend
+/// - For backend-agnostic loading, use `load_cfg_from_db(&db, function_id)` instead
+/// - Requires Magellan schema v7+ for cfg_blocks table
+/// - Edges are constructed in memory from terminator data, not queried from cfg_edges table
+#[cfg(feature = "sqlite")]
+pub fn load_cfg_from_db_with_conn(conn: &Connection, function_id: i64) -> Result<crate::cfg::Cfg> {
+    load_cfg_from_sqlite(conn, function_id)
 }
 
 /// Store a CFG in the database for a given function
@@ -1320,7 +1577,7 @@ pub fn create_minimal_database<P: AsRef<Path>>(path: P) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
 
@@ -1634,7 +1891,7 @@ mod tests {
         assert!(!function_exists(&conn, 9999));
 
         // Load and verify the CFG
-        let loaded_cfg = load_cfg_from_db(&conn, function_id).unwrap();
+        let loaded_cfg = load_cfg_from_db_with_conn(&conn, function_id).unwrap();
 
         assert_eq!(loaded_cfg.node_count(), 2);
         assert_eq!(loaded_cfg.edge_count(), 1);
@@ -1845,7 +2102,7 @@ mod tests {
         let function_id: i64 = conn.last_insert_rowid();
 
         // Resolve by numeric ID
-        let result = resolve_function_name(&conn, &function_id.to_string()).unwrap();
+        let result = resolve_function_name_with_conn(&conn, &function_id.to_string()).unwrap();
         assert_eq!(result, function_id);
     }
 
@@ -1862,7 +2119,7 @@ mod tests {
         let function_id: i64 = conn.last_insert_rowid();
 
         // Resolve by name
-        let result = resolve_function_name(&conn, "test_function").unwrap();
+        let result = resolve_function_name_with_conn(&conn, "test_function").unwrap();
         assert_eq!(result, function_id);
     }
 
@@ -1871,7 +2128,7 @@ mod tests {
         let conn = create_test_db_with_schema();
 
         // Try to resolve a non-existent function
-        let result = resolve_function_name(&conn, "nonexistent_func");
+        let result = resolve_function_name_with_conn(&conn, "nonexistent_func");
 
         assert!(result.is_err(), "Should return error for non-existent function");
         let err_msg = result.unwrap_err().to_string();
@@ -1889,7 +2146,7 @@ mod tests {
         ).unwrap();
 
         // Resolve by numeric string "123" - should parse as ID, not name
-        let result = resolve_function_name(&conn, "123").unwrap();
+        let result = resolve_function_name_with_conn(&conn, "123").unwrap();
         assert_eq!(result, 123);
 
         // Now insert a function with ID 456
@@ -1901,7 +2158,7 @@ mod tests {
 
         // If we query "456" it should try to parse as numeric ID
         // Since we just inserted and got some ID, let's verify numeric parsing works
-        let result = resolve_function_name(&conn, "999").unwrap();
+        let result = resolve_function_name_with_conn(&conn, "999").unwrap();
         assert_eq!(result, 999, "Should return numeric ID directly");
     }
 
@@ -1910,7 +2167,7 @@ mod tests {
         let conn = create_test_db_with_schema();
 
         // Try to load CFG for non-existent function
-        let result = load_cfg_from_db(&conn, 99999);
+        let result = load_cfg_from_db_with_conn(&conn, 99999);
 
         assert!(result.is_err(), "Should return error for function with no CFG");
         let err_msg = result.unwrap_err().to_string();
@@ -1939,7 +2196,7 @@ mod tests {
         ).unwrap();
 
         // Load the CFG - should handle NULL terminator gracefully
-        let cfg = load_cfg_from_db(&conn, function_id).unwrap();
+        let cfg = load_cfg_from_db_with_conn(&conn, function_id).unwrap();
 
         assert_eq!(cfg.node_count(), 1);
         let block = &cfg[petgraph::graph::NodeIndex::new(0)];
@@ -1993,7 +2250,7 @@ mod tests {
         let _block_3_id: i64 = conn.last_insert_rowid();
 
         // Load the CFG - edges are now built from terminator data, not cfg_edges table
-        let cfg = load_cfg_from_db(&conn, function_id).unwrap();
+        let cfg = load_cfg_from_db_with_conn(&conn, function_id).unwrap();
 
         assert_eq!(cfg.node_count(), 4);
         assert_eq!(cfg.edge_count(), 4);
@@ -2192,7 +2449,7 @@ mod tests {
         let function_id: i64 = conn.last_insert_rowid();
 
         // Try to load CFG - should fail with helpful error
-        let result = load_cfg_from_db(&conn, function_id);
+        let result = load_cfg_from_db_with_conn(&conn, function_id);
         assert!(result.is_err(), "Should fail when cfg_blocks table missing");
 
         let err_msg = result.unwrap_err().to_string();
@@ -2206,7 +2463,7 @@ mod tests {
         let conn = create_test_db_with_schema();
 
         // Try to load CFG for non-existent function
-        let result = load_cfg_from_db(&conn, 99999);
+        let result = load_cfg_from_db_with_conn(&conn, 99999);
         assert!(result.is_err(), "Should fail for non-existent function");
 
         let err_msg = result.unwrap_err().to_string();
@@ -2228,7 +2485,7 @@ mod tests {
         let function_id: i64 = conn.last_insert_rowid();
 
         // Try to load CFG - should fail with helpful error
-        let result = load_cfg_from_db(&conn, function_id);
+        let result = load_cfg_from_db_with_conn(&conn, function_id);
         assert!(result.is_err(), "Should fail when no CFG blocks exist");
 
         let err_msg = result.unwrap_err().to_string();
@@ -2243,7 +2500,7 @@ mod tests {
         let conn = create_test_db_with_schema();
 
         // Try to resolve a non-existent function
-        let result = resolve_function_name(&conn, "nonexistent_function");
+        let result = resolve_function_name_with_conn(&conn, "nonexistent_function");
         assert!(result.is_err(), "Should fail for non-existent function");
 
         let err_msg = result.unwrap_err().to_string();

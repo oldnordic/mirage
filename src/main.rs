@@ -97,6 +97,7 @@ fn run_command(cli: Cli) -> Result<()> {
             Commands::Slice(ref args) => cli::cmds::slice(args, &cli),
             Commands::Hotspots(ref args) => cli::cmds::hotspots(args, &cli),
             Commands::Hotpaths(ref args) => cli::cmds::hotpaths(args, &cli),
+            Commands::Diff(ref args) => cli::cmds::diff(args, &cli),
             Commands::Migrate(ref args) => cli::cmds::migrate(args, &cli),
         },
     }

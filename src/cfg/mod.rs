@@ -9,6 +9,7 @@ pub mod edge;
 pub mod export;
 pub mod git_utils;
 pub mod hotpaths;
+pub mod icfg;
 pub mod loops;
 pub mod paths;
 pub mod patterns;

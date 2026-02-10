@@ -68,6 +68,7 @@ pub const EXIT_USAGE: i32 = 2;
 pub const EXIT_DATABASE: i32 = 3;
 pub const EXIT_FILE_NOT_FOUND: i32 = 4;
 pub const EXIT_VALIDATION: i32 = 5;
+pub const EXIT_NOT_FOUND: i32 = 6;
 
 /// Exit with usage error
 pub fn exit_usage(msg: &str) -> ! {

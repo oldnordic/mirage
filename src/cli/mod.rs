@@ -3947,7 +3947,9 @@ pub mod cmds {
     }
 
     pub fn icfg(args: &IcfgArgs, cli: &Cli) -> Result<()> {
-        use crate::cfg::icfg::{build_icfg, to_dot, IcfgOptions};
+        use crate::cfg::icfg::{build_icfg, to_dot, IcfgJson, IcfgOptions};
+        use crate::output::error;
+        use crate::output::{EXIT_DATABASE, EXIT_NOT_FOUND};
         use crate::storage::MirageDb;
 
         let db_path = super::resolve_db_path(cli.db.clone())?;
@@ -4001,7 +4003,8 @@ pub mod cmds {
                 println!("{}", to_dot(&icfg));
             }
             IcfgFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(&icfg)?);
+                let json_repr = IcfgJson::from_icfg(&icfg);
+                println!("{}", serde_json::to_string_pretty(&json_repr)?);
             }
             IcfgFormat::Human => {
                 print_icfg_human(&icfg);

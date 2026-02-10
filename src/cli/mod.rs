@@ -3273,18 +3273,17 @@ pub mod cmds {
 
     pub fn hotpaths(args: &HotpathsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{
-            hotpaths::{compute_hot_paths, HotpathsOptions, HotPath},
-            detect_natural_loops, enumerate_paths, resolve_function_name, load_cfg_from_db,
-            find_entry, PathLimits,
+            hotpaths::{compute_hot_paths, HotpathsOptions},
+            detect_natural_loops, enumerate_paths, find_entry, PathLimits,
         };
-        use crate::storage::{Backend, StorageTrait};
+        use crate::storage::MirageDb;
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;
 
         // Open database (follows status command pattern for error handling)
-        let backend = match Backend::detect_and_open(&db_path) {
-            Ok(backend) => backend,
+        let db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
                     let error = output::JsonError::database_not_found(&db_path);
@@ -3300,7 +3299,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(&backend, &args.function) {
+        let function_id = match db.resolve_function_name(&args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3317,7 +3316,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(&backend, function_id) {
+        let cfg = match db.load_cfg(function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3349,11 +3348,9 @@ pub mod cmds {
         // Detect natural loops
         let natural_loops = detect_natural_loops(&cfg);
 
-        // Enumerate all paths
-        let limits = PathLimits {
-            max_paths: args.max_paths.unwrap_or(1000),
-            max_length: args.max_length,
-        };
+        // Enumerate all paths with default limits
+        // Note: HotpathsArgs uses 'top' for number of results, not path enumeration limits
+        let limits = PathLimits::default();
         let paths = enumerate_paths(&cfg, &limits);
 
         if paths.is_empty() {
@@ -3778,15 +3775,15 @@ pub mod cmds {
     }
 
     pub fn diff(args: &DiffArgs, cli: &Cli) -> Result<()> {
-        use crate::cfg::diff::{compute_cfg_diff, CfgDiff};
-        use crate::storage::{Backend, StorageTrait};
+        use crate::cfg::diff::compute_cfg_diff;
+        use crate::storage::MirageDb;
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;
 
         // Open database
-        let backend = match Backend::detect_and_open(&db_path) {
-            Ok(backend) => backend,
+        let db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
                     let error = output::JsonError::database_not_found(&db_path);
@@ -3802,19 +3799,8 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(&backend, &args.function) {
-            Ok(Some(id)) => id,
-            Ok(None) => {
-                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::function_not_found(&args.function);
-                    let wrapper = output::JsonResponse::new(error);
-                    println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_FILE_NOT_FOUND);
-                } else {
-                    output::error(&format!("Function '{}' not found in database", args.function));
-                    std::process::exit(output::EXIT_FILE_NOT_FOUND);
-                }
-            }
+        let function_id = match db.resolve_function_name(&args.function) {
+            Ok(id) => id,
             Err(e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
                     let error = output::JsonError::new("Database", &e.to_string(), "E001");
@@ -3829,7 +3815,7 @@ pub mod cmds {
         };
 
         // Compute diff
-        let diff = match compute_cfg_diff(&backend, function_id, &args.before, &args.after) {
+        let diff = match compute_cfg_diff(db.storage(), function_id, &args.before, &args.after) {
             Ok(diff) => diff,
             Err(e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3859,7 +3845,7 @@ pub mod cmds {
         Ok(())
     }
 
-    fn print_diff_human(diff: &CfgDiff, show_edges: bool, verbose: bool) {
+    fn print_diff_human(diff: &crate::cfg::diff::CfgDiff, show_edges: bool, verbose: bool) {
         use crate::output::{info, warn, success};
 
         info(&format!("CFG Diff: {}", diff.function_name));
@@ -3869,11 +3855,11 @@ pub mod cmds {
         // Color-code similarity
         let similarity_pct = diff.structural_similarity * 100.0;
         if similarity_pct >= 90.0 {
-            println!("  Similarity: {}", success(&format!("{:.1}%", similarity_pct)));
+            success(&format!("  Similarity: {:.1}%", similarity_pct));
         } else if similarity_pct >= 70.0 {
             println!("  Similarity: {:.1}%", similarity_pct);
         } else {
-            println!("  Similarity: {}", warn(&format!("{:.1}%", similarity_pct)));
+            warn(&format!("  Similarity: {:.1}%", similarity_pct));
         }
 
         if !diff.added_blocks.is_empty() {

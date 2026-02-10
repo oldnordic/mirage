@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    BasicBlock, BlockId, Cfg, EdgeType, Path,
+    BasicBlock, BlockId, Cfg, EdgeType, Path, Terminator,
     loops::NaturalLoop,
 };
 

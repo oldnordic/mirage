@@ -110,11 +110,10 @@ pub fn compute_hot_paths(
     let dom_tree = dominators::simple_fast(graph, entry_id);
 
     // Get all dominant blocks (blocks that dominate all reachable blocks)
+    // dominators() returns Option<DominatorsIter> where the Iterator yields NodeIndex
     let dominant_blocks: HashSet<NodeIndex> = dom_tree
         .dominators(entry_id)
-        .iter()
-        .copied()
-        .collect();
+        .map_or_else(HashSet::new, |iter| iter.collect());
 
     // Compute hotness for each path
     let mut hot_paths: Vec<HotPath> = paths.iter().map(|path| {

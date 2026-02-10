@@ -4,6 +4,19 @@
 
 #![allow(dead_code)]
 
+// Compile-time guard: prevent enabling both backends simultaneously
+// This must be at the lib level since storage/mod.rs is compiled first
+#[cfg(all(feature = "sqlite", feature = "native-v2"))]
+compile_error!(
+    "Features 'sqlite' and 'native-v2' are mutually exclusive. \
+     Enable only one backend feature. Remove one of: \
+     --features sqlite \
+     --features native-v2 \
+     \
+     Default is SQLite, so use `cargo build` with no features, or \
+     `cargo build --features native-v2` for the native-v2 backend."
+);
+
 pub mod analysis;
 pub mod cli;
 pub mod cfg;

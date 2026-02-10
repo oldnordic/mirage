@@ -14,6 +14,9 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
+// GraphBackend imports for dual backend support
+use sqlitegraph::{GraphBackend, GraphConfig, SnapshotId, open_graph};
+
 // Re-export path caching functions
 // Note: Some exports like PathCache, store_paths, etc. are not currently used
 // but are kept for potential future use and API completeness
@@ -82,9 +85,24 @@ pub const REQUIRED_MAGELLAN_SCHEMA_VERSION: i32 = TEST_MAGELLAN_SCHEMA_VERSION;
 pub const REQUIRED_SQLITEGRAPH_SCHEMA_VERSION: i32 = 3;
 
 /// Database connection wrapper
-#[derive(Debug)]
 pub struct MirageDb {
-    conn: Connection,
+    /// Backend-agnostic graph interface
+    backend: Box<dyn GraphBackend>,
+    /// Snapshot ID for consistent reads
+    snapshot_id: SnapshotId,
+
+    // SQLite-specific connection (only available with sqlite feature)
+    #[cfg(feature = "sqlite")]
+    conn: Option<Connection>,
+}
+
+impl std::fmt::Debug for MirageDb {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MirageDb")
+            .field("snapshot_id", &self.snapshot_id)
+            .field("backend", &"<GraphBackend>")
+            .finish()
+    }
 }
 
 impl MirageDb {
@@ -93,6 +111,9 @@ impl MirageDb {
     /// This can open:
     /// - A Mirage database (with mirage_meta table)
     /// - A Magellan database (extends it with Mirage tables)
+    ///
+    /// Uses Backend::detect() to determine the file format and open_graph()
+    /// to create the appropriate backend.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         if !path.exists() {
@@ -100,13 +121,13 @@ impl MirageDb {
         }
 
         // Detect backend format from file header
-        let _detected_backend = Backend::detect(path)
+        let detected_backend = Backend::detect(path)
             .context("Failed to detect backend format")?;
 
         // Validate that detected backend matches compile-time feature
         #[cfg(feature = "sqlite")]
         {
-            if _detected_backend == Backend::NativeV2 {
+            if detected_backend == Backend::NativeV2 {
                 anyhow::bail!(
                     "Database file '{}' uses native-v2 format, but this binary was built \
                      with SQLite backend. Rebuild with: cargo build --release --no-default-features --features native-v2",
@@ -117,7 +138,7 @@ impl MirageDb {
 
         #[cfg(feature = "native-v2")]
         {
-            if _detected_backend == Backend::SQLite {
+            if detected_backend == Backend::SQLite {
                 anyhow::bail!(
                     "Database file '{}' uses SQLite format, but this binary was built \
                      with native-v2 backend. Rebuild with: cargo build --release",
@@ -126,9 +147,51 @@ impl MirageDb {
             }
         }
 
-        let mut conn = Connection::open(path)
-            .context("Failed to open database")?;
+        // Select appropriate GraphConfig based on detected backend
+        let cfg = match detected_backend {
+            Backend::SQLite => GraphConfig::sqlite(),
+            Backend::NativeV2 => GraphConfig::native(),
+            Backend::Unknown => {
+                anyhow::bail!(
+                    "Unknown database format: {}. Cannot determine backend.",
+                    path.display()
+                );
+            }
+        };
 
+        // Use open_graph factory to create backend
+        let backend = open_graph(path, &cfg)
+            .context("Failed to open graph database")?;
+
+        let snapshot_id = SnapshotId::current();
+
+        // For SQLite backend, open Connection and validate schema
+        #[cfg(feature = "sqlite")]
+        let conn = {
+            let mut conn = Connection::open(path)
+                .context("Failed to open SQLite connection")?;
+            Self::validate_schema_sqlite(&mut conn, path)?;
+            Some(conn)
+        };
+
+        // For native-v2 backend, schema validation will be added in future plans
+        #[cfg(feature = "native-v2")]
+        {
+            // TODO: Add native-v2 schema validation via GraphBackend methods
+            // For now, we trust the native-v2 backend has the required tables
+        }
+
+        Ok(Self {
+            backend,
+            snapshot_id,
+            #[cfg(feature = "sqlite")]
+            conn,
+        })
+    }
+
+    /// Validate database schema for SQLite backend
+    #[cfg(feature = "sqlite")]
+    fn validate_schema_sqlite(conn: &mut Connection, _path: &Path) -> Result<()> {
         // Check if mirage_meta table exists
         let mirage_meta_exists: bool = conn.query_row(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='mirage_meta'",
@@ -187,22 +250,63 @@ impl MirageDb {
         // If mirage_meta doesn't exist, this is a pure Magellan database.
         // Initialize Mirage tables to extend it.
         if !mirage_meta_exists {
-            create_schema(&mut conn, magellan_version)?;
+            create_schema(conn, magellan_version)?;
         } else if mirage_version < MIRAGE_SCHEMA_VERSION {
-            migrate_schema(&mut conn)?;
+            migrate_schema(conn)?;
         }
 
-        Ok(Self { conn })
+        Ok(())
     }
 
-    /// Get a reference to the underlying connection
-    pub fn conn(&self) -> &Connection {
-        &self.conn
+    /// Get a reference to the underlying Connection (SQLite backend only)
+    ///
+    /// For SQLite backend, returns the Connection directly.
+    /// For native-v2 backend, returns an error.
+    #[cfg(feature = "sqlite")]
+    pub fn conn(&self) -> Result<&Connection, anyhow::Error> {
+        self.conn.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Connection not available. Backend may not be SQLite.")
+        })
     }
 
-    /// Get a mutable reference to the underlying connection
-    pub fn conn_mut(&mut self) -> &mut Connection {
-        &mut self.conn
+    /// Get a mutable reference to the underlying Connection (SQLite backend only)
+    ///
+    /// For SQLite backend, returns the Connection directly.
+    /// For native-v2 backend, returns an error.
+    #[cfg(feature = "sqlite")]
+    pub fn conn_mut(&mut self) -> Result<&mut Connection, anyhow::Error> {
+        self.conn.as_mut().ok_or_else(|| {
+            anyhow::anyhow!("Connection not available. Backend may not be SQLite.")
+        })
+    }
+
+    /// Get a reference to the underlying Connection (native-v2 backend)
+    ///
+    /// For native-v2 backend, this always returns an error since Connection
+    /// is only available with SQLite backend.
+    #[cfg(feature = "native-v2")]
+    pub fn conn(&self) -> Result<&Connection, anyhow::Error> {
+        Err(anyhow::anyhow!(
+            "Direct Connection access not available for native-v2 backend. \
+             Use GraphBackend methods instead."
+        ))
+    }
+
+    /// Get a mutable reference to the underlying Connection (native-v2 backend)
+    ///
+    /// For native-v2 backend, this always returns an error since Connection
+    /// is only available with SQLite backend.
+    #[cfg(feature = "native-v2")]
+    pub fn conn_mut(&mut self) -> Result<&mut Connection, anyhow::Error> {
+        Err(anyhow::anyhow!(
+            "Direct Connection access not available for native-v2 backend. \
+             Use GraphBackend methods instead."
+        ))
+    }
+
+    /// Get a reference to the backend-agnostic GraphBackend interface
+    pub fn backend(&self) -> &dyn GraphBackend {
+        self.backend.as_ref()
     }
 }
 
@@ -408,8 +512,11 @@ impl MirageDb {
     ///
     /// Note: cfg_edges count is included for backward compatibility but edges
     /// are now computed in memory from terminator data, not stored.
+    #[cfg(feature = "sqlite")]
     pub fn status(&self) -> Result<DatabaseStatus> {
-        let cfg_blocks: i64 = self.conn.query_row(
+        let conn = self.conn()?;
+
+        let cfg_blocks: i64 = conn.query_row(
             "SELECT COUNT(*) FROM cfg_blocks",
             [],
             |row| row.get(0),
@@ -417,31 +524,31 @@ impl MirageDb {
 
         // Edges are now computed in memory from terminator data (per RESEARCH.md Pattern 2)
         // This count is kept for backward compatibility but will always be 0 for new databases
-        let cfg_edges: i64 = self.conn.query_row(
+        let cfg_edges: i64 = conn.query_row(
             "SELECT COUNT(*) FROM cfg_edges",
             [],
             |row| row.get(0),
         ).unwrap_or(0);
 
-        let cfg_paths: i64 = self.conn.query_row(
+        let cfg_paths: i64 = conn.query_row(
             "SELECT COUNT(*) FROM cfg_paths",
             [],
             |row| row.get(0),
         ).unwrap_or(0);
 
-        let cfg_dominators: i64 = self.conn.query_row(
+        let cfg_dominators: i64 = conn.query_row(
             "SELECT COUNT(*) FROM cfg_dominators",
             [],
             |row| row.get(0),
         ).unwrap_or(0);
 
-        let mirage_schema_version: i32 = self.conn.query_row(
+        let mirage_schema_version: i32 = conn.query_row(
             "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
             [],
             |row| row.get(0),
         ).unwrap_or(0);
 
-        let magellan_schema_version: i32 = self.conn.query_row(
+        let magellan_schema_version: i32 = conn.query_row(
             "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
             [],
             |row| row.get(0),
@@ -455,6 +562,22 @@ impl MirageDb {
             cfg_dominators,
             mirage_schema_version,
             magellan_schema_version,
+        })
+    }
+
+    /// Get database statistics (native-v2 backend placeholder)
+    ///
+    /// TODO: Implement via GraphBackend metadata queries
+    #[cfg(feature = "native-v2")]
+    pub fn status(&self) -> Result<DatabaseStatus> {
+        // Placeholder: Return default values until native-v2 metadata queries are implemented
+        Ok(DatabaseStatus {
+            cfg_blocks: 0,
+            cfg_edges: 0,
+            cfg_paths: 0,
+            cfg_dominators: 0,
+            mirage_schema_version: MIRAGE_SCHEMA_VERSION,
+            magellan_schema_version: MIN_MAGELLAN_SCHEMA_VERSION,
         })
     }
 }
@@ -1730,10 +1853,11 @@ mod tests {
     fn test_resolve_function_by_name() {
         let conn = create_test_db_with_schema();
 
-        // Insert a test function
+        // Insert a test function with Magellan v7 schema
+        // Magellan v7 stores functions as kind='Symbol' with data.kind='Function'
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
-            params!("function", "test_function", "test.rs", "{}"),
+            params!("Symbol", "test_function", "test.rs", r#"{"kind":"Function"}"#),
         ).unwrap();
         let function_id: i64 = conn.last_insert_rowid();
 

@@ -771,7 +771,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn(), &args.function) {
+        let function_id = match resolve_function_name(db.conn()?, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -788,7 +788,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn(), function_id) {
+        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -815,7 +815,7 @@ pub mod cmds {
         }
 
         // Get function hash for path caching
-        let function_hash = match get_function_hash(db.conn(), function_id) {
+        let function_hash = match get_function_hash(db.conn()?, function_id) {
             Some(hash) => hash,
             None => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -840,7 +840,7 @@ pub mod cmds {
             function_id,
             &function_hash,
             &limits,
-            db.conn_mut(),
+            db.conn_mut()?,
         ).map_err(|e| anyhow::anyhow!("Path enumeration failed: {}", e))?;
 
         // Filter to error paths if requested
@@ -936,7 +936,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn(), &args.function) {
+        let function_id = match resolve_function_name(db.conn()?, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -953,7 +953,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn(), function_id) {
+        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1085,7 +1085,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn(), &args.function) {
+        let function_id = match resolve_function_name(db.conn()?, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1102,7 +1102,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn(), function_id) {
+        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1606,7 +1606,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn(), &args.function) {
+        let function_id = match resolve_function_name(db.conn()?, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1623,7 +1623,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn(), function_id) {
+        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1769,7 +1769,7 @@ pub mod cmds {
         // Query all functions from the database
         // Use prepare and execute to handle multiple rows properly
         let mut function_rows: Vec<(String, i64)> = Vec::new();
-        let mut stmt = match db.conn().prepare("SELECT name, id FROM graph_entities WHERE kind = 'function'") {
+        let mut stmt = match db.conn()?.prepare("SELECT name, id FROM graph_entities WHERE kind = 'function'") {
             Ok(stmt) => stmt,
             Err(e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1835,7 +1835,7 @@ pub mod cmds {
         // Load CFG for each function and find unreachable blocks
         let mut all_results = Vec::new();
         for (function_name, function_id) in function_rows {
-            match load_cfg_from_db(db.conn(), function_id) {
+            match load_cfg_from_db(db.conn()?, function_id) {
                 Ok(cfg) => {
                     let unreachable_indices = find_unreachable(&cfg);
                     if !unreachable_indices.is_empty() {
@@ -2007,7 +2007,7 @@ pub mod cmds {
         let path_id = &args.path_id;
 
         // Check if path exists in cache by querying cfg_paths table
-        let cached_path_info: Option<(String, i64, String)> = db.conn()
+        let cached_path_info: Option<(String, i64, String)> = db.conn()?
             .query_row(
                 "SELECT path_id, function_id, path_kind FROM cfg_paths WHERE path_id = ?1",
                 rusqlite::params![path_id],
@@ -2055,7 +2055,7 @@ pub mod cmds {
 
         // Path exists in cache - verify it still exists in current enumeration
         // Load CFG from database for this function
-        let cfg = match load_cfg_from_db(db.conn(), function_id) {
+        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -2170,7 +2170,7 @@ pub mod cmds {
             }
 
             // Get path metadata to find function_id
-            let (function_id, path_kind): (i64, String) = match db.conn().query_row(
+            let (function_id, path_kind): (i64, String) = match db.conn()?.query_row(
                 "SELECT function_id, path_kind FROM cfg_paths WHERE path_id = ?1",
                 rusqlite::params![path_id_trimmed],
                 |row| Ok((row.get(0)?, row.get(1)?))
@@ -2219,7 +2219,7 @@ pub mod cmds {
             }
 
             // Load CFG for the function
-            let cfg = match load_cfg_from_db(db.conn(), function_id) {
+            let cfg = match load_cfg_from_db(db.conn()?, function_id) {
                 Ok(cfg) => cfg,
                 Err(_e) => {
                     let msg = format!("Failed to load CFG for function_id {}", function_id);
@@ -2237,12 +2237,12 @@ pub mod cmds {
             };
 
             // Get function name for display
-            let function_name = get_function_name(db.conn(), function_id)
+            let function_name = get_function_name(db.conn()?, function_id)
                 .unwrap_or_else(|| format!("<function_{}>", function_id));
 
             // Compute path impact
             let max_depth = if args.max_depth == 100 { None } else { Some(args.max_depth) };
-            let impact = match compute_path_impact_from_db(db.conn(), path_id_trimmed, &cfg, max_depth) {
+            let impact = match compute_path_impact_from_db(db.conn()?, path_id_trimmed, &cfg, max_depth) {
                 Ok(impact) => impact,
                 Err(e) => {
                     let msg = format!("Failed to compute path impact: {}", e);
@@ -2359,7 +2359,7 @@ pub mod cmds {
             let function_ref = args.function.as_ref().expect("--function is required for block-based analysis");
 
             // Resolve function name/ID to function_id
-            let function_id = match resolve_function_name(db.conn(), function_ref) {
+            let function_id = match resolve_function_name(db.conn()?, function_ref) {
                 Ok(id) => id,
                 Err(_e) => {
                     if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -2376,11 +2376,11 @@ pub mod cmds {
             };
 
             // Get function name for display
-            let function_name = get_function_name(db.conn(), function_id)
+            let function_name = get_function_name(db.conn()?, function_id)
                 .unwrap_or_else(|| format!("<function_{}>", function_id));
 
             // Load CFG from database
-            let cfg = match load_cfg_from_db(db.conn(), function_id) {
+            let cfg = match load_cfg_from_db(db.conn()?, function_id) {
                 Ok(cfg) => cfg,
                 Err(_e) => {
                     if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -2585,7 +2585,7 @@ pub mod cmds {
             };
 
             // Query all functions from the database
-            let mut stmt = match db.conn().prepare("SELECT name, id FROM graph_entities WHERE kind = 'function'") {
+            let mut stmt = match db.conn()?.prepare("SELECT name, id FROM graph_entities WHERE kind = 'function'") {
                 Ok(stmt) => stmt,
                 Err(e) => {
                     if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -2613,7 +2613,7 @@ pub mod cmds {
                     for row in rows {
                         if let Ok((function_name, function_id)) = row {
                             // Load CFG for this function
-                            if let Ok(cfg) = load_cfg_from_db(db.conn(), function_id) {
+                            if let Ok(cfg) = load_cfg_from_db(db.conn()?, function_id) {
                                 // Detect natural loops
                                 let natural_loops = detect_natural_loops(&cfg);
 
@@ -2893,7 +2893,7 @@ pub mod cmds {
         // Fallback to intra-procedural if no hotspots found or inter-procedural failed
         if hotspots.is_empty() {
             // Get all functions from database by joining with graph_entities
-            let conn = db.conn_mut();
+            let conn = db.conn_mut()?;
 
             let query = "SELECT DISTINCT cb.function_id, ge.name, ge.file_path
                         FROM cfg_blocks cb
@@ -3009,7 +3009,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn(), &args.function) {
+        let function_id = match resolve_function_name(db.conn()?, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3026,7 +3026,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn(), function_id) {
+        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3173,7 +3173,7 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(db.conn(), &args.function) {
+        let function_id = match resolve_function_name(db.conn()?, &args.function) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3190,7 +3190,7 @@ pub mod cmds {
         };
 
         // Load CFG from database
-        let cfg = match load_cfg_from_db(db.conn(), function_id) {
+        let cfg = match load_cfg_from_db(db.conn()?, function_id) {
             Ok(cfg) => cfg,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3547,7 +3547,7 @@ mod cfg_tests {
         let response = JsonResponse::new(export);
 
         // Verify JsonResponse structure
-        assert_eq!(response.schema_version, "1.0.0");
+        assert_eq!(response.schema_version, "1.0.1");
         assert_eq!(response.tool, "mirage");
         assert!(!response.execution_id.is_empty());
         assert!(!response.timestamp.is_empty());
@@ -3717,14 +3717,14 @@ mod status_tests {
         let response = JsonResponse::new(status);
 
         // Verify JsonResponse wrapper structure
-        assert_eq!(response.schema_version, "1.0.0");
+        assert_eq!(response.schema_version, "1.0.1");
         assert_eq!(response.tool, "mirage");
         assert!(!response.execution_id.is_empty());
         assert!(!response.timestamp.is_empty());
 
         // Verify JSON serialization
         let json = response.to_json();
-        assert!(json.contains("\"schema_version\":\"1.0.0\""));
+        assert!(json.contains("\"schema_version\":\"1.0.1\""));
         assert!(json.contains("\"tool\":\"mirage\""));
         assert!(json.contains("\"execution_id\""));
         assert!(json.contains("\"timestamp\""));
@@ -3756,7 +3756,7 @@ mod status_tests {
         let parsed: serde_json::Value = serde_json::from_str(&pretty_json)
             .expect("Pretty JSON should be valid");
         assert!(parsed.is_object(), "Parsed JSON should be an object");
-        assert_eq!(parsed["schema_version"], "1.0.0");
+        assert_eq!(parsed["schema_version"], "1.0.1");
         assert_eq!(parsed["tool"], "mirage");
         assert!(parsed["data"].is_object(), "data field should be an object");
     }
@@ -5209,14 +5209,14 @@ mod dominators_tests {
 
         let wrapper = JsonResponse::new(response);
 
-        assert_eq!(wrapper.schema_version, "1.0.0");
+        assert_eq!(wrapper.schema_version, "1.0.1");
         assert_eq!(wrapper.tool, "mirage");
         assert!(!wrapper.execution_id.is_empty());
         assert!(!wrapper.timestamp.is_empty());
 
         // Verify JSON contains expected fields
         let json = wrapper.to_json();
-        assert!(json.contains("\"schema_version\":\"1.0.0\""));
+        assert!(json.contains("\"schema_version\":\"1.0.1\""));
         assert!(json.contains("\"tool\":\"mirage\""));
         assert!(json.contains("wrapped_test"));
     }
@@ -5459,13 +5459,13 @@ mod verify_tests {
 
         let wrapper = JsonResponse::new(result);
 
-        assert_eq!(wrapper.schema_version, "1.0.0");
+        assert_eq!(wrapper.schema_version, "1.0.1");
         assert_eq!(wrapper.tool, "mirage");
         assert!(!wrapper.execution_id.is_empty());
         assert!(!wrapper.timestamp.is_empty());
 
         let json = wrapper.to_json();
-        assert!(json.contains("\"schema_version\":\"1.0.0\""));
+        assert!(json.contains("\"schema_version\":\"1.0.1\""));
         assert!(json.contains("\"tool\":\"mirage\""));
         assert!(json.contains("wrapped_path"));
     }
@@ -5635,7 +5635,7 @@ mod output_format_tests {
             paths: vec![],
         };
         let paths_wrapper = JsonResponse::new(paths_resp);
-        assert_eq!(paths_wrapper.schema_version, "1.0.0");
+        assert_eq!(paths_wrapper.schema_version, "1.0.1");
         assert_eq!(paths_wrapper.tool, "mirage");
         assert!(!paths_wrapper.execution_id.is_empty());
 
@@ -5648,7 +5648,7 @@ mod output_format_tests {
             must_pass_through: None,
         };
         let dom_wrapper = JsonResponse::new(dom_resp);
-        assert_eq!(dom_wrapper.schema_version, "1.0.0");
+        assert_eq!(dom_wrapper.schema_version, "1.0.1");
         assert_eq!(dom_wrapper.tool, "mirage");
 
         // UnreachableResponse wrapped
@@ -5661,7 +5661,7 @@ mod output_format_tests {
             blocks: vec![],
         };
         let unreach_wrapper = JsonResponse::new(unreach_resp);
-        assert_eq!(unreach_wrapper.schema_version, "1.0.0");
+        assert_eq!(unreach_wrapper.schema_version, "1.0.1");
         assert_eq!(unreach_wrapper.tool, "mirage");
 
         // VerifyResult wrapped
@@ -5674,7 +5674,7 @@ mod output_format_tests {
             current_paths: 2,
         };
         let verify_wrapper = JsonResponse::new(verify_res);
-        assert_eq!(verify_wrapper.schema_version, "1.0.0");
+        assert_eq!(verify_wrapper.schema_version, "1.0.1");
         assert_eq!(verify_wrapper.tool, "mirage");
     }
 
@@ -5715,7 +5715,7 @@ mod output_format_tests {
         let wrapper = JsonResponse::new(data);
 
         // Check all required fields exist and have correct values
-        assert_eq!(wrapper.schema_version, "1.0.0");
+        assert_eq!(wrapper.schema_version, "1.0.1");
         assert_eq!(wrapper.tool, "mirage");
         assert!(!wrapper.execution_id.is_empty());
         assert!(!wrapper.timestamp.is_empty());

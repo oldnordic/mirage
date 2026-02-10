@@ -25,8 +25,8 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Magellan for inter-procedural analysis
 magellan = { version = "2.2", optional = true }
-# Re-export sqlitegraph version used by Magellan
-sqlitegraph = { version = "1.5", optional = true }
+# sqlitegraph for GraphBackend trait (required for dual backend support)
+sqlitegraph = "1.5"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

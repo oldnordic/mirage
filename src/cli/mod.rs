@@ -102,6 +102,9 @@ pub enum Commands {
     /// Show CFG differences between two snapshots
     Diff(DiffArgs),
 
+    /// Show inter-procedural CFG (combined function CFGs with call/return edges)
+    Icfg(IcfgArgs),
+
     /// Migrate database between storage backends
     Migrate(MigrateArgs),
 }
@@ -359,6 +362,37 @@ pub struct MigrateArgs {
     /// Dry run: detect format only without migrating
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// Inter-procedural CFG arguments
+#[derive(Parser, Debug, Clone)]
+pub struct IcfgArgs {
+    /// Entry function symbol ID or name
+    #[arg(long)]
+    pub entry: String,
+
+    /// Maximum depth for call graph traversal (default: 3)
+    #[arg(long, default_value = "3")]
+    pub depth: usize,
+
+    /// Include return edges (default: true)
+    #[arg(long, default_value = "true")]
+    pub return_edges: bool,
+
+    /// Output format
+    #[arg(long, value_enum)]
+    pub format: Option<IcfgFormat>,
+}
+
+/// ICFG output format
+#[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IcfgFormat {
+    /// DOT graph format (for graphviz)
+    Dot,
+    /// JSON format
+    Json,
+    /// Human-readable summary
+    Human,
 }
 
 /// Diff command arguments
@@ -881,7 +915,7 @@ pub mod cmds {
     }
 
     pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
-        use crate::cfg::{PathKind, PathLimits, get_or_enumerate_paths, enumerate_paths_incremental, IncrementalPathsResult};
+        use crate::cfg::{PathKind, PathLimits, get_or_enumerate_paths, enumerate_paths_incremental};
         use crate::cfg::{resolve_function_name, load_cfg_from_db};
         use crate::storage::{MirageDb, get_function_hash_db};
 
@@ -3771,29 +3805,20 @@ pub mod cmds {
         let function_id = match resolve_function_name(&backend, &args.function) {
             Ok(Some(id)) => id,
             Ok(None) => {
-                let error = format!("Function not found: {}", args.function);
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let json_error = output::JsonError {
-                        error: true,
-                        message: error.clone(),
-                        code: output::ErrorCode::NotFound,
-                    };
-                    let wrapper = output::JsonResponse::new(json_error);
+                    let error = output::JsonError::function_not_found(&args.function);
+                    let wrapper = output::JsonResponse::new(error);
                     println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_NOT_FOUND);
+                    std::process::exit(output::EXIT_FILE_NOT_FOUND);
                 } else {
-                    output::error(&error);
-                    std::process::exit(output::EXIT_NOT_FOUND);
+                    output::error(&format!("Function '{}' not found in database", args.function));
+                    std::process::exit(output::EXIT_FILE_NOT_FOUND);
                 }
             }
             Err(e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let json_error = output::JsonError {
-                        error: true,
-                        message: e.to_string(),
-                        code: output::ErrorCode::Database,
-                    };
-                    let wrapper = output::JsonResponse::new(json_error);
+                    let error = output::JsonError::new("Database", &e.to_string(), "E001");
+                    let wrapper = output::JsonResponse::new(error);
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
@@ -3808,12 +3833,8 @@ pub mod cmds {
             Ok(diff) => diff,
             Err(e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let json_error = output::JsonError {
-                        error: true,
-                        message: e.to_string(),
-                        code: output::ErrorCode::Database,
-                    };
-                    let wrapper = output::JsonResponse::new(json_error);
+                    let error = output::JsonError::new("Database", &e.to_string(), "E001");
+                    let wrapper = output::JsonResponse::new(error);
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
@@ -3839,7 +3860,7 @@ pub mod cmds {
     }
 
     fn print_diff_human(diff: &CfgDiff, show_edges: bool, verbose: bool) {
-        use crate::output::{info, highlight, success};
+        use crate::output::{info, warn, success};
 
         info(&format!("CFG Diff: {}", diff.function_name));
         println!("  Before: {}", diff.before_snapshot);
@@ -3852,7 +3873,7 @@ pub mod cmds {
         } else if similarity_pct >= 70.0 {
             println!("  Similarity: {:.1}%", similarity_pct);
         } else {
-            println!("  Similarity: {}", highlight(&format!("{:.1}%", similarity_pct)));
+            println!("  Similarity: {}", warn(&format!("{:.1}%", similarity_pct)));
         }
 
         if !diff.added_blocks.is_empty() {

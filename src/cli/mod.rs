@@ -99,6 +99,9 @@ pub enum Commands {
     /// Show most-traversed execution paths (hot paths)
     Hotpaths(HotpathsArgs),
 
+    /// Show CFG differences between two snapshots
+    Diff(DiffArgs),
+
     /// Migrate database between storage backends
     Migrate(MigrateArgs),
 }
@@ -348,6 +351,30 @@ pub struct MigrateArgs {
     /// Dry run: detect format only without migrating
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// Diff command arguments
+#[derive(Parser, Debug, Clone)]
+pub struct DiffArgs {
+    /// Function symbol ID or name to compare
+    #[arg(long)]
+    pub function: String,
+
+    /// Before snapshot ID (transaction ID or "current")
+    #[arg(long)]
+    pub before: String,
+
+    /// After snapshot ID (transaction ID or "current")
+    #[arg(long)]
+    pub after: String,
+
+    /// Show edge differences
+    #[arg(long)]
+    pub show_edges: bool,
+
+    /// Show detailed block changes
+    #[arg(long)]
+    pub verbose: bool,
 }
 
 /// Backend format for migration
@@ -3071,6 +3098,133 @@ pub mod cmds {
         Ok(())
     }
 
+    pub fn hotpaths(args: &HotpathsArgs, cli: &Cli) -> Result<()> {
+        use crate::cfg::{
+            hotpaths::{compute_hot_paths, HotpathsOptions, HotPath},
+            detect_natural_loops, enumerate_paths, resolve_function_name, load_cfg_from_db,
+            find_entry,
+        };
+        use crate::storage::{Backend, StorageTrait};
+
+        // Resolve database path
+        let db_path = super::resolve_db_path(cli.db.clone())?;
+
+        // Open database (follows status command pattern for error handling)
+        let backend = match Backend::detect_and_open(&db_path) {
+            Ok(backend) => backend,
+            Err(_e) => {
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::database_not_found(&db_path);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", db_path));
+                    output::info("Hint: Run 'magellan watch' to create the database");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
+            }
+        };
+
+        // Resolve function name/ID to function_id
+        let function_id = match resolve_function_name(&backend, &args.function) {
+            Ok(id) => id,
+            Err(_e) => {
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::function_not_found(&args.function);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Function '{}' not found in database", args.function));
+                    output::info("Hint: Run 'magellan watch' to index your code");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
+            }
+        };
+
+        // Load CFG from database
+        let cfg = match load_cfg_from_db(&backend, function_id) {
+            Ok(cfg) => cfg,
+            Err(_e) => {
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::new(
+                        "CfgLoadError",
+                        &format!("Failed to load CFG for function '{}'", args.function),
+                        output::E_CFG_ERROR,
+                    );
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to load CFG for function '{}'", args.function));
+                    output::info("The function may be corrupted. Try re-running 'magellan watch'");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
+            }
+        };
+
+        // Find entry block
+        let entry = match find_entry(&cfg) {
+            Some(entry) => entry,
+            None => {
+                output::error(&format!("No entry block found for function '{}'", args.function));
+                std::process::exit(output::EXIT_DATABASE);
+            }
+        };
+
+        // Detect natural loops
+        let natural_loops = detect_natural_loops(&cfg);
+
+        // Enumerate all paths
+        let paths = match enumerate_paths(&args.function.clone(), &backend, None) {
+            Ok(paths) => paths,
+            Err(_e) => {
+                output::error(&format!("Failed to enumerate paths for function '{}'", args.function));
+                std::process::exit(output::EXIT_DATABASE);
+            }
+        };
+
+        if paths.is_empty() {
+            output::info(&format!("No paths found for function '{}'", args.function));
+            return Ok(());
+        }
+
+        // Compute hot paths
+        let options = HotpathsOptions {
+            top_n: args.top,
+            include_rationale: args.rationale,
+        };
+
+        let mut hot_paths = match compute_hot_paths(&cfg, &paths, entry, &natural_loops, options) {
+            Ok(hp) => hp,
+            Err(e) => {
+                output::error(&format!("Failed to compute hot paths: {}", e));
+                std::process::exit(output::EXIT_DATABASE);
+            }
+        };
+
+        // Apply minimum score filter if specified
+        if let Some(min_score) = args.min_score {
+            hot_paths.retain(|hp| hp.hotness_score >= min_score);
+        }
+
+        // Output based on format
+        match cli.output {
+            OutputFormat::Human => {
+                print_hotpaths_human(&hot_paths, args.rationale);
+            }
+            OutputFormat::Json => {
+                println!("{}", serde_json::to_string(&hot_paths)?);
+            }
+            OutputFormat::Pretty => {
+                println!("{}", serde_json::to_string_pretty(&hot_paths)?);
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn patterns(args: &PatternsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{detect_if_else_patterns, detect_match_patterns};
         use crate::cfg::{resolve_function_name, load_cfg_from_db};
@@ -3577,6 +3731,48 @@ pub mod cmds {
                 ))
             }
             _ => unreachable!(),
+        }
+    }
+}
+
+// ============================================================================
+// Hotpaths Output Helpers
+// ============================================================================
+
+/// Print hot paths in human-readable format
+fn print_hotpaths_human(hot_paths: &[crate::cfg::hotpaths::HotPath], show_rationale: bool) {
+    use crate::output;
+
+    output::header(&format!("Hot Paths (top {})", hot_paths.len()));
+
+    if hot_paths.is_empty() {
+        output::info("No hot paths found");
+        return;
+    }
+
+    for (i, hp) in hot_paths.iter().enumerate() {
+        println!("\n{}. Path {} - Score: {:.2}",
+            i + 1, hp.path_id, hp.hotness_score
+        );
+
+        if show_rationale && !hp.rationale.is_empty() {
+            println!("   Rationale:");
+            for r in &hp.rationale {
+                println!("     - {}", r);
+            }
+        }
+
+        println!("   Blocks: {} blocks", hp.blocks.len());
+        for (j, block) in hp.blocks.iter().enumerate() {
+            if j < 5 || j == hp.blocks.len() - 1 {
+                print!("     {}", block);
+                if j == 4 && hp.blocks.len() > 6 {
+                    println!(" ... (+{} more)", hp.blocks.len() - 6);
+                    break;
+                } else {
+                    println!();
+                }
+            }
         }
     }
 }

@@ -27,6 +27,7 @@ pub use dominators::DominatorTree;
 pub use post_dominators::PostDominatorTree;
 pub use edge::EdgeType;
 pub use export::{export_dot, export_json, CFGExport};
+pub use hotpaths::{compute_hot_paths, HotPath, HotpathsOptions};
 pub use loops::detect_natural_loops;
 #[allow(unused_imports)] // Used in tests within the module
 pub use paths::{Path, PathKind, PathLimits, enumerate_paths, enumerate_paths_cached, enumerate_paths_cached_with_context, enumerate_paths_with_context, EnumerationContext, get_or_enumerate_paths};
@@ -34,6 +35,9 @@ pub use patterns::{detect_if_else_patterns, detect_match_patterns};
 pub use reachability::{find_reachable_from_block, compute_path_impact, PathImpact};
 pub use summary::summarize_path;
 pub use source::SourceLocation;
+
+// Re-export core CFG types for use in other modules
+pub use crate::cfg::{BasicBlock, BlockId, BlockKind, Terminator};
 
 use anyhow::Result;
 use petgraph::graph::DiGraph;

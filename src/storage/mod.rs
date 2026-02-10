@@ -136,6 +136,8 @@ pub trait StorageTrait {
 /// fields needed by Mirage for CFG analysis.
 #[derive(Debug, Clone)]
 pub struct CfgBlockData {
+    /// Block ID (from cfg_blocks table)
+    pub id: i64,
     /// Block kind (entry, conditional, loop, match, return, etc.)
     pub kind: String,
     /// Terminator kind (how control exits this block)

@@ -1,5 +1,7 @@
 // Output formatting utilities following Magellan's patterns
 
+use std::io::IsTerminal;
+
 // Colors for terminal output (when supported)
 pub const RED: &str = "\x1b[0;31m";
 pub const GREEN: &str = "\x1b[0;32m";
@@ -11,8 +13,9 @@ pub const BOLD: &str = "\x1b[1m";
 pub const NC: &str = "\x1b[0m"; // No Color
 
 /// Check if stdout is a terminal (for color output)
+#[inline]
 pub fn is_terminal() -> bool {
-    atty::is(atty::Stream::Stdout)
+    std::io::stdout().is_terminal()
 }
 
 /// Print info message
@@ -124,7 +127,7 @@ impl<T: serde::Serialize> JsonResponse<T> {
         );
 
         JsonResponse {
-            schema_version: "1.0.0".to_string(),
+            schema_version: "1.0.1".to_string(),
             execution_id: exec_id,
             tool: "mirage".to_string(),
             timestamp,

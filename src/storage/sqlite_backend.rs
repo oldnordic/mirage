@@ -92,7 +92,7 @@ impl StorageTrait for SqliteStorage {
     /// - Returns empty Vec if function has no CFG blocks (not an error)
     fn get_cfg_blocks(&self, function_id: i64) -> Result<Vec<CfgBlockData>> {
         let mut stmt = self.conn.prepare_cached(
-            "SELECT kind, terminator, byte_start, byte_end,
+            "SELECT id, kind, terminator, byte_start, byte_end,
                     start_line, start_col, end_line, end_col
              FROM cfg_blocks
              WHERE function_id = ?
@@ -101,14 +101,15 @@ impl StorageTrait for SqliteStorage {
 
         let blocks = stmt.query_map(params![function_id], |row| {
             Ok(CfgBlockData {
-                kind: row.get(0)?,
-                terminator: row.get(1)?,
-                byte_start: row.get::<_, Option<i64>>(2)?.unwrap_or(0) as u64,
-                byte_end: row.get::<_, Option<i64>>(3)?.unwrap_or(0) as u64,
-                start_line: row.get::<_, Option<i64>>(4)?.unwrap_or(0) as u64,
-                start_col: row.get::<_, Option<i64>>(5)?.unwrap_or(0) as u64,
-                end_line: row.get::<_, Option<i64>>(6)?.unwrap_or(0) as u64,
-                end_col: row.get::<_, Option<i64>>(7)?.unwrap_or(0) as u64,
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                terminator: row.get(2)?,
+                byte_start: row.get::<_, Option<i64>>(3)?.unwrap_or(0) as u64,
+                byte_end: row.get::<_, Option<i64>>(4)?.unwrap_or(0) as u64,
+                start_line: row.get::<_, Option<i64>>(5)?.unwrap_or(0) as u64,
+                start_col: row.get::<_, Option<i64>>(6)?.unwrap_or(0) as u64,
+                end_line: row.get::<_, Option<i64>>(7)?.unwrap_or(0) as u64,
+                end_col: row.get::<_, Option<i64>>(8)?.unwrap_or(0) as u64,
             })
         })
         .map_err(|e| anyhow::anyhow!("Failed to execute cfg_blocks query: {}", e))?

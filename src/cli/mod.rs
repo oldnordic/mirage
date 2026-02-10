@@ -130,6 +130,14 @@ pub struct PathsArgs {
     /// Show block details for each path
     #[arg(long)]
     pub with_blocks: bool,
+
+    /// Incremental mode: analyze only changed functions since git revision
+    #[arg(long)]
+    pub incremental: bool,
+
+    /// Git revision for incremental analysis (e.g., "HEAD~1")
+    #[arg(long)]
+    pub since: Option<String>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -428,6 +436,35 @@ pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
         None => std::env::var("MIRAGE_DB")
             .or_else(|_| Ok(".codemcp/codegraph.db".to_string())),
     }
+}
+
+/// Detect the git repository path from the database path
+///
+/// Starts from the db path and searches upward for .git directory.
+/// Falls back to current directory if not found.
+fn detect_repo_path(db_path: &str) -> std::path::PathBuf {
+    use std::path::Path;
+
+    let db_path = Path::new(db_path);
+
+    // Start from db path and search up for .git directory
+    let mut path = if db_path.is_absolute() {
+        db_path.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
+            .join(db_path)
+    };
+
+    // Search up the directory tree
+    while path.pop() {
+        let git_dir = path.join(".git");
+        if git_dir.exists() {
+            return path;
+        }
+    }
+
+    // Fallback to current directory
+    Path::new(".").to_path_buf()
 }
 
 // ============================================================================
@@ -844,13 +881,115 @@ pub mod cmds {
     }
 
     pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
-        use crate::cfg::{PathKind, PathLimits, get_or_enumerate_paths};
+        use crate::cfg::{PathKind, PathLimits, get_or_enumerate_paths, enumerate_paths_incremental, IncrementalPathsResult};
         use crate::cfg::{resolve_function_name, load_cfg_from_db};
         use crate::storage::{MirageDb, get_function_hash_db};
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;
 
+        // Detect repository path for incremental mode
+        let repo_path = detect_repo_path(&db_path);
+
+        // Handle incremental mode
+        if args.incremental {
+            let since = args.since.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("--since required with --incremental"))?;
+
+            // Open database for incremental mode
+            let db = match MirageDb::open(&db_path) {
+                Ok(db) => db,
+                Err(_e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::database_not_found(&db_path);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!("Failed to open database: {}", db_path));
+                        output::info("Hint: Run 'magellan watch' to create the database");
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
+                }
+            };
+
+            // Run incremental path enumeration
+            let result = match enumerate_paths_incremental(
+                &args.function,
+                &db,
+                &repo_path,
+                since,
+                args.max_length,
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::new(
+                            "IncrementalAnalysisError",
+                            &format!("Incremental analysis failed: {}", e),
+                            output::E_CFG_ERROR,
+                        );
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!("Incremental analysis failed: {}", e));
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
+                }
+            };
+
+            // Output results
+            match cli.output {
+                OutputFormat::Human => {
+                    println!("Incremental path enumeration (since {}):", since);
+                    println!("  Analyzed functions: {}", result.analyzed_functions);
+                    println!("  Total paths: {}", result.paths.len());
+
+                    if args.show_errors {
+                        let error_count = result.paths.iter()
+                            .filter(|p| matches!(p.kind, PathKind::Error))
+                            .count();
+                        println!("  Error paths: {}", error_count);
+                    }
+
+                    if !result.paths.is_empty() {
+                        println!("\nPaths:");
+                        for path in &result.paths {
+                            if args.show_errors || !matches!(path.kind, PathKind::Error) {
+                                println!("  {}", path);
+                            }
+                        }
+                    }
+                }
+                OutputFormat::Json => {
+                    let response = serde_json::json!({
+                        "incremental": true,
+                        "since": since,
+                        "analyzed_functions": result.analyzed_functions,
+                        "skipped_functions": result.skipped_functions,
+                        "total_paths": result.paths.len(),
+                        "paths": result.paths,
+                    });
+                    println!("{}", serde_json::to_string(&response)?);
+                }
+                OutputFormat::Pretty => {
+                    let response = serde_json::json!({
+                        "incremental": true,
+                        "since": since,
+                        "analyzed_functions": result.analyzed_functions,
+                        "skipped_functions": result.skipped_functions,
+                        "total_paths": result.paths.len(),
+                        "paths": result.paths,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&response)?);
+                }
+            }
+
+            return Ok(());
+        }
+
+        // Standard path enumeration (non-incremental)
         // Open database
         let mut db = match MirageDb::open(&db_path) {
             Ok(db) => db,
@@ -3102,7 +3241,7 @@ pub mod cmds {
         use crate::cfg::{
             hotpaths::{compute_hot_paths, HotpathsOptions, HotPath},
             detect_natural_loops, enumerate_paths, resolve_function_name, load_cfg_from_db,
-            find_entry,
+            find_entry, PathLimits,
         };
         use crate::storage::{Backend, StorageTrait};
 
@@ -3177,13 +3316,11 @@ pub mod cmds {
         let natural_loops = detect_natural_loops(&cfg);
 
         // Enumerate all paths
-        let paths = match enumerate_paths(&args.function.clone(), &backend, None) {
-            Ok(paths) => paths,
-            Err(_e) => {
-                output::error(&format!("Failed to enumerate paths for function '{}'", args.function));
-                std::process::exit(output::EXIT_DATABASE);
-            }
+        let limits = PathLimits {
+            max_paths: args.max_paths.unwrap_or(1000),
+            max_length: args.max_length,
         };
+        let paths = enumerate_paths(&cfg, &limits);
 
         if paths.is_empty() {
             output::info(&format!("No paths found for function '{}'", args.function));

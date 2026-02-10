@@ -108,9 +108,12 @@ impl StorageTrait for KvStorage {
             .map_err(|e| anyhow::anyhow!("Failed to load CFG blocks from KV: {}", e))?;
 
         // Convert Magellan's CfgBlock to backend-agnostic CfgBlockData
+        // Generate sequential IDs since KV store doesn't have explicit block IDs
         let blocks = magellan_blocks
             .into_iter()
-            .map(|b| CfgBlockData {
+            .enumerate()
+            .map(|(idx, b)| CfgBlockData {
+                id: idx as i64,
                 kind: b.kind,
                 terminator: b.terminator,
                 byte_start: b.byte_start,
@@ -187,6 +190,7 @@ mod tests {
     fn test_cfg_block_data_fields() {
         // Verify CfgBlockData has the expected fields
         let block = CfgBlockData {
+            id: 0,
             kind: "entry".to_string(),
             terminator: "fallthrough".to_string(),
             byte_start: 0,
@@ -197,6 +201,7 @@ mod tests {
             end_col: 10,
         };
 
+        assert_eq!(block.id, 0);
         assert_eq!(block.kind, "entry");
         assert_eq!(block.terminator, "fallthrough");
         assert_eq!(block.byte_start, 0);

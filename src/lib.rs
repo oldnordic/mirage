@@ -1,6 +1,33 @@
-// Mirage: Path-Aware Code Intelligence Engine
-//
-// A control-flow and logic graph engine for Rust codebases.
+//! Mirage - Path-Aware Code Intelligence Engine
+//!
+//! A control-flow and logic graph engine for Rust codebases.
+//!
+//! # Getting Started
+//!
+//! ```rust,no_run
+//! use mirage_analyzer::Backend;
+//!
+//! // Auto-detect and open the database backend
+//! let backend = Backend::detect_and_open("codegraph.db")?;
+//!
+//! // Query CFG blocks (works with both SQLite and native-v2)
+//! let blocks = backend.get_cfg_blocks(123)?;
+//! # Ok::<(), anyhow::Error>(())
+//! ```
+//!
+//! # Backend Support
+//!
+//! Mirage supports two storage backends:
+//! - **SQLite**: Default backend, backward compatible with Magellan v7+
+//! - **Native-V2**: High-performance KV backend (requires `backend-native-v2` feature)
+//!
+//! The backend is automatically detected from the database file format.
+//!
+//! # Public API
+//!
+//! - [`Backend`] - Enum wrapping storage backends with auto-detection
+//! - [`StorageTrait`] - Backend-agnostic storage interface
+//! - [`MirageDb`] - Legacy database connection (wraps Backend internally)
 
 #![allow(dead_code)]
 
@@ -24,4 +51,5 @@ pub mod mir;
 pub mod output;
 pub mod storage;
 
-pub use storage::{MirageDb, create_schema, DatabaseStatus};
+// Public API exports
+pub use storage::{MirageDb, create_schema, DatabaseStatus, Backend, StorageTrait, CfgBlockData};

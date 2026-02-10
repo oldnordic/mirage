@@ -1023,8 +1023,38 @@ impl MirageDb {
     /// ```
     #[cfg(feature = "backend-sqlite")]
     pub fn load_cfg(&self, function_id: i64) -> Result<crate::cfg::Cfg> {
-        let conn = self.conn()?;
-        load_cfg_from_sqlite(conn, function_id)
+        // Phase 069-02: Use storage backend instead of direct Connection
+        let blocks = self.storage().get_cfg_blocks(function_id)?;
+
+        if blocks.is_empty() {
+            anyhow::bail!(
+                "No CFG blocks found for function_id {}. Run 'magellan watch' to build CFGs.",
+                function_id
+            );
+        }
+
+        // Get file_path for this function
+        let file_path = self.get_function_file(function_id);
+
+        // Convert CfgBlockData to the tuple format expected by load_cfg_from_rows
+        let block_rows: Vec<(i64, String, Option<String>, Option<i64>, Option<i64>,
+                              Option<i64>, Option<i64>, Option<i64>, Option<i64>)> = blocks
+            .into_iter()
+            .enumerate()
+            .map(|(idx, b)| (
+                idx as i64,  // id (use index as id)
+                b.kind,
+                Some(b.terminator),
+                Some(b.byte_start as i64),
+                Some(b.byte_end as i64),
+                Some(b.start_line as i64),
+                Some(b.start_col as i64),
+                Some(b.end_line as i64),
+                Some(b.end_col as i64),
+            ))
+            .collect();
+
+        load_cfg_from_rows(block_rows, file_path.map(std::path::PathBuf::from))
     }
 
     /// Load a CFG from the database (native-v2 backend)

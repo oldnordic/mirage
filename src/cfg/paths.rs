@@ -124,6 +124,12 @@ impl Path {
     }
 }
 
+impl std::fmt::Display for Path {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.path_id)
+    }
+}
+
 /// Classification of execution paths
 ///
 /// Paths are categorized based on their structure and content.

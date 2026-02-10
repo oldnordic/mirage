@@ -747,7 +747,7 @@ pub mod cmds {
     pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{PathKind, PathLimits, get_or_enumerate_paths};
         use crate::cfg::{resolve_function_name, load_cfg_from_db};
-        use crate::storage::{MirageDb, get_function_hash};
+        use crate::storage::{MirageDb, get_function_hash_db};
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;
@@ -814,34 +814,43 @@ pub mod cmds {
             limits = limits.with_max_length(max_length);
         }
 
-        // Get function hash for path caching
-        let function_hash = match get_function_hash(db.conn()?, function_id) {
-            Some(hash) => hash,
-            None => {
-                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::new(
-                        "HashNotFound",
-                        &format!("Function hash not found for '{}'", args.function),
-                        output::E_CFG_ERROR,
-                    );
-                    let wrapper = output::JsonResponse::new(error);
-                    println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_DATABASE);
-                } else {
-                    output::error(&format!("Function hash not found for '{}'", args.function));
-                    output::info("The function data may be incomplete. Try re-running 'magellan watch'");
-                    std::process::exit(output::EXIT_DATABASE);
+        // Enumerate paths (backend-agnostic)
+        // For SQLite backend: use get_or_enumerate_paths for caching
+        // For native-v2 backend: use enumerate_paths directly (no caching)
+        let mut paths = if db.is_sqlite() {
+            // SQLite backend: use caching layer
+            let function_hash = match get_function_hash_db(&db, function_id) {
+                Some(hash) => hash,
+                None => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::new(
+                            "HashNotFound",
+                            &format!("Function hash not found for '{}'", args.function),
+                            output::E_CFG_ERROR,
+                        );
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!("Function hash not found for '{}'", args.function));
+                        output::info("The function data may be incomplete. Try re-running 'magellan watch'");
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
                 }
-            }
-        };
+            };
 
-        let mut paths = get_or_enumerate_paths(
-            &cfg,
-            function_id,
-            &function_hash,
-            &limits,
-            db.conn_mut()?,
-        ).map_err(|e| anyhow::anyhow!("Path enumeration failed: {}", e))?;
+            get_or_enumerate_paths(
+                &cfg,
+                function_id,
+                &function_hash,
+                &limits,
+                db.conn_mut()?,
+            ).map_err(|e| anyhow::anyhow!("Path enumeration failed: {}", e))?
+        } else {
+            // Native-v2 backend: enumerate directly without caching
+            // Magellan manages its own caching
+            crate::cfg::enumerate_paths(&cfg, &limits)
+        };
 
         // Filter to error paths if requested
         if args.show_errors {
@@ -2126,7 +2135,7 @@ pub mod cmds {
 
     pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{find_reachable_from_block, load_cfg_from_db, resolve_function_name};
-        use crate::storage::{compute_path_impact_from_db, get_function_name, MirageDb};
+        use crate::storage::{compute_path_impact_from_db, get_function_name_db, MirageDb};
         use rusqlite::OptionalExtension;
 
         // Resolve database path
@@ -2236,8 +2245,8 @@ pub mod cmds {
                 }
             };
 
-            // Get function name for display
-            let function_name = get_function_name(db.conn()?, function_id)
+            // Get function name for display (backend-agnostic)
+            let function_name = get_function_name_db(&db, function_id)
                 .unwrap_or_else(|| format!("<function_{}>", function_id));
 
             // Compute path impact
@@ -2375,8 +2384,8 @@ pub mod cmds {
                 }
             };
 
-            // Get function name for display
-            let function_name = get_function_name(db.conn()?, function_id)
+            // Get function name for display (backend-agnostic)
+            let function_name = get_function_name_db(&db, function_id)
                 .unwrap_or_else(|| format!("<function_{}>", function_id));
 
             // Load CFG from database

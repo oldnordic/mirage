@@ -312,6 +312,23 @@ impl MirageDb {
     pub fn backend(&self) -> &dyn GraphBackend {
         self.backend.as_ref()
     }
+
+    /// Check if the database backend is SQLite
+    ///
+    /// This is useful for runtime checks when certain features
+    /// are only available with specific backends (e.g., path caching).
+    #[cfg(feature = "sqlite")]
+    pub fn is_sqlite(&self) -> bool {
+        self.conn.is_some()
+    }
+
+    /// Check if the database backend is SQLite
+    ///
+    /// For native-v2, this always returns false.
+    #[cfg(feature = "native-v2")]
+    pub fn is_sqlite(&self) -> bool {
+        false
+    }
 }
 
 /// A schema migration
@@ -569,19 +586,56 @@ impl MirageDb {
         })
     }
 
-    /// Get database statistics (native-v2 backend placeholder)
+    /// Get database statistics (native-v2 backend)
     ///
-    /// TODO: Implement via GraphBackend metadata queries
+    /// Uses GraphBackend methods to query entity and KV store data.
     #[cfg(feature = "native-v2")]
     pub fn status(&self) -> Result<DatabaseStatus> {
-        // Placeholder: Return default values until native-v2 metadata queries are implemented
+        let snapshot = SnapshotId::current();
+        let mut cfg_blocks_count: i64 = 0;
+
+        // Count CFG blocks by iterating through entities and checking KV store
+        // CFG blocks are stored with keys like "cfg:func:{function_id}"
+        if let Ok(entity_ids) = self.backend.entity_ids() {
+            for entity_id in entity_ids {
+                // Check if this entity is a Function
+                if let Ok(entity) = self.backend.get_node(snapshot, entity_id) {
+                    if entity.kind == "Symbol"
+                        && entity.data.get("kind").and_then(|v| v.as_str()) == Some("Function")
+                    {
+                        // Use Magellan's helper to get CFG blocks and count them
+                        match magellan::graph::get_cfg_blocks_kv(self.backend.as_ref(), entity_id) {
+                            Ok(blocks) => {
+                                cfg_blocks_count += blocks.len() as i64;
+                            }
+                            Err(_) => {
+                                // Function exists but has no CFG blocks, skip
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // For native-v2, these counts are 0 as they're not stored in KV
+        // cfg_paths and cfg_dominators are Mirage-specific tables not in native-v2
+        let cfg_edges: i64 = 0; // Edges computed in memory
+        let cfg_paths: i64 = 0; // Path caching not yet implemented for native-v2
+        let cfg_dominators: i64 = 0; // Dominator caching not yet implemented for native-v2
+
+        // Schema versions: use constants (native-v2 doesn't have meta tables)
+        // In the future, these could be stored in KV with well-known keys
+        let mirage_schema_version = MIRAGE_SCHEMA_VERSION;
+        let magellan_schema_version = MIN_MAGELLAN_SCHEMA_VERSION;
+
+        #[allow(deprecated)]
         Ok(DatabaseStatus {
-            cfg_blocks: 0,
-            cfg_edges: 0,
-            cfg_paths: 0,
-            cfg_dominators: 0,
-            mirage_schema_version: MIRAGE_SCHEMA_VERSION,
-            magellan_schema_version: MIN_MAGELLAN_SCHEMA_VERSION,
+            cfg_blocks: cfg_blocks_count,
+            cfg_edges,
+            cfg_paths,
+            cfg_dominators,
+            mirage_schema_version,
+            magellan_schema_version,
         })
     }
 
@@ -698,6 +752,126 @@ impl MirageDb {
     #[cfg(feature = "native-v2")]
     pub fn load_cfg(&self, function_id: i64) -> Result<crate::cfg::Cfg> {
         load_cfg_from_native_v2(self.backend.as_ref(), function_id)
+    }
+
+    /// Get the function name for a given function_id (backend-agnostic)
+    ///
+    /// This method works with both SQLite and native-v2 backends.
+    /// For SQLite backend: queries the graph_entities table
+    /// For native-v2 backend: uses GraphBackend::get_node
+    ///
+    /// # Arguments
+    ///
+    /// * `function_id` - ID of the function
+    ///
+    /// # Returns
+    ///
+    /// * `Some(name)` - The function name if found
+    /// * `None` - Function not found
+    pub fn get_function_name(&self, function_id: i64) -> Option<String> {
+        let snapshot = SnapshotId::current();
+        self.backend.get_node(snapshot, function_id)
+            .ok()
+            .and_then(|entity| {
+                // Return the name if this is a function
+                if entity.kind == "Symbol"
+                    && entity.data.get("kind").and_then(|v| v.as_str()) == Some("Function")
+                {
+                    Some(entity.name)
+                } else {
+                    None
+                }
+            })
+    }
+
+    /// Get the file path for a given function_id (backend-agnostic)
+    ///
+    /// This method works with both SQLite and native-v2 backends.
+    /// For SQLite backend: queries the graph_entities table
+    /// For native-v2 backend: uses GraphBackend::get_node
+    ///
+    /// # Arguments
+    ///
+    /// * `function_id` - ID of the function
+    ///
+    /// # Returns
+    ///
+    /// * `Some(file_path)` - The file path if found
+    /// * `None` - File path not available
+    pub fn get_function_file(&self, function_id: i64) -> Option<String> {
+        let snapshot = SnapshotId::current();
+        self.backend.get_node(snapshot, function_id)
+            .ok()
+            .and_then(|entity| entity.file_path)
+    }
+
+    /// Check if a function has CFG blocks (backend-agnostic)
+    ///
+    /// This method works with both SQLite and native-v2 backends.
+    /// For SQLite backend: queries the cfg_blocks table
+    /// For native-v2 backend: checks KV store for cfg:func:{function_id}
+    ///
+    /// # Arguments
+    ///
+    /// * `function_id` - ID of the function to check
+    ///
+    /// # Returns
+    ///
+    /// * `true` - Function has CFG blocks
+    /// * `false` - Function not indexed or no CFG blocks
+    #[cfg(feature = "sqlite")]
+    pub fn function_exists(&self, function_id: i64) -> bool {
+        use crate::storage::function_exists;
+        self.conn()
+            .and_then(|conn| Ok(function_exists(conn, function_id)))
+            .unwrap_or(false)
+    }
+
+    /// Check if a function has CFG blocks (native-v2 backend)
+    ///
+    /// For native-v2, checks the KV store for CFG blocks.
+    #[cfg(feature = "native-v2")]
+    pub fn function_exists(&self, function_id: i64) -> bool {
+        use sqlitegraph::backend::native::v2::kv_store::types::KvValue;
+
+        let snapshot = SnapshotId::current();
+        let key = format!("cfg:func:{}", function_id).into_bytes();
+        self.backend.kv_get(snapshot, &key)
+            .ok()
+            .flatten()
+            .is_some()
+    }
+
+    /// Get the function hash for path caching (backend-agnostic)
+    ///
+    /// This method works with both SQLite and native-v2 backends.
+    /// For SQLite backend: queries the cfg_blocks table
+    /// For native-v2 backend: returns None (Magellan manages its own caching)
+    ///
+    /// # Arguments
+    ///
+    /// * `function_id` - ID of the function
+    ///
+    /// # Returns
+    ///
+    /// * `Some(hash)` - The function hash if available (SQLite only)
+    /// * `None` - Hash not available or native-v2 backend
+    #[cfg(feature = "sqlite")]
+    pub fn get_function_hash(&self, function_id: i64) -> Option<String> {
+        use crate::storage::get_function_hash;
+        self.conn()
+            .and_then(|conn| Ok(get_function_hash(conn, function_id)))
+            .ok()
+            .flatten()
+    }
+
+    /// Get the function hash for path caching (native-v2 backend)
+    ///
+    /// For native-v2, always returns None since Magellan manages its own caching.
+    #[cfg(feature = "native-v2")]
+    pub fn get_function_hash(&self, _function_id: i64) -> Option<String> {
+        // Magellan manages its own caching, so Mirage's hash-based caching is not used
+        None
     }
 }
 
@@ -968,6 +1142,102 @@ fn load_cfg_from_rows(
 /// ```
 pub fn resolve_function_name(db: &MirageDb, name_or_id: &str) -> Result<i64> {
     db.resolve_function_name(name_or_id)
+}
+
+/// Get the function name for a given function_id (backend-agnostic)
+///
+/// This is the main entry point for getting function names. It works with both
+/// SQLite and native-v2 backends.
+///
+/// # Arguments
+///
+/// * `db` - Database reference (works with both backends)
+/// * `function_id` - ID of the function
+///
+/// # Returns
+///
+/// * `Some(name)` - The function name if found
+/// * `None` - Function not found
+///
+/// # Examples
+///
+/// ```no_run
+/// # use mirage_analyzer::storage::{get_function_name_db, MirageDb};
+/// # fn main() -> anyhow::Result<()> {
+/// # let db = MirageDb::open("test.db")?;
+/// if let Some(name) = get_function_name_db(&db, 123) {
+///     println!("Function: {}", name);
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub fn get_function_name_db(db: &MirageDb, function_id: i64) -> Option<String> {
+    db.get_function_name(function_id)
+}
+
+/// Get the file path for a given function_id (backend-agnostic)
+///
+/// This is the main entry point for getting function file paths. It works with both
+/// SQLite and native-v2 backends.
+///
+/// # Arguments
+///
+/// * `db` - Database reference (works with both backends)
+/// * `function_id` - ID of the function
+///
+/// # Returns
+///
+/// * `Some(file_path)` - The file path if found
+/// * `None` - File path not available
+///
+/// # Examples
+///
+/// ```no_run
+/// # use mirage_analyzer::storage::{get_function_file_db, MirageDb};
+/// # fn main() -> anyhow::Result<()> {
+/// # let db = MirageDb::open("test.db")?;
+/// if let Some(path) = get_function_file_db(&db, 123) {
+///     println!("File: {}", path);
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub fn get_function_file_db(db: &MirageDb, function_id: i64) -> Option<String> {
+    db.get_function_file(function_id)
+}
+
+/// Get the function hash for path caching (backend-agnostic)
+///
+/// This is the main entry point for getting function hashes. It works with both
+/// SQLite and native-v2 backends.
+///
+/// For SQLite backend: returns the stored hash if available
+/// For native-v2 backend: always returns None (Magellan manages its own caching)
+///
+/// # Arguments
+///
+/// * `db` - Database reference (works with both backends)
+/// * `function_id` - ID of the function
+///
+/// # Returns
+///
+/// * `Some(hash)` - The function hash if available (SQLite only)
+/// * `None` - Hash not available or native-v2 backend
+///
+/// # Examples
+///
+/// ```no_run
+/// # use mirage_analyzer::storage::{get_function_hash_db, MirageDb};
+/// # fn main() -> anyhow::Result<()> {
+/// # let db = MirageDb::open("test.db")?;
+/// if let Some(hash) = get_function_hash_db(&db, 123) {
+///     println!("Hash: {}", hash);
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub fn get_function_hash_db(db: &MirageDb, function_id: i64) -> Option<String> {
+    db.get_function_hash(function_id)
 }
 
 /// Resolve a function name or ID to a function_id (SQLite backend, legacy)

@@ -1,8 +1,8 @@
 [package]
 name = "mirage-analyzer"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.70"
 authors = ["Mirage Contributors"]
 description = "Path-Aware Code Intelligence Engine for Rust"
 repository = "https://github.com/oldnordic/mirage"
@@ -23,10 +23,10 @@ clap = { version = "4.5", features = ["derive", "env"] }
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }
 
-# Magellan v2.0.0 for inter-procedural analysis
-magellan = "2.0"
+# Magellan for inter-procedural analysis
+magellan = { version = "2.2", optional = true }
 # Re-export sqlitegraph version used by Magellan
-sqlitegraph = "1.3"
+sqlitegraph = { version = "1.5", optional = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -37,10 +37,6 @@ petgraph = "0.8"
 
 # AST parsing (for non-Rust code fallback)
 tree-sitter = "0.22"
-
-# MIR extraction (rustc internals - requires nightly)
-# Note: These are optional and will be implemented later
-# For now, we'll use external tools like Charon or rustc -Z dump-mir
 
 # Logging
 tracing = "0.1"
@@ -53,16 +49,29 @@ thiserror = "1.0"
 # Utils
 blake3 = "1.5"
 sha2 = "0.10"
-atty = "0.2"
+is-terminal = "0.4"
 chrono = "0.4"
 
 [dev-dependencies]
 tempfile = "3.10"
 
 [features]
-default = []
+# Platform feature model - explicit opt-in required
+default = ["unix", "backend-sqlite"]
+unix = []
+windows = []
+
+# Backend selection - choose one (mutually exclusive)
+# Use backend-sqlite (default) or backend-native-v2, not both
+backend-sqlite = ["magellan", "sqlitegraph/sqlite-backend"]
+# Alias for backward compatibility
+sqlite = ["backend-sqlite"]
+# Native V2 backend (newer I/O layer)
+backend-native-v2 = ["magellan/native-v2", "sqlitegraph/native-v2"]
+# Alias for convenience
+native-v2 = ["backend-native-v2"]
+
 # MIR extraction features will be added in Milestone 1
-# For now, we'll use external tools (rustc -Z dump-mir or Charon)
 
 [profile.release]
 opt-level = 3

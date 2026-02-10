@@ -6,6 +6,18 @@
 
 #![allow(dead_code)]
 
+// Compile-time guard: prevent enabling both backends simultaneously
+#[cfg(all(feature = "sqlite", feature = "native-v2"))]
+compile_error!(
+    "Features 'sqlite' and 'native-v2' are mutually exclusive. \
+     Enable only one backend feature. Remove one of: \
+     --features sqlite \
+     --features native-v2 \
+     \
+     Default is SQLite, so use `cargo build` with no features, or \
+     `cargo build --features native-v2` for the native-v2 backend."
+);
+
 use clap::Parser;
 use anyhow::Result;
 
@@ -14,11 +26,15 @@ mod cli;
 mod cfg;
 mod mir;
 mod output;
+mod platform;
 mod storage;
 
 use cli::{Cli, Commands};
 
 fn main() -> Result<()> {
+    // Check platform and warn about limitations
+    platform::check_platform_support();
+
     let cli = Cli::parse();
 
     // Initialize tracing

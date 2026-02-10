@@ -26,6 +26,45 @@ pub use paths::{
     update_function_paths_if_changed,
 };
 
+/// Database backend format detected in a graph database file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    /// SQLite-based backend (default, backward compatible)
+    SQLite,
+    /// Native-v2 backend (requires native-v2 feature)
+    NativeV2,
+    /// Unknown or unrecognized format
+    Unknown,
+}
+
+impl Backend {
+    /// Detect which backend format a database file uses.
+    ///
+    /// Checks the file header to determine if the database is SQLite or native-v2 format.
+    /// Returns Unknown if the file doesn't exist or has an unrecognized header.
+    pub fn detect(path: &Path) -> Result<Self> {
+        if !path.exists() {
+            return Ok(Backend::Unknown);
+        }
+
+        let mut file = std::fs::File::open(path)?;
+        let mut header = [0u8; 16];
+        let bytes_read = std::io::Read::read(&mut file, &mut header)?;
+
+        if bytes_read < header.len() {
+            return Ok(Backend::Unknown);
+        }
+
+        // SQLite databases start with "SQLite format 3"
+        Ok(if &header[..15] == b"SQLite format 3" {
+            Backend::SQLite
+        } else {
+            // If it exists but isn't SQLite, assume native-v2
+            Backend::NativeV2
+        })
+    }
+}
+
 /// Mirage schema version
 pub const MIRAGE_SCHEMA_VERSION: i32 = 1;
 
@@ -58,6 +97,33 @@ impl MirageDb {
         let path = path.as_ref();
         if !path.exists() {
             anyhow::bail!("Database not found: {}", path.display());
+        }
+
+        // Detect backend format from file header
+        let _detected_backend = Backend::detect(path)
+            .context("Failed to detect backend format")?;
+
+        // Validate that detected backend matches compile-time feature
+        #[cfg(feature = "sqlite")]
+        {
+            if _detected_backend == Backend::NativeV2 {
+                anyhow::bail!(
+                    "Database file '{}' uses native-v2 format, but this binary was built \
+                     with SQLite backend. Rebuild with: cargo build --release --no-default-features --features native-v2",
+                    path.display()
+                );
+            }
+        }
+
+        #[cfg(feature = "native-v2")]
+        {
+            if _detected_backend == Backend::SQLite {
+                anyhow::bail!(
+                    "Database file '{}' uses SQLite format, but this binary was built \
+                     with native-v2 backend. Rebuild with: cargo build --release",
+                    path.display()
+                );
+            }
         }
 
         let mut conn = Connection::open(path)
@@ -433,9 +499,14 @@ pub fn resolve_function_name(conn: &Connection, name_or_id: &str) -> Result<i64>
     }
 
     // Query by function name
+    // Note: Magellan v7 stores functions as kind='Symbol' with data.kind='Function'
     let function_id: Option<i64> = conn
         .query_row(
-            "SELECT id FROM graph_entities WHERE kind = 'function' AND name = ? LIMIT 1",
+            "SELECT id FROM graph_entities
+             WHERE kind = 'Symbol'
+             AND json_extract(data, '$.kind') = 'Function'
+             AND name = ?
+             LIMIT 1",
             params![name_or_id],
             |row| row.get(0),
         )
@@ -2134,5 +2205,76 @@ mod tests {
                 "Error should mention schema too old: {}", err_msg);
         assert!(err_msg.contains("magellan watch"),
                 "Error should suggest running magellan watch: {}", err_msg);
+    }
+
+    // Backend detection tests (13-01)
+
+    #[test]
+    fn test_backend_detect_sqlite_header() {
+        use std::io::Write;
+
+        // Create a temporary file with SQLite header
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut file = std::fs::File::create(temp_file.path()).unwrap();
+        file.write_all(b"SQLite format 3\0").unwrap();
+        file.sync_all().unwrap();
+
+        let backend = Backend::detect(temp_file.path()).unwrap();
+        assert_eq!(backend, Backend::SQLite, "Should detect SQLite format");
+    }
+
+    #[test]
+    fn test_backend_detect_native_v2_header() {
+        use std::io::Write;
+
+        // Create a temporary file with custom header (not SQLite)
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut file = std::fs::File::create(temp_file.path()).unwrap();
+        file.write_all(b"MIRAGE-NATIVE-V2\0").unwrap();
+        file.sync_all().unwrap();
+
+        let backend = Backend::detect(temp_file.path()).unwrap();
+        assert_eq!(backend, Backend::NativeV2, "Should detect native-v2 format");
+    }
+
+    #[test]
+    fn test_backend_detect_nonexistent_file() {
+        let backend = Backend::detect(Path::new("/nonexistent/path/to/file.db")).unwrap();
+        assert_eq!(backend, Backend::Unknown, "Non-existent file should be Unknown");
+    }
+
+    #[test]
+    fn test_backend_detect_empty_file() {
+        // Empty file has less than 16 bytes
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        // File is empty (0 bytes)
+
+        let backend = Backend::detect(temp_file.path()).unwrap();
+        assert_eq!(backend, Backend::Unknown, "Empty file should be Unknown");
+    }
+
+    #[test]
+    fn test_backend_detect_partial_header() {
+        use std::io::Write;
+
+        // File with less than 16 bytes but not SQLite
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut file = std::fs::File::create(temp_file.path()).unwrap();
+        file.write_all(b"SQLite").unwrap(); // Only 7 bytes
+        file.sync_all().unwrap();
+
+        let backend = Backend::detect(temp_file.path()).unwrap();
+        assert_eq!(backend, Backend::Unknown, "Partial header should be Unknown");
+    }
+
+    #[test]
+    fn test_backend_equality() {
+        assert_eq!(Backend::SQLite, Backend::SQLite);
+        assert_eq!(Backend::NativeV2, Backend::NativeV2);
+        assert_eq!(Backend::Unknown, Backend::Unknown);
+
+        assert_ne!(Backend::SQLite, Backend::NativeV2);
+        assert_ne!(Backend::SQLite, Backend::Unknown);
+        assert_ne!(Backend::NativeV2, Backend::Unknown);
     }
 }

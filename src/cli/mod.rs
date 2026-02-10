@@ -36,8 +36,12 @@ pub struct Cli {
     #[arg(global = true, long, value_enum, default_value_t = OutputFormat::Human)]
     pub output: OutputFormat,
 
+    /// Detect and report backend format (sqlite or native-v2)
+    #[arg(long, global = true, default_value = "false")]
+    pub detect_backend: bool,
+
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 /// Output format options

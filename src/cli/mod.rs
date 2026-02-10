@@ -96,6 +96,9 @@ pub enum Commands {
     /// Show high-risk functions (hotspots)
     Hotspots(HotspotsArgs),
 
+    /// Show most-traversed execution paths (hot paths)
+    Hotpaths(HotpathsArgs),
+
     /// Migrate database between storage backends
     Migrate(MigrateArgs),
 }
@@ -301,6 +304,26 @@ pub struct HotspotsArgs {
     /// Use inter-procedural analysis (requires Magellan DB)
     #[arg(long)]
     pub inter_procedural: bool,
+}
+
+/// Hot path detection arguments
+#[derive(Parser, Debug, Clone)]
+pub struct HotpathsArgs {
+    /// Function symbol ID or name
+    #[arg(long)]
+    pub function: String,
+
+    /// Number of hot paths to return (default: 10)
+    #[arg(long, default_value = "10")]
+    pub top: usize,
+
+    /// Show rationale for hotness scores
+    #[arg(long)]
+    pub rationale: bool,
+
+    /// Minimum hotness threshold (0.0 to 1.0)
+    #[arg(long)]
+    pub min_score: Option<f64>,
 }
 
 /// Migrate database between storage backends
@@ -6852,6 +6875,42 @@ mod frontiers_tests {
         let cloned = entry.clone();
         assert_eq!(entry.function, cloned.function);
         assert_eq!(entry.risk_score, cloned.risk_score);
+    }
+
+    // ============================================================================
+    // Hotpaths Command Tests
+    // ============================================================================
+
+    /// Test hotpaths args parsing
+    #[test]
+    fn test_hotpaths_args_parsing() {
+        let args = HotpathsArgs {
+            function: "my_function".to_string(),
+            top: 5,
+            rationale: true,
+            min_score: Some(0.5),
+        };
+
+        assert_eq!(args.function, "my_function");
+        assert_eq!(args.top, 5);
+        assert!(args.rationale);
+        assert_eq!(args.min_score, Some(0.5));
+    }
+
+    /// Test hotpaths args defaults
+    #[test]
+    fn test_hotpaths_args_defaults() {
+        let args = HotpathsArgs {
+            function: "main".to_string(),
+            top: 10,  // default value
+            rationale: false,
+            min_score: None,
+        };
+
+        assert_eq!(args.function, "main");
+        assert_eq!(args.top, 10);  // default value
+        assert!(!args.rationale);
+        assert!(args.min_score.is_none());
     }
 
     // ============================================================================

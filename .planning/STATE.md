@@ -5,24 +5,24 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** An agent may only speak if it can reference a graph artifact. No artifact -> no output.
-**Current focus:** Phase 14: Native V2 I/O Integration
+**Current focus:** Phase 14: Native V2 I/O Integration (COMPLETE)
 **Last focus:** Phase 13: Dual Backend Support - SQLite and Native V2 (complete)
 
 ## Current Position
 
-Phase: 14 of 14 (Native V2 I/O Integration)
-Plan: 2 of 3 (COMPLETE)
-Status: Plan 14-02 complete
-Last activity: 2026-02-10 - Completed 14-02 (Native-v2 KV Operations)
+Phase: 14 of 14 (Native V2 I/O Integration) - COMPLETE
+Plan: 3 of 3 (COMPLETE)
+Status: Phase 14 complete - All 13 CLI commands work with both SQLite and native-v2 backends
+Last activity: 2026-02-10 - Completed 14-03 (Backend-agnostic metadata queries)
 
-Progress: [██████████░] 97% (13 phases complete, phase 14: 2/3 plans complete)
+Progress: [██████████] 100% (14 phases complete, v1.1 milestone complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 61
-- Average duration: 5.6 min
-- Total execution time: 5.7 hours
+- Total plans completed: 64
+- Average duration: 5.9 min
+- Total execution time: 6.3 hours
 
 **By Phase:**
 
@@ -41,11 +41,11 @@ Progress: [██████████░] 97% (13 phases complete, phase 14:
 | 11-inter-procedural-dominance-hotspots-smart-reindexing | 6 | 6/6 | 6.8 min |
 | 12-magellan-cfg-integration | 5 | 5/5 | 13.0 min |
 | 13-dual-backend-support-sqlite-and-native-v2 | 1 | 1/1 | 6 min |
-| 14-native-v2-io-integration | 3 | 2/3 | 12 min (in progress) |
+| 14-native-v2-io-integration | 3 | 3/3 | 25 min |
 
 **Recent Trend:**
-- Last plan: 15 min (Phase 14-02)
-- Trend: Native V2 I/O integration in progress
+- Last plan: 50 min (Phase 14-03)
+- Trend: v1.1 milestone complete
 
 *Updated after each plan completion*
 
@@ -495,6 +495,14 @@ Recent decisions affecting current work:
 - All CLI commands updated to use new backend-agnostic API
 - Feature-gated test module since all storage tests use SQLite-specific APIs
 
+**From 14-03 (Backend-agnostic Metadata Queries):**
+- status() method implemented for both backends: SQL queries for SQLite, GraphBackend methods for native-v2
+- resolve_function_name() uses entity iteration (GraphBackend::entity_ids) for native-v2
+- Added backend-agnostic wrapper functions: get_function_name_db(), get_function_hash_db(), get_function_file_db()
+- Added MirageDb::is_sqlite() helper for runtime backend detection
+- paths() command handles both backends with graceful degradation (caching for SQLite, direct enumeration for native-v2)
+- All 13 CLI commands verified working with native-v2 backend (documented limitations for path-caching features)
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -545,11 +553,27 @@ Recent decisions affecting current work:
   * Backend validation in MirageDb::open() with helpful error messages
   * Cargo.toml with backend-sqlite/backend-native-v2 feature pattern
 
+**Phase 14 added (2026-02-10):** Native-v2 I/O Integration - COMPLETE
+- Trigger: Phase 13 completed backend detection, needed native-v2 I/O implementation
+- Purpose: Complete native-v2 backend support so Mirage works normally with both backends
+- Completed: All 3 plans (14-01 through 14-03)
+- Results:
+  * GraphBackend wrapper refactoring with MirageDb
+  * Native-v2 KV operations for cfg_blocks loading
+  * Backend-agnostic metadata queries (status, resolve_function_name, etc.)
+  * All 13 CLI commands working with both backends
+  * Graceful degradation for features not yet available in native-v2 (path caching)
+  * v1.1 milestone complete
+
 ### Pending Todos
 
-**Phase 14 in progress.** Plan 14-02 complete (Native-v2 KV Operations).
-**Remaining plans in Phase 14:** 14-03 (Native-v2 schema validation).
-**Next:** 14-03 - Implement native-v2 schema validation via GraphBackend metadata queries.
+**Phase 14 COMPLETE.** v1.1 milestone complete.
+**Future work:** Path caching support for native-v2, performance optimizations for entity iteration.
+
+### Blockers/Concerns
+
+- **CLI module size:** src/cli/mod.rs is ~6300 lines, making edits difficult. Consider refactoring into smaller modules.
+- **Doctest failures:** 50 doctest failures related to cfg examples not updated with new API - documentation needs refresh.
 
 ### Blockers/Concerns
 
@@ -559,8 +583,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-02-10 12:34 UTC
-Stopped at: Completed 14-02 (Native-v2 KV Operations)
-Resume file: .planning/phases/14-native-v2-io-integration/14-02-SUMMARY.md
-Overall: 65/66 plans done. Phase 14 (2/3 complete).
+Last session: 2026-02-10 13:00 UTC
+Stopped at: Completed Phase 14 (Native-v2 I/O Integration) - v1.1 Milestone Complete
+Resume file: .planning/phases/14-native-v2-io-integration/14-03-SUMMARY.md
+Overall: 64/64 plans done. All 14 phases complete. v1.1 milestone complete.
 

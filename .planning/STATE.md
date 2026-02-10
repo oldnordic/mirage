@@ -11,11 +11,11 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 14 of 14 (Native V2 I/O Integration)
-Plan: 1 of 3 (COMPLETE)
-Status: Plan 14-01 complete
-Last activity: 2026-02-10 - Completed 14-01 (GraphBackend Integration)
+Plan: 2 of 3 (COMPLETE)
+Status: Plan 14-02 complete
+Last activity: 2026-02-10 - Completed 14-02 (Native-v2 KV Operations)
 
-Progress: [██████████░] 96% (13 phases complete, phase 14: 1/3 plans complete)
+Progress: [██████████░] 97% (13 phases complete, phase 14: 2/3 plans complete)
 
 ## Performance Metrics
 
@@ -41,10 +41,10 @@ Progress: [██████████░] 96% (13 phases complete, phase 14:
 | 11-inter-procedural-dominance-hotspots-smart-reindexing | 6 | 6/6 | 6.8 min |
 | 12-magellan-cfg-integration | 5 | 5/5 | 13.0 min |
 | 13-dual-backend-support-sqlite-and-native-v2 | 1 | 1/1 | 6 min |
-| 14-native-v2-io-integration | 3 | 1/3 | 10 min (in progress) |
+| 14-native-v2-io-integration | 3 | 2/3 | 12 min (in progress) |
 
 **Recent Trend:**
-- Last plan: 10 min (Phase 14-01)
+- Last plan: 15 min (Phase 14-02)
 - Trend: Native V2 I/O integration in progress
 
 *Updated after each plan completion*
@@ -487,6 +487,14 @@ Recent decisions affecting current work:
 - SnapshotId::current() used for consistent reads across GraphBackend methods
 - Compile-time guard moved to lib.rs for enforcement at library compilation level
 
+**From 14-02 (Native-v2 KV Operations):**
+- Feature-gated cfg_blocks loading: SQLite uses SQL query, native-v2 uses Magellan's get_cfg_blocks_kv()
+- Created shared load_cfg_from_rows() helper to avoid code duplication between backends
+- Backend-agnostic load_cfg_from_db(&MirageDb, function_id) and resolve_function_name(&MirageDb, name_or_id) public APIs
+- Legacy *_with_conn variants added for backward compatibility with tests
+- All CLI commands updated to use new backend-agnostic API
+- Feature-gated test module since all storage tests use SQLite-specific APIs
+
 ### Roadmap Evolution
 
 **Phase 8 added (2026-02-02):** Drift Remediation - Wire Unimplemented Features
@@ -539,9 +547,9 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-**Phase 14 in progress.** Plan 14-01 complete (GraphBackend Integration).
-**Remaining plans in Phase 14:** 14-02 (KV operations for native-v2), 14-03 (Native-v2 schema validation).
-**Next:** 14-02 - Implement KV operations for native-v2 backend using kv_get/kv_set methods.
+**Phase 14 in progress.** Plan 14-02 complete (Native-v2 KV Operations).
+**Remaining plans in Phase 14:** 14-03 (Native-v2 schema validation).
+**Next:** 14-03 - Implement native-v2 schema validation via GraphBackend metadata queries.
 
 ### Blockers/Concerns
 
@@ -551,8 +559,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-02-10 12:03 UTC
-Stopped at: Completed 14-01 (GraphBackend Integration)
-Resume file: .planning/phases/14-native-v2-io-integration/14-01-SUMMARY.md
-Overall: 64/66 plans done. Phase 14 (1/3 complete).
+Last session: 2026-02-10 12:34 UTC
+Stopped at: Completed 14-02 (Native-v2 KV Operations)
+Resume file: .planning/phases/14-native-v2-io-integration/14-02-SUMMARY.md
+Overall: 65/66 plans done. Phase 14 (2/3 complete).
 

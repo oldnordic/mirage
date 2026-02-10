@@ -64,7 +64,7 @@ pub struct CfgDiff {
 }
 
 /// Representation of a single block for diff purposes
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct BlockDiff {
     /// Block unique identifier
     pub block_id: i64,
@@ -103,7 +103,7 @@ pub enum ChangeType {
 }
 
 /// Representation of a single edge for diff purposes
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct EdgeDiff {
     /// Source block ID
     pub from_block: i64,
@@ -147,7 +147,7 @@ pub fn compute_cfg_diff(
     // Query function name
     let function_name = backend
         .get_entity(function_id)
-        .map(|e| e.fqn.clone())
+        .map(|e| e.name.clone())
         .unwrap_or_else(|| format!("<function_{}>", function_id));
 
     // Query CFG blocks
@@ -417,23 +417,23 @@ pub fn blocks_to_petgraph(blocks: &[CfgBlockData]) -> DiGraph<i64, ()> {
         match block.terminator.as_str() {
             "fallthrough" | "goto" => {
                 if idx + 1 < blocks.len() {
-                    let to_idx = node_indices[&(idx + 1) as i64];
+                    let to_idx = node_indices[&((idx + 1) as i64)];
                     graph.add_edge(from_idx, to_idx, ());
                 }
             }
             "conditional" => {
                 if idx + 1 < blocks.len() {
-                    let to_idx = node_indices[&(idx + 1) as i64];
+                    let to_idx = node_indices[&((idx + 1) as i64)];
                     graph.add_edge(from_idx, to_idx, ());
                 }
                 if idx + 2 < blocks.len() {
-                    let to_idx = node_indices[&(idx + 2) as i64];
+                    let to_idx = node_indices[&((idx + 2) as i64)];
                     graph.add_edge(from_idx, to_idx, ());
                 }
             }
             "call" => {
                 if idx + 1 < blocks.len() {
-                    let to_idx = node_indices[&(idx + 1) as i64];
+                    let to_idx = node_indices[&((idx + 1) as i64)];
                     graph.add_edge(from_idx, to_idx, ());
                 }
             }

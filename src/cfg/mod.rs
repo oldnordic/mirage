@@ -2,10 +2,13 @@
 
 pub mod analysis;
 pub mod ast;
+pub mod diff;
 pub mod dominance_frontiers;
 pub mod dominators;
 pub mod edge;
 pub mod export;
+pub mod git_utils;
+pub mod hotpaths;
 pub mod loops;
 pub mod paths;
 pub mod patterns;

@@ -3687,14 +3687,15 @@ mod cfg_tests {
         let cli_human = Cli {
             db: None,
             output: OutputFormat::Human,
-            command: Commands::Cfg(CfgArgs {
+            command: Some(Commands::Cfg(CfgArgs {
                 function: "test".to_string(),
                 format: None,
-            }),
+            })),
+            detect_backend: false,
         };
 
         let cfg_args = match &cli_human.command {
-            Commands::Cfg(args) => args,
+            Some(Commands::Cfg(args)) => args,
             _ => panic!("Expected Cfg command"),
         };
 
@@ -3711,14 +3712,15 @@ mod cfg_tests {
         let cli_json = Cli {
             db: None,
             output: OutputFormat::Json,
-            command: Commands::Cfg(CfgArgs {
+            command: Some(Commands::Cfg(CfgArgs {
                 function: "test".to_string(),
                 format: None,
-            }),
+            })),
+            detect_backend: false,
         };
 
         let cfg_args_json = match &cli_json.command {
-            Commands::Cfg(args) => args,
+            Some(Commands::Cfg(args)) => args,
             _ => panic!("Expected Cfg command"),
         };
 
@@ -6009,7 +6011,8 @@ mod output_format_tests {
             let cli = Cli {
                 db: Some("./test.db".to_string()),
                 output: format,
-                command: Commands::Status(StatusArgs {}),
+                command: Some(Commands::Status(StatusArgs {})),
+                detect_backend: false,
             };
 
             assert_eq!(cli.output, format);
@@ -6348,7 +6351,8 @@ mod output_format_tests {
         let cli = Cli {
             db: None,
             output: OutputFormat::Json,
-            command: Commands::Patterns(args.clone()),
+            command: Some(Commands::Patterns(args.clone())),
+            detect_backend: false,
         };
 
         // Verify CLI structure

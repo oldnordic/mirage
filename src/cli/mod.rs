@@ -95,6 +95,9 @@ pub enum Commands {
 
     /// Show high-risk functions (hotspots)
     Hotspots(HotspotsArgs),
+
+    /// Migrate database between storage backends
+    Migrate(MigrateArgs),
 }
 
 // ============================================================================
@@ -298,6 +301,48 @@ pub struct HotspotsArgs {
     /// Use inter-procedural analysis (requires Magellan DB)
     #[arg(long)]
     pub inter_procedural: bool,
+}
+
+/// Migrate database between storage backends
+#[derive(Parser, Debug, Clone)]
+pub struct MigrateArgs {
+    /// Source backend format
+    #[arg(long, value_enum)]
+    pub from: BackendFormat,
+
+    /// Target backend format
+    #[arg(long, value_enum)]
+    pub to: BackendFormat,
+
+    /// Database path to migrate
+    #[arg(short, long)]
+    pub db: String,
+
+    /// Create backup before migration
+    #[arg(long)]
+    pub backup: bool,
+
+    /// Dry run: detect format only without migrating
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+/// Backend format for migration
+#[derive(clap::ValueEnum, Clone, Debug, Copy, PartialEq, Eq)]
+pub enum BackendFormat {
+    /// SQLite database (traditional backend)
+    Sqlite,
+    /// Native V2 database (high-performance backend)
+    NativeV2,
+}
+
+impl std::fmt::Display for BackendFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Sqlite => write!(f, "sqlite"),
+            Self::NativeV2 => write!(f, "native-v2"),
+        }
+    }
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
@@ -693,7 +738,7 @@ pub mod cmds {
     use anyhow::Result;
 
 
-    pub fn status(_args: StatusArgs, cli: &Cli) -> Result<()> {
+    pub fn status(_args: &StatusArgs, cli: &Cli) -> Result<()> {
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -3382,6 +3427,109 @@ pub mod cmds {
         }
 
         Ok(())
+    }
+
+    pub fn migrate(args: &MigrateArgs, cli: &Cli) -> Result<()> {
+        use magellan::migrate_backend_cmd::{detect_backend_format, BackendFormat as MagellanBackendFormat};
+
+        let db_path = std::path::Path::new(&args.db);
+
+        // Validate database exists
+        if !db_path.exists() {
+            return Err(anyhow::anyhow!("Database not found: {}", args.db));
+        }
+
+        // Detect actual backend format
+        let actual_format = detect_backend_format(db_path)
+            .map_err(|e| anyhow::anyhow!("Backend detection failed: {}", e))?;
+
+        // Validate source format matches actual database
+        let source_matches = match (args.from, actual_format) {
+            (BackendFormat::Sqlite, MagellanBackendFormat::Sqlite) => true,
+            (BackendFormat::NativeV2, MagellanBackendFormat::NativeV2) => true,
+            _ => false,
+        };
+
+        if !source_matches {
+            return Err(anyhow::anyhow!(
+                "Source backend mismatch: expected {}, found {:?}",
+                args.from, actual_format
+            ));
+        }
+
+        // Validate source and target are different
+        if args.from == args.to {
+            return Err(anyhow::anyhow!("Source and target backends must be different"));
+        }
+
+        // Dry run: just report what would happen
+        if args.dry_run {
+            match cli.output {
+                OutputFormat::Human => {
+                    println!("Dry run: would migrate {} -> {}", args.from, args.to);
+                    println!("Database: {}", args.db);
+                }
+                OutputFormat::Json | OutputFormat::Pretty => {
+                    let output = serde_json::json!({
+                        "dry_run": true,
+                        "from": args.from.to_string(),
+                        "to": args.to.to_string(),
+                        "database": args.db,
+                    });
+                    match cli.output {
+                        OutputFormat::Json => println!("{}", serde_json::to_string(&output)?),
+                        OutputFormat::Pretty => println!("{}", serde_json::to_string_pretty(&output)?),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            return Ok(());
+        }
+
+        // Create backup if requested
+        if args.backup {
+            let backup_path = format!("{}.backup.{}", args.db,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs());
+            std::fs::copy(&args.db, &backup_path)
+                .map_err(|e| anyhow::anyhow!("Failed to create backup: {}", e))?;
+            eprintln!("Backup created: {}", backup_path);
+        }
+
+        // Delegate to magellan's migration function
+        match (args.from, args.to) {
+            (BackendFormat::Sqlite, BackendFormat::NativeV2) => {
+                // Use magellan's run_migrate_backend
+                let input_db = std::path::PathBuf::from(&args.db);
+                let output_db = input_db.clone(); // In-place migration
+
+                #[cfg(feature = "backend-native-v2")]
+                {
+                    // Native-v2 migration not yet implemented for Mirage
+                    // Mirage uses the same database format as Magellan for CFG blocks
+                    return Err(anyhow::anyhow!(
+                        "Migration from sqlite to native-v2 is not yet implemented for Mirage. \
+                         Use Magellan's migrate command: magellan migrate --from sqlite --to native-v2 --db {}",
+                        args.db
+                    ));
+                }
+
+                #[cfg(not(feature = "backend-native-v2"))]
+                {
+                    return Err(anyhow::anyhow!(
+                        "Native-v2 feature not enabled. Rebuild with: --features native-v2"
+                    ));
+                }
+            }
+            (BackendFormat::NativeV2, BackendFormat::Sqlite) => {
+                return Err(anyhow::anyhow!(
+                    "Migration from native-v2 to sqlite is not yet supported"
+                ));
+            }
+            _ => unreachable!(),
+        }
     }
 }
 

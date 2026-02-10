@@ -3501,32 +3501,57 @@ pub mod cmds {
         // Delegate to magellan's migration function
         match (args.from, args.to) {
             (BackendFormat::Sqlite, BackendFormat::NativeV2) => {
-                // Use magellan's run_migrate_backend
+                // Use magellan's run_migrate_backend for in-place migration
                 let input_db = std::path::PathBuf::from(&args.db);
                 let output_db = input_db.clone(); // In-place migration
 
                 #[cfg(feature = "backend-native-v2")]
                 {
-                    // Native-v2 migration not yet implemented for Mirage
-                    // Mirage uses the same database format as Magellan for CFG blocks
-                    return Err(anyhow::anyhow!(
-                        "Migration from sqlite to native-v2 is not yet implemented for Mirage. \
-                         Use Magellan's migrate command: magellan migrate --from sqlite --to native-v2 --db {}",
-                        args.db
-                    ));
+                    use magellan::migrate_backend_cmd::run_migrate_backend;
+
+                    let result = run_migrate_backend(input_db, output_db, None, false)?;
+
+                    // Report migration results
+                    match cli.output {
+                        OutputFormat::Human => {
+                            println!("{}", result.message);
+                        }
+                        OutputFormat::Json | OutputFormat::Pretty => {
+                            let output = serde_json::json!({
+                                "success": result.success,
+                                "from": format!("{:?}", result.source_format),
+                                "to": format!("{:?}", result.target_format),
+                                "entities_migrated": result.entities_migrated,
+                                "edges_migrated": result.edges_migrated,
+                                "side_tables_migrated": result.side_tables_migrated,
+                            });
+                            match cli.output {
+                                OutputFormat::Json => println!("{}", serde_json::to_string(&output)?),
+                                OutputFormat::Pretty => println!("{}", serde_json::to_string_pretty(&output)?),
+                                _ => unreachable!(),
+                            }
+                        }
+                    }
+
+                    if !result.success {
+                        return Err(anyhow::anyhow!("Migration failed"));
+                    }
+
+                    Ok(())
                 }
 
                 #[cfg(not(feature = "backend-native-v2"))]
                 {
-                    return Err(anyhow::anyhow!(
-                        "Native-v2 feature not enabled. Rebuild with: --features native-v2"
-                    ));
+                    Err(anyhow::anyhow!(
+                        "Native-v2 feature not enabled. Rebuild with: --features backend-native-v2"
+                    ))
                 }
             }
             (BackendFormat::NativeV2, BackendFormat::Sqlite) => {
-                return Err(anyhow::anyhow!(
-                    "Migration from native-v2 to sqlite is not yet supported"
-                ));
+                Err(anyhow::anyhow!(
+                    "Migration from native-v2 to sqlite is not yet supported. \
+                     SQLite backend is the default and recommended format."
+                ))
             }
             _ => unreachable!(),
         }

@@ -27,7 +27,12 @@ scripts/
 # Planning files (local development)
 .planning/
 CONTEXT.md
+CLAUDE.md
 MAGELLAN_V2_INTEGRATION.md
+
+# Development artifacts
+.codemcp/
+package-lock.json
 
 # Logs
 *.log

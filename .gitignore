@@ -33,6 +33,7 @@ MAGELLAN_V2_INTEGRATION.md
 # Development artifacts
 .codemcp/
 package-lock.json
+examples/
 
 # Logs
 *.log

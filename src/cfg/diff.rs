@@ -8,7 +8,7 @@
 //! - Uses petgraph for graph representation and algorithms
 //! - Computes set differences for blocks and edges
 //! - Calculates structural similarity based on graph edit distance
-//! - Supports both SQLite and native-v2 backends via StorageTrait
+//! - Supports both SQLite and native-v3 backends via StorageTrait
 //!
 //! # Examples
 //!
@@ -474,6 +474,7 @@ mod tests {
     fn test_blocks_to_petgraph() {
         let blocks = vec![
             CfgBlockData {
+                id: 0,
                 kind: "entry".to_string(),
                 terminator: "fallthrough".to_string(),
                 byte_start: 0,
@@ -484,6 +485,7 @@ mod tests {
                 end_col: 0,
             },
             CfgBlockData {
+                id: 1,
                 kind: "normal".to_string(),
                 terminator: "return".to_string(),
                 byte_start: 10,
@@ -545,6 +547,16 @@ mod tests {
                 source_location: "1:0-5:0".to_string(),
             },
         );
+        // Need a second block for fallthrough to target
+        before.insert(
+            1,
+            BlockDiff {
+                block_id: 1,
+                kind: "normal".to_string(),
+                terminator: "return".to_string(),
+                source_location: "5:0-10:0".to_string(),
+            },
+        );
 
         let mut after = HashMap::new();
         after.insert(
@@ -552,14 +564,24 @@ mod tests {
             BlockDiff {
                 block_id: 0,
                 kind: "entry".to_string(),
-                terminator: "return".to_string(), // Changed
+                terminator: "return".to_string(), // Changed: no more fallthrough
                 source_location: "1:0-5:0".to_string(),
+            },
+        );
+        // Keep the second block
+        after.insert(
+            1,
+            BlockDiff {
+                block_id: 1,
+                kind: "normal".to_string(),
+                terminator: "return".to_string(),
+                source_location: "5:0-10:0".to_string(),
             },
         );
 
         let (added, deleted) = compute_edge_diff(&before, &after).unwrap();
 
-        // Before had an edge, after has none
+        // Before had an edge (0->1 fallthrough), after has none
         assert_eq!(added.len(), 0);
         assert_eq!(deleted.len(), 1);
     }

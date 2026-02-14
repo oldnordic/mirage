@@ -1,6 +1,6 @@
 //! Integration tests for all mirage commands
 //!
-//! Tests verify commands work correctly on both SQLite and native-v2 backends.
+//! Tests verify commands work correctly on both SQLite and native-v3 backends.
 //! These are "smoke tests" that verify:
 //! - CLI parsing works correctly
 //! - Commands can be invoked without panicking
@@ -35,7 +35,15 @@ impl TestContext {
         let mirage_bin = std::env::var("CARGO_BIN_EXE_mirage")
             .ok()
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("./target/release/mirage"));
+            .unwrap_or_else(|| {
+                // Check for debug binary first (cargo test builds debug by default)
+                let debug_path = PathBuf::from("./target/debug/mirage");
+                if debug_path.exists() {
+                    debug_path
+                } else {
+                    PathBuf::from("./target/release/mirage")
+                }
+            });
 
         Self {
             mirage_bin,
@@ -63,8 +71,9 @@ impl TestContext {
     /// Create a minimal test database with Magellan v7 schema
     fn create_test_database(db_path: &PathBuf) {
         use rusqlite::Connection;
+        use std::fs;
 
-        let conn = Connection::open(db_path).unwrap();
+        let mut conn = Connection::open(db_path).unwrap();
 
         // Enable foreign keys
         conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
@@ -202,6 +211,13 @@ impl TestContext {
             )",
             [],
         ).unwrap();
+        
+        // Explicitly close the connection to ensure all writes are flushed
+        drop(conn);
+        
+        // Verify the database file exists and is readable
+        assert!(db_path.exists(), "Database file should exist after creation");
+        assert!(fs::metadata(db_path).unwrap().len() > 0, "Database file should not be empty");
     }
 }
 
@@ -396,7 +412,7 @@ fn test_detect_backend_flag() {
     let output = ctx.run_command(&["--detect-backend"]);
 
     assert!(output.success(), "--detect-backend should succeed");
-    assert!(output.stdout_contains("sqlite") || output.stdout_contains("native-v2") || output.stdout.contains("{"),
+    assert!(output.stdout_contains("sqlite") || output.stdout_contains("native-v3") || output.stdout.contains("{"),
             "--detect-backend should output backend type");
 }
 

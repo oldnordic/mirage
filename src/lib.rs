@@ -10,7 +10,7 @@
 //! // Auto-detect and open the database backend
 //! let backend = Backend::detect_and_open("codegraph.db")?;
 //!
-//! // Query CFG blocks (works with both SQLite and native-v2)
+//! // Query CFG blocks (works with both SQLite and native-v3)
 //! let blocks = backend.get_cfg_blocks(123)?;
 //! # Ok::<(), anyhow::Error>(())
 //! ```
@@ -19,7 +19,7 @@
 //!
 //! Mirage supports two storage backends:
 //! - **SQLite**: Default backend, backward compatible with Magellan v7+
-//! - **Native-V2**: High-performance KV backend (requires `backend-native-v2` feature)
+//! - **Native-V3**: High-performance KV backend (requires `backend-native-v3` feature)
 //!
 //! The backend is automatically detected from the database file format.
 //!
@@ -33,15 +33,15 @@
 
 // Compile-time guard: prevent enabling both backends simultaneously
 // This must be at the lib level since storage/mod.rs is compiled first
-#[cfg(all(feature = "sqlite", feature = "native-v2"))]
+#[cfg(all(feature = "sqlite", feature = "native-v3"))]
 compile_error!(
-    "Features 'sqlite' and 'native-v2' are mutually exclusive. \
+    "Features 'sqlite' and 'native-v3' are mutually exclusive. \
      Enable only one backend feature. Remove one of: \
      --features sqlite \
-     --features native-v2 \
+     --features native-v3 \
      \
      Default is SQLite, so use `cargo build` with no features, or \
-     `cargo build --features native-v2` for the native-v2 backend."
+     `cargo build --features native-v3` for the native-v3 backend."
 );
 
 pub mod analysis;

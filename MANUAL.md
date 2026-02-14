@@ -1,6 +1,6 @@
 # Mirage User Manual
 
-Version 0.1.0
+Version 1.0.2
 
 ---
 
@@ -42,8 +42,7 @@ cargo install --path .
 
 ### Requirements
 
-- **Charon:** Install [Charon](https://github.com/AeneasVerif/charon) and ensure it's in your PATH
-- **Magellan (recommended):** For inter-procedural features, run `magellan watch` on your project first
+- **Magellan (required):** For CFG extraction, run `magellan watch` on your project first
 
 ### Full Workflow Setup
 
@@ -56,17 +55,14 @@ cargo install magellan llmgrep mirage-analyzer splice
 # In your project directory
 cd /path/to/rust/project
 
-# Start the call graph indexer (magellan)
-magellan watch --root ./src --db .codemcp/project.db
-
-# In another terminal - index control flow (mirage)
-mirage index --project .
+# Start the call graph indexer (magellan) - this creates CFG data
+magellan watch --root ./src --db .codemcp/project.v3
 
 # Search symbols (llmgrep)
-llmgrep search --query "function_name" --db .codemcp/project.db
+llmgrep search --query "function_name" --db .codemcp/project.v3
 
 # Analyze paths (mirage)
-mirage paths --function "my_crate::main"
+mirage paths --function "my_crate::main" --db .codemcp/project.v3
 ```
 
 ### First Usage
@@ -75,12 +71,13 @@ mirage paths --function "my_crate::main"
 # 1. Navigate to your Rust project
 cd /path/to/rust/project
 
-# 2. Index the project
-mirage index --project .
+# 2. Create database with Magellan (this extracts CFG data)
+magellan watch --root ./src --db .codemcp/project.v3
 
-# 3. Query analysis results
-mirage paths --function "my_crate::main"
-mirage cfg --function "my_crate::main"
+# 3. Analyze with Mirage
+mirage status --db .codemcp/project.v3
+mirage paths --function "my_crate::main" --db .codemcp/project.v3
+mirage cfg --function "my_crate::main" --db .codemcp/project.v3
 ```
 
 ---

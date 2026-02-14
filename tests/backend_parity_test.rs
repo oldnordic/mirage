@@ -1,6 +1,6 @@
 //! Backend parity tests for mirage
 //!
-//! Verify that SQLite and native-v2 backends produce identical results.
+//! Verify that SQLite and native-v3 backends produce identical results.
 //! Tests follow the TDD pattern: RED (failing test), GREEN (implementation passes),
 //! REFACTOR (cleanup while maintaining passing tests).
 //!
@@ -117,83 +117,16 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
 
 /// Create a test native-v2 database with CFG data
 ///
-/// This helper creates a native-v2 database with the same test data
+/// This helper creates a native-v3 database with the same test data
 /// as create_test_database_sqlite() for parity testing.
 ///
-/// Note: This requires the native-v2 feature to be enabled.
-#[cfg(feature = "native-v2")]
+/// Note: This requires the native-v3 feature to be enabled.
+#[cfg(feature = "native-v3")]
 fn create_test_database_native_v2() -> (TempDir, PathBuf) {
-    use magellan::CodeGraph;
-    use magellan::graph::CfgBlock;
-
-    let dir = TempDir::new().unwrap();
-    let db_path = dir.path().join("test.db");
-
-    // Create a native-v2 database using CodeGraph
-    let mut graph = CodeGraph::create_native(&db_path).unwrap();
-
-    // Create a test function in the graph
-    let test_source = r#"
-        pub fn test_function() -> i32 {
-            if true {
-                42
-            } else {
-                0
-            }
-        }
-    "#;
-
-    // Index the file to create entities
-    graph.index_file("src/test.rs", test_source.as_bytes()).unwrap();
-
-    // Manually add CFG blocks for testing
-    // This simulates what Magellan's CFG extraction would do
-    let cfg_blocks = vec![
-        CfgBlock {
-            id: 1,
-            function_id: 1,
-            kind: "entry".to_string(),
-            terminator: "fallthrough".to_string(),
-            byte_start: 0,
-            byte_end: 10,
-            start_line: 1,
-            start_col: 0,
-            end_line: 1,
-            end_col: 10,
-        },
-        CfgBlock {
-            id: 2,
-            function_id: 1,
-            kind: "normal".to_string(),
-            terminator: "conditional".to_string(),
-            byte_start: 10,
-            byte_end: 50,
-            start_line: 2,
-            start_col: 4,
-            end_line: 5,
-            end_col: 8,
-        },
-        CfgBlock {
-            id: 3,
-            function_id: 1,
-            kind: "return".to_string(),
-            terminator: "return".to_string(),
-            byte_start: 50,
-            byte_end: 60,
-            start_line: 5,
-            start_col: 0,
-            end_line: 5,
-            end_col: 10,
-        },
-    ];
-
-    // Store CFG blocks in KV store
-    // The key format is "cfg:func:{function_id}"
-    let key = format!("cfg:func:1");
-    let value = serde_json::to_string(&cfg_blocks).unwrap();
-    graph.kv_set(&key, &value).unwrap();
-
-    (dir, db_path)
+    // TODO: Implement native-v3 test database creation
+    // For now, this test requires a pre-existing native-v3 database
+    // Create using: magellan watch --root ./test_src --db test.v3
+    unimplemented!("Native-v3 test database creation not yet implemented. Use magellan to create a .v3 database first.")
 }
 
 // ============================================================================
@@ -236,11 +169,11 @@ fn test_cfg_blocks_parity_sqlite() {
 }
 
 #[test]
-#[cfg(feature = "native-v2")]
+#[cfg(feature = "native-v3")]
 fn test_cfg_blocks_parity_native_v2() {
     let (_dir, db_path) = create_test_database_native_v2();
 
-    // Open native-v2 backend using Backend enum
+    // Open native-v3 backend using Backend enum
     let backend = Backend::detect_and_open(&db_path).unwrap();
 
     // Test function ID 1
@@ -293,7 +226,7 @@ fn test_entity_parity_sqlite() {
 }
 
 #[test]
-#[cfg(feature = "native-v2")]
+#[cfg(feature = "native-v3")]
 fn test_entity_parity_native_v2() {
     let (_dir, db_path) = create_test_database_native_v2();
 
@@ -330,7 +263,7 @@ fn test_empty_result_sqlite() {
 }
 
 #[test]
-#[cfg(feature = "native-v2")]
+#[cfg(feature = "native-v3")]
 fn test_empty_result_native_v2() {
     let (_dir, db_path) = create_test_database_native_v2();
 
@@ -349,6 +282,7 @@ fn test_empty_result_native_v2() {
 fn test_cfg_block_data_fields() {
     // Verify CfgBlockData has all expected fields
     let block = CfgBlockData {
+        id: 1,
         kind: "entry".to_string(),
         terminator: "fallthrough".to_string(),
         byte_start: 0,
@@ -387,7 +321,7 @@ fn test_storage_trait_impl_sqlite() {
 }
 
 #[test]
-#[cfg(feature = "native-v2")]
+#[cfg(feature = "native-v3")]
 fn test_storage_trait_impl_native_v2() {
     fn assert_storage_trait<T: StorageTrait>(_t: &T) {}
 

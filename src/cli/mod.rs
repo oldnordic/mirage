@@ -36,7 +36,7 @@ pub struct Cli {
     #[arg(global = true, long, value_enum, default_value_t = OutputFormat::Human)]
     pub output: OutputFormat,
 
-    /// Detect and report backend format (sqlite or native-v2)
+    /// Detect and report backend format (sqlite or native-v3)
     #[arg(long, global = true, default_value = "false")]
     pub detect_backend: bool,
 
@@ -424,15 +424,15 @@ pub struct DiffArgs {
 pub enum BackendFormat {
     /// SQLite database (traditional backend)
     Sqlite,
-    /// Native V2 database (high-performance backend)
-    NativeV2,
+    /// Native V3 database (high-performance backend)
+    NativeV3,
 }
 
 impl std::fmt::Display for BackendFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Sqlite => write!(f, "sqlite"),
-            Self::NativeV2 => write!(f, "native-v2"),
+            Self::NativeV3 => write!(f, "native-v3"),
         }
     }
 }
@@ -4034,7 +4034,7 @@ pub mod cmds {
     }
 
     pub fn migrate(args: &MigrateArgs, cli: &Cli) -> Result<()> {
-        use magellan::migrate_backend_cmd::{detect_backend_format, BackendFormat as MagellanBackendFormat};
+        use crate::storage::BackendFormat as StorageBackendFormat;
 
         let db_path = std::path::Path::new(&args.db);
 
@@ -4043,18 +4043,21 @@ pub mod cmds {
             return Err(anyhow::anyhow!("Database not found: {}", args.db));
         }
 
-        // Detect actual backend format
-        let actual_format = detect_backend_format(db_path)
+        // Detect actual backend format using mirage's detection
+        let actual_format = StorageBackendFormat::detect(db_path)
             .map_err(|e| anyhow::anyhow!("Backend detection failed: {}", e))?;
 
-        // Validate source format matches actual database
-        let source_matches = match (args.from, actual_format) {
-            (BackendFormat::Sqlite, MagellanBackendFormat::Sqlite) => true,
-            (BackendFormat::NativeV2, MagellanBackendFormat::NativeV2) => true,
-            _ => false,
+        // Convert storage BackendFormat to cli BackendFormat for comparison
+        let actual_format_cli = match actual_format {
+            StorageBackendFormat::SQLite => BackendFormat::Sqlite,
+            StorageBackendFormat::NativeV3 => BackendFormat::NativeV3,
+            StorageBackendFormat::Unknown => {
+                return Err(anyhow::anyhow!("Cannot detect backend format: unknown format"));
+            }
         };
 
-        if !source_matches {
+        // Validate source format matches actual database
+        if args.from != actual_format_cli {
             return Err(anyhow::anyhow!(
                 "Source backend mismatch: expected {}, found {:?}",
                 args.from, actual_format
@@ -4104,12 +4107,12 @@ pub mod cmds {
 
         // Delegate to magellan's migration function
         match (args.from, args.to) {
-            (BackendFormat::Sqlite, BackendFormat::NativeV2) => {
+            (BackendFormat::Sqlite, BackendFormat::NativeV3) => {
                 // Use magellan's run_migrate_backend for in-place migration
                 let input_db = std::path::PathBuf::from(&args.db);
                 let output_db = input_db.clone(); // In-place migration
 
-                #[cfg(feature = "backend-native-v2")]
+                #[cfg(feature = "backend-native-v3")]
                 {
                     use magellan::migrate_backend_cmd::run_migrate_backend;
 
@@ -4144,16 +4147,16 @@ pub mod cmds {
                     Ok(())
                 }
 
-                #[cfg(not(feature = "backend-native-v2"))]
+                #[cfg(not(feature = "backend-native-v3"))]
                 {
                     Err(anyhow::anyhow!(
-                        "Native-v2 feature not enabled. Rebuild with: --features backend-native-v2"
+                        "Native-v3 feature not enabled. Rebuild with: --features backend-native-v3"
                     ))
                 }
             }
-            (BackendFormat::NativeV2, BackendFormat::Sqlite) => {
+            (BackendFormat::NativeV3, BackendFormat::Sqlite) => {
                 Err(anyhow::anyhow!(
-                    "Migration from native-v2 to sqlite is not yet supported. \
+                    "Migration from native-v3 to sqlite is not yet supported. \
                      SQLite backend is the default and recommended format."
                 ))
             }
@@ -4522,6 +4525,7 @@ mod status_tests {
 
     /// Test that status() returns correct database statistics
     #[test]
+    #[cfg(feature = "backend-sqlite")]
     fn test_status_returns_correct_statistics() {
         let (_file, db) = create_test_db().unwrap();
         let status = db.status().unwrap();
@@ -4536,6 +4540,7 @@ mod status_tests {
 
     /// Test that human output format contains expected fields
     #[test]
+    #[cfg(feature = "backend-sqlite")]
     fn test_status_human_output_format() {
         let (_file, db) = create_test_db().unwrap();
         let status = db.status().unwrap();
@@ -4551,6 +4556,7 @@ mod status_tests {
 
     /// Test that JSON output format is valid and contains expected structure
     #[test]
+    #[cfg(feature = "backend-sqlite")]
     fn test_status_json_output_format() {
         use crate::output::JsonResponse;
 
@@ -4581,6 +4587,7 @@ mod status_tests {
 
     /// Test that pretty JSON output is formatted with indentation
     #[test]
+    #[cfg(feature = "backend-sqlite")]
     fn test_status_pretty_json_output_format() {
         use crate::output::JsonResponse;
 
@@ -4624,6 +4631,7 @@ mod status_tests {
 
     /// Test that status() with empty database returns zero counts
     #[test]
+    #[cfg(feature = "backend-sqlite")]
     fn test_status_empty_database_returns_zeros() {
         use crate::storage::{REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION};
 
@@ -4742,6 +4750,8 @@ mod paths_tests {
             show_errors: false,
             max_length: None,
             with_blocks: false,
+            incremental: false,
+            since: None,
         };
 
         assert_eq!(args.function, "test_function");
@@ -4758,6 +4768,8 @@ mod paths_tests {
             show_errors: true,
             max_length: Some(10),
             with_blocks: true,
+            incremental: false,
+            since: None,
         };
 
         assert_eq!(args.function, "my_func");
@@ -4877,6 +4889,8 @@ mod paths_tests {
             show_errors: false,
             max_length: None,
             with_blocks: true,
+            incremental: false,
+            since: None,
         };
 
         let args_without = PathsArgs {
@@ -4884,6 +4898,8 @@ mod paths_tests {
             show_errors: false,
             max_length: None,
             with_blocks: false,
+            incremental: false,
+            since: None,
         };
 
         assert!(args_with.with_blocks, "with_blocks should be true");
@@ -6221,6 +6237,7 @@ mod verify_tests {
 
     /// Test that verify() returns valid for a path that exists in current enumeration
     #[test]
+    #[cfg(feature = "backend-sqlite")]
     fn test_verify_valid_path() {
         let (_file, _db, cached_path_id) = create_test_db_with_cached_path().unwrap();
 

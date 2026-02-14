@@ -106,6 +106,11 @@ pub fn compute_hot_paths(
     natural_loops: &[NaturalLoop],
     options: HotpathsOptions,
 ) -> Result<Vec<HotPath>> {
+    // Early return for empty paths
+    if paths.is_empty() {
+        return Ok(vec![]);
+    }
+
     // Compute dominator tree
     let dom_tree = dominators::simple_fast(graph, entry_id);
 

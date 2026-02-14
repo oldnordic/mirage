@@ -1,6 +1,6 @@
 [package]
 name = "mirage-analyzer"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Mirage Contributors"]
@@ -23,10 +23,11 @@ clap = { version = "4.5", features = ["derive", "env"] }
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }
 
-# Magellan for inter-procedural analysis
-magellan = { version = "2.2", optional = true }
-# sqlitegraph for GraphBackend trait (required for dual backend support)
-sqlitegraph = "1.5"
+# Magellan for inter-procedural analysis (required for CFG data)
+magellan = "2.4"
+
+# sqlitegraph for GraphBackend trait
+sqlitegraph = "2.0"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -62,15 +63,14 @@ default = ["unix", "backend-sqlite"]
 unix = []
 windows = []
 
-# Backend selection - choose one (mutually exclusive)
-# Use backend-sqlite (default) or backend-native-v2, not both
-backend-sqlite = ["magellan", "sqlitegraph/sqlite-backend"]
+# Backend selection - default is SQLite, native-v3 is opt-in for performance
+backend-sqlite = ["sqlitegraph/sqlite-backend"]
 # Alias for backward compatibility
 sqlite = ["backend-sqlite"]
-# Native V2 backend (newer I/O layer)
-backend-native-v2 = ["magellan/native-v2", "sqlitegraph/native-v2"]
-# Alias for convenience
-native-v2 = ["backend-native-v2"]
+# Native V3 backend (high-performance binary format with KV store)
+backend-native-v3 = ["magellan/native-v3", "sqlitegraph/native-v3"]
+# Alias for convenience  
+native-v3 = ["backend-native-v3"]
 
 # MIR extraction features will be added in Milestone 1
 

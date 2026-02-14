@@ -7,15 +7,15 @@
 #![allow(dead_code)]
 
 // Compile-time guard: prevent enabling both backends simultaneously
-#[cfg(all(feature = "sqlite", feature = "native-v2"))]
+#[cfg(all(feature = "sqlite", feature = "native-v3"))]
 compile_error!(
-    "Features 'sqlite' and 'native-v2' are mutually exclusive. \
+    "Features 'sqlite' and 'native-v3' are mutually exclusive. \
      Enable only one backend feature. Remove one of: \
      --features sqlite \
-     --features native-v2 \
+     --features native-v3 \
      \
      Default is SQLite, so use `cargo build` with no features, or \
-     `cargo build --features native-v2` for the native-v2 backend."
+     `cargo build --features native-v3` for the native-v3 backend."
 );
 
 use clap::Parser;
@@ -57,13 +57,14 @@ fn run_command(cli: Cli) -> Result<()> {
         let db_str = cli.db.ok_or_else(|| anyhow::anyhow!("--db required for --detect-backend"))?;
         let db_path = std::path::Path::new(&db_str);
 
-        use magellan::migrate_backend_cmd::{detect_backend_format, BackendFormat};
-        let format = detect_backend_format(db_path)
+        use mirage_analyzer::storage::BackendFormat;
+        let format = BackendFormat::detect(db_path)
             .map_err(|e| anyhow::anyhow!("Backend detection failed: {}", e))?;
 
         let backend_str = match format {
-            BackendFormat::Sqlite => "sqlite",
-            BackendFormat::NativeV2 => "native-v2",
+            BackendFormat::SQLite => "sqlite",
+            BackendFormat::NativeV3 => "native-v3",
+            BackendFormat::Unknown => "unknown",
         };
 
         if matches!(cli.output, cli::OutputFormat::Json | cli::OutputFormat::Pretty) {

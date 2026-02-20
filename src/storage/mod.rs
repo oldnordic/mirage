@@ -230,6 +230,8 @@ impl Backend {
             Backend::Sqlite(s) => s.get_cfg_blocks(function_id),
             #[cfg(feature = "backend-native-v3")]
             Backend::NativeV3(k) => k.get_cfg_blocks(function_id),
+            #[allow(unreachable_patterns)]
+            _ => Err(anyhow::anyhow!("No storage backend available")),
         }
     }
 
@@ -240,6 +242,8 @@ impl Backend {
             Backend::Sqlite(s) => s.get_entity(entity_id),
             #[cfg(feature = "backend-native-v3")]
             Backend::NativeV3(k) => k.get_entity(entity_id),
+            #[allow(unreachable_patterns)]
+            _ => None,
         }
     }
 
@@ -250,6 +254,8 @@ impl Backend {
             Backend::Sqlite(s) => s.get_cached_paths(function_id),
             #[cfg(feature = "backend-native-v3")]
             Backend::NativeV3(k) => k.get_cached_paths(function_id),
+            #[allow(unreachable_patterns)]
+            _ => Err(anyhow::anyhow!("No storage backend available")),
         }
     }
 }

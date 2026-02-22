@@ -52,3 +52,12 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Planning/work files
+CLI_REFACTORING_PLAN.md
+FIXES_SUMMARY.md
+FIX_VERIFICATION.md
+MODULARIZATION_SCRIPT.sh
+REFACTORING_STATUS.md
+WORK_SUMMARY.md
+

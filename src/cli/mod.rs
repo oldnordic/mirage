@@ -965,8 +965,9 @@ pub mod cmds {
                 println!("Mirage Database Status:");
                 println!("  Schema version: {} (Magellan: {})", status.mirage_schema_version, status.magellan_schema_version);
                 println!("  cfg_blocks: {}", status.cfg_blocks);
-                // cfg_edges are computed in memory, not stored
-                println!("  cfg_paths: {}", status.cfg_paths);
+                // cfg_edges are computed in memory from terminators, not stored
+                // cfg_paths requires explicit enumeration via 'mirage paths --function <name>'
+                println!("  cfg_paths: {} (use 'mirage paths --function <name>' to enumerate)", status.cfg_paths);
                 println!("  cfg_dominators: {}", status.cfg_dominators);
             }
             OutputFormat::Json => {
@@ -1123,7 +1124,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'magellan watch' to index your code");
+                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1297,7 +1298,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'magellan watch' to index your code");
+                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1446,7 +1447,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'magellan watch' to index your code");
+                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -1967,7 +1968,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'magellan watch' to index your code");
+                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -2118,9 +2119,20 @@ pub mod cmds {
         }
 
         // Query all functions from the database
+        // Note: Requires SQLite backend for full table scan
+        if !db.is_sqlite() {
+            output::info("Note: Native-V3 backend detected. Using entity iteration instead of SQL query.");
+            // TODO: Implement entity iteration for native-v3
+            output::error("The 'unreachable' command currently requires SQLite backend.");
+            output::info("Use SQLite backend or run with --help for alternatives.");
+            std::process::exit(output::EXIT_USAGE);
+        }
+
         // Use prepare and execute to handle multiple rows properly
         let mut function_rows: Vec<(String, i64)> = Vec::new();
-        let mut stmt = match db.conn()?.prepare("SELECT name, id FROM graph_entities WHERE kind = 'function'") {
+        // Magellan v7 stores functions as kind='Symbol' with data.kind='Function'
+        let mut stmt = match db.conn()?.prepare(
+            "SELECT name, id FROM graph_entities WHERE kind = 'Symbol' AND json_extract(data, '$.kind') = 'Function'") {
             Ok(stmt) => stmt,
             Err(e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -2358,6 +2370,21 @@ pub mod cmds {
 
         let path_id = &args.path_id;
 
+        // Path verification requires SQLite backend (path caching)
+        if !db.is_sqlite() {
+            let msg = "Path verification requires SQLite backend with path caching.";
+            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                let error = output::JsonError::new("UnsupportedBackend", msg, output::E_INVALID_INPUT);
+                let wrapper = output::JsonResponse::new(error);
+                println!("{}", wrapper.to_json());
+                std::process::exit(output::EXIT_USAGE);
+            } else {
+                output::error(msg);
+                output::info("Native-V3 backend does not support path caching.");
+                std::process::exit(output::EXIT_USAGE);
+            }
+        }
+
         // Check if path exists in cache by querying cfg_paths table
         let cached_path_info: Option<(String, i64, String)> = db.conn()?
             .query_row(
@@ -2503,6 +2530,21 @@ pub mod cmds {
 
         // Determine query type: path-based or block-based
         if let Some(ref path_id) = args.path_id {
+            // Path-based impact analysis requires SQLite backend (path caching)
+            if !db.is_sqlite() {
+                let msg = "Path-based blast-zone requires SQLite backend. Use block-based analysis with --function and --block-id instead.";
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::new("UnsupportedBackend", msg, output::E_INVALID_INPUT);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_USAGE);
+                } else {
+                    output::error(msg);
+                    output::info("Native-V3 backend does not support path caching. Use: mirage blast-zone --function <name> --block-id <id>");
+                    std::process::exit(output::EXIT_USAGE);
+                }
+            }
+
             // Path-based impact analysis
             let path_id_trimmed = path_id.trim();
 
@@ -2721,7 +2763,7 @@ pub mod cmds {
                         std::process::exit(output::EXIT_DATABASE);
                     } else {
                         output::error(&format!("Function '{}' not found in database", function_ref));
-                        output::info("Hint: Run 'magellan watch' to index your code");
+                        output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                         std::process::exit(output::EXIT_DATABASE);
                     }
                 }
@@ -2937,7 +2979,16 @@ pub mod cmds {
             };
 
             // Query all functions from the database
-            let mut stmt = match db.conn()?.prepare("SELECT name, id FROM graph_entities WHERE kind = 'function'") {
+            // Note: Requires SQLite backend for SQL queries
+            if !db.is_sqlite() {
+                output::error("The 'cycles' command with --function-loops requires SQLite backend.");
+                output::info("Native-V3 backend is not yet supported for this feature.");
+                std::process::exit(output::EXIT_USAGE);
+            }
+
+            // Magellan v7 stores functions as kind='Symbol' with data.kind='Function'
+            let mut stmt = match db.conn()?.prepare(
+                "SELECT name, id FROM graph_entities WHERE kind = 'Symbol' AND json_extract(data, '$.kind') = 'Function'") {
                 Ok(stmt) => stmt,
                 Err(e) => {
                     if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3246,7 +3297,7 @@ pub mod cmds {
 
         // Fallback to intra-procedural if no hotspots found or inter-procedural failed
         #[cfg(feature = "sqlite")]
-        if hotspots.is_empty() {
+        if hotspots.is_empty() && db.is_sqlite() {
             // Get all functions from database by joining with graph_entities
             let conn = db.conn_mut()?;
 
@@ -3380,7 +3431,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'magellan watch' to index your code");
+                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -3501,7 +3552,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'magellan watch' to index your code");
+                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -3665,7 +3716,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
                     output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info("Hint: Run 'magellan watch' to index your code");
+                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }

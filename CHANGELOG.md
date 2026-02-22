@@ -5,6 +5,20 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-02-22
+
+### Fixed
+- **`mirage paths` E007 Error:** Fixed "Function hash not found" error by using `symbol_id` from `graph_entities` as fallback when `cfg_blocks.function_hash` column doesn't exist (Magellan v7+ schema)
+
+## [1.0.5] - 2026-02-22
+
+### Fixed
+- **Symbol ID Lookup:** `--function <hex_id>` now correctly resolves Magellan symbol IDs (e.g., `7ca9eebfa98204a5`) in both SQLite and native-v3 backends
+- **Remediation Hints:** Fixed broken hint messages
+  - Changed `mirage cfg --list-functions` → `magellan find <function_name>`
+  - Changed `mirage verify --list` → `mirage paths --function <name>`
+- **Status Output:** Added clarification that `cfg_paths` count requires explicit enumeration via `mirage paths --function <name>`
+
 ## [1.0.4] - 2026-02-22
 
 ### Fixed

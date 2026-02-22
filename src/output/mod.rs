@@ -103,9 +103,9 @@ pub const E_CFG_ERROR: &str = "E007";
 
 /// Common remediation messages
 pub const R_HINT_INDEX: &str = "Run 'magellan watch' to create the database";
-pub const R_HINT_LIST_FUNCTIONS: &str = "Run 'mirage cfg --list-functions' to see available functions";
+pub const R_HINT_LIST_FUNCTIONS: &str = "Run 'magellan find <function_name>' to find the function (or 'magellan status' to see indexed symbols)";
 pub const R_HINT_MAX_LENGTH: &str = "Use --max-length N to bound path exploration";
-pub const R_HINT_VERIFY_PATH: &str = "Run 'mirage verify --list' to see valid paths";
+pub const R_HINT_VERIFY_PATH: &str = "Use 'mirage paths --function <name>' to see available paths";
 
 /// JSON output wrapper (following Magellan's response format)
 #[derive(Debug, Clone, serde::Serialize)]

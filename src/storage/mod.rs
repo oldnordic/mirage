@@ -947,6 +947,7 @@ impl MirageDb {
     /// Resolve a function name or ID to a function_id (native-v3 backend)
     ///
     /// This method uses the native-v3 backend to resolve function names.
+    /// Matches Magellan's storage format: entity.kind = 'Symbol' with data.kind = 'Function'
     #[cfg(feature = "backend-native-v3")]
     pub fn resolve_function_name(&self, name_or_id: &str) -> Result<i64> {
         // Try to parse as numeric ID first
@@ -962,14 +963,36 @@ impl MirageDb {
         let entity_ids = self.backend().entity_ids()
             .context("Failed to query entities from backend")?;
 
-        for entity_id in entity_ids {
-            if let Ok(entity) = self.backend().get_node(snapshot, entity_id) {
-                // Check if this is a function with matching name
-                if entity.name == name_or_id {
-                    // Check kind data for Function type
+        // First pass: look for matching symbol_id (hex hash like 7ca9eebfa98204a5)
+        for entity_id in &entity_ids {
+            if let Ok(entity) = self.backend().get_node(snapshot, *entity_id) {
+                if entity.kind == "Symbol" {
+                    // Check if symbol_id matches
+                    if let Some(symbol_id) = entity.data.get("symbol_id").and_then(|s| s.as_str()) {
+                        if symbol_id == name_or_id {
+                            // Check data.kind for Function type
+                            if let Some(kind) = entity.data.get("kind").and_then(|k| k.as_str()) {
+                                if kind == "Function" {
+                                    return Ok(*entity_id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Second pass: look for matching name
+        for entity_id in &entity_ids {
+            if let Ok(entity) = self.backend().get_node(snapshot, *entity_id) {
+                // Check if this is a Symbol entity with matching name
+                // Magellan stores symbols with entity.kind = 'Symbol' 
+                // and the actual symbol kind (Function, Struct, etc.) in data.kind
+                if entity.kind == "Symbol" && entity.name == name_or_id {
+                    // Check data.kind for Function type
                     if let Some(kind) = entity.data.get("kind").and_then(|k| k.as_str()) {
                         if kind == "Function" {
-                            return Ok(entity_id);
+                            return Ok(*entity_id);
                         }
                     }
                 }
@@ -1174,8 +1197,29 @@ impl MirageDb {
 /// resolution, use `MirageDb::resolve_function_name` which takes `&MirageDb`.
 #[cfg(feature = "backend-sqlite")]
 fn resolve_function_name_sqlite(conn: &Connection, name_or_id: &str) -> Result<i64> {
-    // Query by function name
-    // Note: Magellan v7 stores functions as kind='Symbol' with data.kind='Function'
+    // First try to look up by symbol_id (hex hash like 7ca9eebfa98204a5)
+    // Magellan stores symbol_id inside the data JSON column
+    let function_id_by_symbol: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM graph_entities
+             WHERE kind = 'Symbol'
+             AND json_extract(data, '$.kind') = 'Function'
+             AND json_extract(data, '$.symbol_id') = ?
+             LIMIT 1",
+            params![name_or_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .context(format!(
+            "Failed to query function with symbol_id '{}'",
+            name_or_id
+        ))?;
+
+    if let Some(id) = function_id_by_symbol {
+        return Ok(id);
+    }
+
+    // Then try to look up by function name
     let function_id: Option<i64> = conn
         .query_row(
             "SELECT id FROM graph_entities
@@ -1791,12 +1835,24 @@ pub fn function_exists(conn: &Connection, function_id: i64) -> bool {
 /// always returns None when using Magellan's schema. The hash functionality
 /// is only available when using Mirage's legacy schema.
 pub fn get_function_hash(conn: &Connection, function_id: i64) -> Option<String> {
-    // Try to query function_hash if it exists (legacy Mirage schema)
-    conn.query_row(
-        "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
+    // Try Magellan v8+ cfg_hash column first
+    let cfg_hash: Option<String> = conn.query_row(
+        "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
         params![function_id],
         |row| row.get(0)
-    ).optional().ok().flatten()
+    ).optional().ok().flatten();
+    
+    if cfg_hash.is_some() {
+        return cfg_hash;
+    }
+    
+    // Fallback: use symbol_id from graph_entities (Magellan v7 schema)
+    // This provides a stable identifier for caching
+    conn.query_row(
+        "SELECT json_extract(data, '$.symbol_id') FROM graph_entities WHERE id = ? LIMIT 1",
+        params![function_id],
+        |row| row.get::<_, Option<String>>(0)
+    ).optional().ok().flatten().flatten()
 }
 
 /// Compare two function hashes and return true if they differ

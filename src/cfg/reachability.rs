@@ -37,8 +37,8 @@ pub fn find_reachable(cfg: &Cfg) -> Vec<NodeIndex> {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::reachability::find_unreachable;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::reachability::find_unreachable;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// let unreachable = find_unreachable(&graph);
 /// for block_idx in unreachable {
@@ -93,9 +93,9 @@ pub fn unreachable_block_ids(cfg: &Cfg) -> Vec<BlockId> {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::reachability::can_reach;
-/// # use mirage::cfg::analysis::find_entry;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::reachability::can_reach;
+/// # use mirage_analyzer::cfg::analysis::find_entry;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # use petgraph::graph::NodeIndex;
 /// # let graph: Cfg = unimplemented!();
 /// let entry = find_entry(&graph).unwrap();
@@ -115,9 +115,9 @@ pub fn can_reach(cfg: &Cfg, from: NodeIndex, to: NodeIndex) -> bool {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::reachability::can_reach_cached;
+/// # use mirage_analyzer::cfg::reachability::can_reach_cached;
 /// # use petgraph::algo::DfsSpace;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # use petgraph::graph::NodeIndex;
 /// # let graph: Cfg = unimplemented!();
 /// # let queries: Vec<(NodeIndex, NodeIndex)> = vec![];
@@ -144,9 +144,9 @@ pub fn can_reach_cached(
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::reachability::ReachabilityCache;
-/// # use mirage::cfg::analysis::find_entry;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::reachability::ReachabilityCache;
+/// # use mirage_analyzer::cfg::analysis::find_entry;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// # let entry = find_entry(&graph).unwrap();
 /// let mut cache = ReachabilityCache::new(&graph);
@@ -211,8 +211,8 @@ pub struct BlockImpact {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::reachability::find_reachable_from_block;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::reachability::find_reachable_from_block;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// let impact = find_reachable_from_block(&graph, 5, Some(10));
 /// println!("Block 5 affects {} blocks", impact.reachable_count);

@@ -193,8 +193,8 @@ fn find_node_by_block_id(cfg: &Cfg, block_id: BlockId) -> Option<NodeIndex> {
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use mirage::cfg::paths::is_feasible_path;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::paths::is_feasible_path;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// let feasible = is_feasible_path(&graph, &[0, 1, 2]);  // entry -> goto -> return
 /// let infeasible = is_feasible_path(&graph, &[0, 1]);    // entry -> goto (dead end)
@@ -273,12 +273,12 @@ pub fn is_feasible_path(cfg: &Cfg, blocks: &[BlockId]) -> bool {
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use mirage::cfg::paths::is_feasible_path_precomputed;
-/// # use mirage::cfg::reachability::find_reachable;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::paths::is_feasible_path_precomputed;
+/// # use mirage_analyzer::cfg::reachability::find_reachable;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # use std::collections::HashSet;
-/// # use mirage::cfg::BlockId;
-/// # use mirage::cfg::Path;
+/// # use mirage_analyzer::cfg::BlockId;
+/// # use mirage_analyzer::cfg::Path;
 /// # let graph: Cfg = unimplemented!();
 /// # let paths: Vec<Path> = vec![];
 /// let reachable_nodes = find_reachable(&graph);
@@ -440,12 +440,12 @@ pub fn classify_path(cfg: &Cfg, blocks: &[BlockId]) -> PathKind {
 /// # Example
 ///
 /// ```rust,no_run
-/// # use mirage::cfg::paths::classify_path_precomputed;
-/// # use mirage::cfg::reachability::find_reachable;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::paths::classify_path_precomputed;
+/// # use mirage_analyzer::cfg::reachability::find_reachable;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # use std::collections::HashSet;
-/// # use mirage::cfg::BlockId;
-/// # use mirage::cfg::Path;
+/// # use mirage_analyzer::cfg::BlockId;
+/// # use mirage_analyzer::cfg::Path;
 /// # let graph: Cfg = unimplemented!();
 /// # let paths: Vec<Path> = vec![];
 /// let reachable_nodes = find_reachable(&graph);
@@ -660,8 +660,8 @@ pub fn hash_path(blocks: &[BlockId]) -> String {
 ///
 /// **Use case:**
 /// ```rust,no_run
-/// # use mirage::cfg::{PathLimits, enumerate_paths_with_context, EnumerationContext};
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::{PathLimits, enumerate_paths_with_context, EnumerationContext};
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// # let limits1 = PathLimits::default();
 /// # let limits2 = PathLimits::default();
@@ -694,8 +694,8 @@ impl EnumerationContext {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use mirage::cfg::paths::EnumerationContext;
-    /// # use mirage::cfg::Cfg;
+    /// # use mirage_analyzer::cfg::paths::EnumerationContext;
+    /// # use mirage_analyzer::cfg::Cfg;
     /// # let graph: Cfg = unimplemented!();
     /// let ctx = EnumerationContext::new(&graph);
     /// println!("Found {} loop headers", ctx.loop_headers.len());
@@ -779,8 +779,8 @@ impl EnumerationContext {
 /// # Example
 ///
 /// ```rust,no_run
-/// # use mirage::cfg::{PathLimits, enumerate_paths_with_context, EnumerationContext};
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::{PathLimits, enumerate_paths_with_context, EnumerationContext};
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// let ctx = EnumerationContext::new(&graph);
 /// let limits = PathLimits::default();
@@ -935,8 +935,8 @@ fn dfs_enumerate_with_context(
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use mirage::cfg::{enumerate_paths, PathLimits};
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::{enumerate_paths, PathLimits};
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// let paths = enumerate_paths(&graph, &PathLimits::default());
 /// println!("Found {} paths", paths.len());
@@ -1145,8 +1145,8 @@ fn dfs_enumerate(
 /// # Example
 ///
 /// ```rust,no_run
-/// # use mirage::cfg::paths::get_or_enumerate_paths;
-/// # use mirage::cfg::{PathLimits, Cfg};
+/// # use mirage_analyzer::cfg::paths::get_or_enumerate_paths;
+/// # use mirage_analyzer::cfg::{PathLimits, Cfg};
 /// # let graph: Cfg = unimplemented!();
 /// # let function_id: i64 = 0;
 /// # let function_hash = "hash";
@@ -1244,8 +1244,8 @@ pub fn get_or_enumerate_paths(
 /// # Example
 ///
 /// ```rust,no_run
-/// # use mirage::cfg::{enumerate_paths_cached, PathLimits, EnumerationContext};
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::{enumerate_paths_cached, PathLimits, EnumerationContext};
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// # let function_bytes: Vec<u8> = vec![];
 /// # let function_id: i64 = 0;
@@ -1368,9 +1368,9 @@ pub fn enumerate_paths_cached_with_context(
 ///
 /// **Usage:**
 /// ```rust,no_run
-/// # use mirage::cfg::paths::estimate_path_count;
-/// # use mirage::cfg::Cfg;
-/// # use mirage::cfg::PathLimits;
+/// # use mirage_analyzer::cfg::paths::estimate_path_count;
+/// # use mirage_analyzer::cfg::Cfg;
+/// # use mirage_analyzer::cfg::PathLimits;
 /// # let graph: Cfg = unimplemented!();
 /// # let limits = PathLimits::default();
 /// let estimated = estimate_path_count(&graph, 3);
@@ -3446,7 +3446,7 @@ mod tests {
 
         let cfg = create_linear_cfg();
         let hash1 = "test_hash_v1";
-        let hash2 = "test_hash_v2";
+        let hash2 = "test_hash_v3";
         let limits = PathLimits::default();
 
         // Call with hash1 - stores paths
@@ -3813,7 +3813,7 @@ mod tests {
 
         let cfg = create_linear_cfg();
         let hash1 = "test_hash_v1";
-        let hash2 = "test_hash_v2";
+        let hash2 = "test_hash_v3";
         let limits = PathLimits::default();
 
         // Call with hash1 - stores paths
@@ -4329,7 +4329,7 @@ pub struct IncrementalPathsResult {
 /// # Examples
 ///
 /// ```no_run
-/// use mirage::cfg::paths::enumerate_paths_incremental;
+/// use mirage_analyzer::cfg::paths::enumerate_paths_incremental;
 /// use std::path::Path;
 ///
 /// # let backend = unimplemented!();

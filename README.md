@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/mirage-analyzer)](https://crates.io/crates/mirage-analyzer)
 [![Documentation](https://docs.rs/mirage-analyzer/badge.svg)](https://docs.rs/mirage-analyzer)
 
-**Version:** 1.0.2
+**Version:** 1.0.4
 
 Path-aware code intelligence engine for Rust. Analyzes control-flow graphs to find execution paths, dead code, and impact zones.
 
@@ -58,15 +58,15 @@ Or build from source with Native-V3 backend:
 
 ```bash
 # Native-V3 backend (recommended - fastest)
-cargo install mirage-analyzer --features native-v3 --no-default-features
+cargo install mirage-analyzer --features backend-native-v3 --no-default-features
 ```
 
 ## Backends
 
 | Feature | Description | File | Best For |
 |---------|-------------|------|----------|
-| `native-v3` | **High-performance binary backend** | `.v3` | Production (recommended) |
-| (default) | SQLite backend | `.db` | Compatibility |
+| `backend-native-v3` | **High-performance binary backend** | `.v3` | Performance-critical |
+| `backend-sqlite` (default) | SQLite backend | `.db` | Compatibility |
 
 Both backends provide identical CFG analysis results.
 

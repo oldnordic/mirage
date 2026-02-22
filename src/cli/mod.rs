@@ -462,14 +462,83 @@ pub enum CfgFormat {
 
 /// Resolve the database path from multiple sources
 ///
-/// Priority: CLI arg > MIRAGE_DB env var > default ".codemcp/codegraph.db"
-/// This follows Magellan/llmgrep's pattern for database path resolution.
+/// Priority: CLI arg > MIRAGE_DB env var > auto-discover in common locations
+/// Auto-discovery searches: .codemcp/*.db, .forge/*.db, *.db in current directory
 pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
-    match cli_db {
-        Some(path) => Ok(path),
-        None => std::env::var("MIRAGE_DB")
-            .or_else(|_| Ok(".codemcp/codegraph.db".to_string())),
+    if let Some(path) = cli_db {
+        return Ok(path);
     }
+    
+    // Try environment variable
+    if let Ok(path) = std::env::var("MIRAGE_DB") {
+        return Ok(path);
+    }
+    
+    // Auto-discover database in common locations
+    if let Some(path) = auto_discover_db() {
+        eprintln!("Info: Auto-discovered database at {}", path);
+        return Ok(path);
+    }
+    
+    Err(anyhow::anyhow!(
+        "No database specified. Use --db, set MIRAGE_DB env var, \
+         or run from a directory with a .db file"
+    ))
+}
+
+/// Auto-discover database file in common locations
+///
+/// Searches in priority order:
+/// 1. .codemcp/*.db files
+/// 2. .forge/*.db files  
+/// 3. *.db in current directory
+/// 4. codegraph.db, mirage.db, magellan.db in current directory
+fn auto_discover_db() -> Option<String> {
+    use std::path::Path;
+    
+    // Search directories in priority order
+    let search_dirs = [".codemcp", ".forge", "."];
+    
+    for dir in &search_dirs {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            let mut db_files: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    let path = e.path();
+                    path.extension()
+                        .map(|ext| ext == "db" || ext == "v3")
+                        .unwrap_or(false)
+                })
+                .map(|e| e.path())
+                .collect();
+            
+            // Sort for deterministic results
+            db_files.sort();
+            
+            // Return first match, preferring codegraph.db or magellan.db
+            if let Some(preferred) = db_files.iter().find(|p| {
+                let name = p.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default();
+                name == "codegraph" || name == "magellan" || name == "mirage"
+            }) {
+                return Some(preferred.to_string_lossy().to_string());
+            }
+            
+            // Otherwise return first .db file
+            if let Some(first) = db_files.first() {
+                return Some(first.to_string_lossy().to_string());
+            }
+        }
+    }
+    
+    // Check for specific filenames in current directory
+    let candidates = ["codegraph.db", "mirage.db", "magellan.db", "graph.db"];
+    for name in &candidates {
+        if Path::new(name).exists() {
+            return Some(name.to_string());
+        }
+    }
+    
+    None
 }
 
 /// Detect the git repository path from the database path
@@ -485,8 +554,9 @@ fn detect_repo_path(db_path: &str) -> std::path::PathBuf {
     let mut path = if db_path.is_absolute() {
         db_path.to_path_buf()
     } else {
-        std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
-            .join(db_path)
+        std::env::current_dir()
+            .map(|cwd| cwd.join(db_path))
+            .unwrap_or_else(|_| db_path.to_path_buf())
     };
 
     // Search up the directory tree
@@ -1088,7 +1158,7 @@ pub mod cmds {
 
         // Enumerate paths (backend-agnostic)
         // For SQLite backend: use get_or_enumerate_paths for caching
-        // For native-v2 backend: use enumerate_paths directly (no caching)
+        // For native-v3 backend: use enumerate_paths directly (no caching)
         let mut paths = if db.is_sqlite() {
             // SQLite backend: use caching layer
             let function_hash = match get_function_hash_db(&db, function_id) {
@@ -1119,7 +1189,7 @@ pub mod cmds {
                 db.conn_mut()?,
             ).map_err(|e| anyhow::anyhow!("Path enumeration failed: {}", e))?
         } else {
-            // Native-v2 backend: enumerate directly without caching
+            // Native-v3 backend: enumerate directly without caching
             // Magellan manages its own caching
             crate::cfg::enumerate_paths(&cfg, &limits)
         };
@@ -2130,13 +2200,14 @@ pub mod cmds {
                                 let incoming_edges = if args.show_branches {
                                     cfg.edge_references()
                                         .filter(|edge| edge.target() == idx)
-                                        .map(|edge| {
+                                        .filter_map(|edge| {
                                             let source_block = &cfg[edge.source()];
-                                            let edge_type = cfg.edge_weight(edge.id()).unwrap();
-                                            IncomingEdge {
-                                                from_block: source_block.id,
-                                                edge_type: format!("{:?}", edge_type),
-                                            }
+                                            cfg.edge_weight(edge.id()).map(|edge_type| {
+                                                IncomingEdge {
+                                                    from_block: source_block.id,
+                                                    edge_type: format!("{:?}", edge_type),
+                                                }
+                                            })
                                         })
                                         .collect()
                                 } else {
@@ -3225,8 +3296,8 @@ pub mod cmds {
             }
         }
 
-        // Sort by risk score (descending)
-        hotspots.sort_by(|a, b| b.risk_score.partial_cmp(&a.risk_score).unwrap());
+        // Sort by risk score (descending) - use total_cmp for f64 comparison
+        hotspots.sort_by(|a, b| b.risk_score.total_cmp(&a.risk_score));
 
         // Limit to top N
         hotspots.truncate(args.top);
@@ -4095,11 +4166,17 @@ pub mod cmds {
 
         // Create backup if requested
         if args.backup {
-            let backup_path = format!("{}.backup.{}", args.db,
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs());
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or_else(|_| {
+                    // Fallback to simple counter if clock is before UNIX_EPOCH
+                    std::time::SystemTime::now()
+                        .elapsed()
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0)
+                });
+            let backup_path = format!("{}.backup.{}", args.db, timestamp);
             std::fs::copy(&args.db, &backup_path)
                 .map_err(|e| anyhow::anyhow!("Failed to create backup: {}", e))?;
             eprintln!("Backup created: {}", backup_path);
@@ -4221,11 +4298,25 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_db_path_default() {
+    fn test_resolve_db_path_no_source() {
         clear_env();
-        // No arg, no env -> returns default (Magellan pattern)
-        let result = resolve_db_path(None).unwrap();
-        assert_eq!(result, ".codemcp/codegraph.db");
+        // No arg, no env, no discoverable DB -> returns error
+        // (unless running in a directory with a .db file)
+        let result = resolve_db_path(None);
+        // Result depends on whether there's a .db file in current directory
+        // So we just verify the function doesn't panic
+        match result {
+            Ok(path) => {
+                // If we got a path, it should be a .db or .v3 file
+                assert!(
+                    path.ends_with(".db") || path.ends_with(".v3"),
+                    "Auto-discovered DB should have .db or .v3 extension"
+                );
+            }
+            Err(_) => {
+                // Expected when no DB is available
+            }
+        }
     }
 
     #[test]
@@ -5250,7 +5341,7 @@ mod paths_tests {
         let limits = PathLimits::default();
         let test_function_id: i64 = 1;  // First auto-increment ID;
         let test_function_hash_v1: &str = "test_cfg_v1";
-        let test_function_hash_v2: &str = "test_cfg_v2";
+        let test_function_hash_v3: &str = "test_cfg_v3";
 
         // First call with hash v1 - cache miss, enumerates and stores
         let paths1 = get_or_enumerate_paths(
@@ -5276,7 +5367,7 @@ mod paths_tests {
         let paths2 = get_or_enumerate_paths(
             &cfg,
             test_function_id,
-            test_function_hash_v2,
+            test_function_hash_v3,
             &limits,
             &mut conn,
         ).unwrap();

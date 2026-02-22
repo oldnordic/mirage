@@ -19,8 +19,8 @@ use std::collections::HashMap;
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::dominators::DominatorTree;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::dominators::DominatorTree;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # use petgraph::graph::NodeIndex;
 /// # let graph: Cfg = unimplemented!();
 /// # let node = NodeIndex::new(0);
@@ -94,8 +94,8 @@ impl DominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage::cfg::dominators::DominatorTree;
-    /// # use mirage::cfg::Cfg;
+    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
+    /// # use mirage_analyzer::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
     /// # let graph: Cfg = unimplemented!();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
@@ -117,8 +117,8 @@ impl DominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage::cfg::dominators::DominatorTree;
-    /// # use mirage::cfg::Cfg;
+    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
+    /// # use mirage_analyzer::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
     /// # let graph: Cfg = unimplemented!();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
@@ -151,8 +151,8 @@ impl DominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage::cfg::dominators::DominatorTree;
-    /// # use mirage::cfg::Cfg;
+    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
+    /// # use mirage_analyzer::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
     /// # let graph: Cfg = unimplemented!();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
@@ -178,8 +178,8 @@ impl DominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage::cfg::dominators::DominatorTree;
-    /// # use mirage::cfg::Cfg;
+    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
+    /// # use mirage_analyzer::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
     /// # let graph: Cfg = unimplemented!();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
@@ -268,8 +268,8 @@ impl<'a> Iterator for Dominators<'a> {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::dominators::compute_dominator_tree;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::dominators::compute_dominator_tree;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// let dom_tree = compute_dominator_tree(&graph).unwrap();
 /// ```

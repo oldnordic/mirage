@@ -5,6 +5,14 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-02-22
+
+### Fixed
+- Documentation tests now pass (60 doctests)
+- Fixed native-v3 backend KV store implementation
+- Removed obsolete native-v2 references
+- Cleaned up feature flag naming (backend-sqlite, backend-native-v3)
+
 ## [1.0.3] - 2026-02-20
 
 ### Updated

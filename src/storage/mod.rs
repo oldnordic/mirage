@@ -135,7 +135,7 @@ pub trait StorageTrait {
 /// This struct represents the data returned by `StorageTrait::get_cfg_blocks`.
 /// It is a simplified version of Magellan's CfgBlock that contains only the
 /// fields needed by Mirage for CFG analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CfgBlockData {
     /// Block ID (from cfg_blocks table)
     pub id: i64,
@@ -530,7 +530,7 @@ impl MirageDb {
     ///
     /// Phase 069-02: DEPRECATED - Use storage() for CFG queries, backend() for entity queries.
     /// For SQLite backend, returns the Connection directly.
-    /// For native-v2 backend, returns an error.
+    /// For native-v3 backend, returns an error.
     #[cfg(feature = "backend-sqlite")]
     pub fn conn(&self) -> Result<&Connection, anyhow::Error> {
         self.conn.as_ref().ok_or_else(|| {
@@ -544,7 +544,7 @@ impl MirageDb {
     ///
     /// Phase 069-02: DEPRECATED - Use storage() for CFG queries, backend() for entity queries.
     /// For SQLite backend, returns the Connection directly.
-    /// For native-v2 backend, returns an error.
+    /// For native-v3 backend, returns an error.
     #[cfg(feature = "backend-sqlite")]
     pub fn conn_mut(&mut self) -> Result<&mut Connection, anyhow::Error> {
         self.conn.as_mut().ok_or_else(|| {
@@ -908,7 +908,7 @@ impl MirageDb {
 
     /// Resolve a function name or ID to a function_id (backend-agnostic)
     ///
-    /// This method works with both SQLite and native-v2 backends.
+    /// This method works with both SQLite and native-v3 backends.
     ///
     /// # Arguments
     ///
@@ -1053,9 +1053,9 @@ impl MirageDb {
 
     /// Get the function name for a given function_id (backend-agnostic)
     ///
-    /// This method works with both SQLite and native-v2 backends.
+    /// This method works with both SQLite and native-v3 backends.
     /// For SQLite backend: queries the graph_entities table
-    /// For native-v2 backend: uses GraphBackend::get_node
+    /// For native-v3 backend: uses GraphBackend::get_node
     ///
     /// # Arguments
     ///
@@ -1083,9 +1083,9 @@ impl MirageDb {
 
     /// Get the file path for a given function_id (backend-agnostic)
     ///
-    /// This method works with both SQLite and native-v2 backends.
+    /// This method works with both SQLite and native-v3 backends.
     /// For SQLite backend: queries the graph_entities table
-    /// For native-v2 backend: uses GraphBackend::get_node
+    /// For native-v3 backend: uses GraphBackend::get_node
     ///
     /// # Arguments
     ///
@@ -1476,7 +1476,7 @@ pub fn get_function_file_db(db: &MirageDb, function_id: i64) -> Option<String> {
 /// # Returns
 ///
 /// * `Some(hash)` - The function hash if available (SQLite only)
-/// * `None` - Hash not available or native-v2 backend
+/// * `None` - Hash not available or native-v3 backend
 ///
 /// # Examples
 ///
@@ -2518,16 +2518,16 @@ mod tests {
         cfg2.add_edge(b0, b1, EdgeType::Fallthrough);
         cfg2.add_edge(b1, b2, EdgeType::Fallthrough);
 
-        store_cfg(&mut conn, function_id, "hash_v2", &cfg2).unwrap();
+        store_cfg(&mut conn, function_id, "hash_v3", &cfg2).unwrap();
 
-        let block_count_v2: i64 = conn.query_row(
+        let block_count_v3: i64 = conn.query_row(
             "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
             params![function_id],
             |row| row.get(0),
         ).unwrap();
 
         // Should have 3 blocks now (old ones cleared)
-        assert_eq!(block_count_v2, 3);
+        assert_eq!(block_count_v3, 3);
 
         // Note: function_hash is not stored in Magellan's schema
         // Hash verification is skipped for Magellan v7+ schema
@@ -3129,13 +3129,13 @@ mod tests {
     }
 
     #[test]
-    fn test_backend_detect_native_v2_header() {
+    fn test_backend_detect_native_v3_header() {
         use std::io::Write;
 
         // Create a temporary file with custom header (not SQLite)
         let temp_file = tempfile::NamedTempFile::new().unwrap();
         let mut file = std::fs::File::create(temp_file.path()).unwrap();
-        file.write_all(b"MIRAGE-NATIVE-V2\0").unwrap();
+        file.write_all(b"MIRAGE-NATIVE-V3\0").unwrap();
         file.sync_all().unwrap();
 
         let backend = BackendFormat::detect(temp_file.path()).unwrap();
@@ -3175,11 +3175,11 @@ mod tests {
     #[test]
     fn test_backend_equality() {
         assert_eq!(BackendFormat::SQLite, BackendFormat::SQLite);
-        assert_eq!(BackendFormat::NativeV2, BackendFormat::NativeV2);
+        assert_eq!(BackendFormat::NativeV3, BackendFormat::NativeV3);
         assert_eq!(BackendFormat::Unknown, BackendFormat::Unknown);
 
-        assert_ne!(BackendFormat::SQLite, BackendFormat::NativeV2);
+        assert_ne!(BackendFormat::SQLite, BackendFormat::NativeV3);
         assert_ne!(BackendFormat::SQLite, BackendFormat::Unknown);
-        assert_ne!(BackendFormat::NativeV2, BackendFormat::Unknown);
+        assert_ne!(BackendFormat::NativeV3, BackendFormat::Unknown);
     }
 }

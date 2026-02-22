@@ -19,8 +19,8 @@ use std::collections::HashMap;
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::post_dominators::PostDominatorTree;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::post_dominators::PostDominatorTree;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # use petgraph::graph::NodeIndex;
 /// # let graph: Cfg = unimplemented!();
 /// # let node = NodeIndex::new(0);
@@ -98,8 +98,8 @@ impl PostDominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage::cfg::post_dominators::PostDominatorTree;
-    /// # use mirage::cfg::Cfg;
+    /// # use mirage_analyzer::cfg::post_dominators::PostDominatorTree;
+    /// # use mirage_analyzer::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
     /// # let graph: Cfg = unimplemented!();
     /// # let post_dom_tree = PostDominatorTree::new(&graph).unwrap();
@@ -121,8 +121,8 @@ impl PostDominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage::cfg::post_dominators::PostDominatorTree;
-    /// # use mirage::cfg::Cfg;
+    /// # use mirage_analyzer::cfg::post_dominators::PostDominatorTree;
+    /// # use mirage_analyzer::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
     /// # let graph: Cfg = unimplemented!();
     /// # let post_dom_tree = PostDominatorTree::new(&graph).unwrap();
@@ -216,8 +216,8 @@ impl<'a> Iterator for PostDominators<'a> {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::post_dominators::compute_post_dominator_tree;
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::post_dominators::compute_post_dominator_tree;
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// let post_dom_tree = compute_post_dominator_tree(&graph).unwrap();
 /// ```

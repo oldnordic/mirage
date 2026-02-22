@@ -1,12 +1,11 @@
 //! Native-V3 KV backend implementation for mirage storage trait
 //!
-//! Uses GraphBackend kv_get/kv_set for CFG data stored as JSON in KV store.
+//! Uses V3Backend's native KV store for CFG data stored as JSON.
 //!
 //! # Design
 //!
 //! - Implements `StorageTrait` for native-v3 databases
-//! - Uses Magellan's KV helper `get_cfg_blocks_kv()` for consistency
-//! - KV key format: `cfg:func:{function_id}` (defined in magellan::kv::keys)
+//! - KV key format: `cfg:func:{function_id}`
 //! - Provides backend-agnostic `CfgBlockData` from KV store
 //!
 //! # Examples
@@ -20,27 +19,36 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! Note: V3Backend is used directly rather than the GraphBackend trait
+//! to access V3's native KV store capabilities.
 
 use anyhow::Result;
 use std::path::Path;
 
-use sqlitegraph::{GraphBackend, GraphConfig, SnapshotId, open_graph};
+use sqlitegraph::backend::native::v3::V3Backend;
+use sqlitegraph::backend::native::v3::kv_store::types::KvValue;
 
 use super::{CfgBlockData, StorageTrait};
 
+/// KV key format for CFG blocks: cfg:func:{function_id}
+fn cfg_key(function_id: i64) -> String {
+    format!("cfg:func:{}", function_id)
+}
+
 /// Native-V3 KV backend implementation
 ///
-/// Wraps a GraphBackend and implements StorageTrait
-/// using Magellan's KV store for CFG data.
+/// Wraps a V3Backend and implements StorageTrait
+/// using V3's native KV store for CFG data.
 pub struct KvStorage {
-    /// Backend-agnostic graph interface
-    backend: Box<dyn GraphBackend>,
+    /// V3 backend instance
+    backend: V3Backend,
 }
 
 impl std::fmt::Debug for KvStorage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KvStorage")
-            .field("backend", &"<GraphBackend>")
+            .field("backend", &"<V3Backend>")
             .finish()
     }
 }
@@ -67,25 +75,24 @@ impl KvStorage {
     /// # }
     /// ```
     pub fn open(db_path: &Path) -> Result<Self> {
-        let cfg = GraphConfig::native();
-        let backend = open_graph(db_path, &cfg)
+        let backend = V3Backend::open(db_path)
             .map_err(|e| anyhow::anyhow!("Failed to open native-v3 database: {}", e))?;
         Ok(Self { backend })
     }
 
-    /// Get a reference to the underlying GraphBackend
+    /// Get a reference to the underlying V3Backend
     ///
     /// This is useful for queries beyond the StorageTrait API.
-    pub fn backend(&self) -> &dyn GraphBackend {
-        self.backend.as_ref()
+    pub fn backend(&self) -> &V3Backend {
+        &self.backend
     }
 }
 
 impl StorageTrait for KvStorage {
     /// Get CFG blocks for a function from KV backend
     ///
-    /// Uses Magellan's `get_cfg_blocks_kv()` helper to load CFG blocks
-    /// from the KV store with key format `cfg:func:{function_id}`.
+    /// Uses the KV store with key format `cfg:func:{function_id}` to load
+    /// CFG blocks as JSON.
     ///
     /// # Arguments
     ///
@@ -98,18 +105,47 @@ impl StorageTrait for KvStorage {
     ///
     /// # Note
     ///
-    /// - Uses Magellan's helper for consistency with indexing
     /// - Returns empty Vec if function has no CFG blocks (not an error)
-    fn get_cfg_blocks(&self, _function_id: i64) -> Result<Vec<CfgBlockData>> {
-        // TODO: Implement CFG block loading from native-v3 KV store
-        // This requires using sqlitegraph native-v3 KV APIs directly
-        // For now, return empty Vec as placeholder
-        Ok(Vec::new())
+    fn get_cfg_blocks(&self, function_id: i64) -> Result<Vec<CfgBlockData>> {
+        // Use kv_get_v3 to retrieve CFG blocks from KV store
+        let key = cfg_key(function_id);
+        
+        match self.backend.kv_get_v3(sqlitegraph::SnapshotId::current(), key.as_bytes()) {
+            Some(kv_value) => {
+                // Parse JSON from KvValue
+                let json_str: String = match kv_value {
+                    KvValue::Json(json) => json.to_string(),
+                    KvValue::String(s) => s,
+                    KvValue::Bytes(b) => {
+                        String::from_utf8_lossy(&b).to_string()
+                    }
+                    _ => {
+                        return Err(anyhow::anyhow!(
+                            "CFG data for function {} is not in JSON format", function_id
+                        ));
+                    }
+                };
+                
+                // Deserialize JSON to Vec<CfgBlockData>
+                match serde_json::from_str::<Vec<CfgBlockData>>(&json_str) {
+                    Ok(blocks) => Ok(blocks),
+                    Err(e) => {
+                        Err(anyhow::anyhow!(
+                            "Failed to parse CFG data for function {}: {}", function_id, e
+                        ))
+                    }
+                }
+            }
+            None => {
+                // No CFG blocks stored for this function
+                Ok(Vec::new())
+            }
+        }
     }
 
     /// Get entity by ID from KV backend
     ///
-    /// Uses GraphBackend::get_node to query entity data.
+    /// Uses V3Backend's get_node to query entity data.
     ///
     /// # Arguments
     ///
@@ -120,8 +156,9 @@ impl StorageTrait for KvStorage {
     /// * `Some(GraphEntity)` - Entity if found
     /// * `None` - Entity not found
     fn get_entity(&self, entity_id: i64) -> Option<sqlitegraph::GraphEntity> {
-        let snapshot = SnapshotId::current();
-        self.backend.get_node(snapshot, entity_id).ok()
+        // V3Backend implements GraphBackend, so we can use get_node with a snapshot
+        use sqlitegraph::GraphBackend;
+        self.backend.get_node(sqlitegraph::SnapshotId::current(), entity_id).ok()
     }
 
     /// Get cached paths for a function from KV backend

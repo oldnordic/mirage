@@ -78,8 +78,8 @@ impl MatchPattern {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::patterns::{classify_branch, BranchType};
-/// # use mirage::cfg::Cfg;
+/// # use mirage_analyzer::cfg::patterns::{classify_branch, BranchType};
+/// # use mirage_analyzer::cfg::Cfg;
 /// # let graph: Cfg = unimplemented!();
 /// for node in graph.node_indices() {
 ///     match classify_branch(&graph, node) {
@@ -200,7 +200,7 @@ fn find_common_successor(cfg: &Cfg, n1: NodeIndex, n2: NodeIndex) -> Option<Node
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::patterns::detect_if_else_patterns;
+/// # use mirage_analyzer::cfg::patterns::detect_if_else_patterns;
 /// # let graph = unimplemented!();
 /// let patterns = detect_if_else_patterns(&graph);
 /// for pattern in patterns {
@@ -276,7 +276,7 @@ fn order_branches_by_edge_type(
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::patterns::detect_match_patterns;
+/// # use mirage_analyzer::cfg::patterns::detect_match_patterns;
 /// # let graph = unimplemented!();
 /// let patterns = detect_match_patterns(&graph);
 /// for pattern in patterns {

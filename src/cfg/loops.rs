@@ -58,7 +58,7 @@ impl NaturalLoop {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::loops::detect_natural_loops;
+/// # use mirage_analyzer::cfg::loops::detect_natural_loops;
 /// # let graph = unimplemented!();
 /// let loops = detect_natural_loops(&graph);
 /// for loop_ in &loops {
@@ -142,7 +142,7 @@ fn compute_loop_body(cfg: &Cfg, header: NodeIndex, tail: NodeIndex) -> HashSet<N
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage::cfg::loops::find_loop_headers;
+/// # use mirage_analyzer::cfg::loops::find_loop_headers;
 /// # let graph = unimplemented!();
 /// let headers = find_loop_headers(&graph);
 /// for header in headers {

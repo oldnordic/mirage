@@ -6,9 +6,10 @@
 //!
 //! ```rust,no_run
 //! use mirage_analyzer::Backend;
+//! use std::path::Path;
 //!
 //! // Auto-detect and open the database backend
-//! let backend = Backend::detect_and_open("codegraph.db")?;
+//! let backend = Backend::detect_and_open(Path::new("codegraph.db"))?;
 //!
 //! // Query CFG blocks (works with both SQLite and native-v3)
 //! let blocks = backend.get_cfg_blocks(123)?;
@@ -33,15 +34,13 @@
 
 // Compile-time guard: prevent enabling both backends simultaneously
 // This must be at the lib level since storage/mod.rs is compiled first
-#[cfg(all(feature = "sqlite", feature = "native-v3"))]
+#[cfg(all(feature = "backend-sqlite", feature = "backend-native-v3"))]
 compile_error!(
-    "Features 'sqlite' and 'native-v3' are mutually exclusive. \
-     Enable only one backend feature. Remove one of: \
-     --features sqlite \
-     --features native-v3 \
+    "Features 'backend-sqlite' and 'backend-native-v3' are mutually exclusive. \
+     Enable only one backend feature. Use either: \
      \
-     Default is SQLite, so use `cargo build` with no features, or \
-     `cargo build --features native-v3` for the native-v3 backend."
+     SQLite (default): cargo build \
+     Native-V3: cargo build --features backend-native-v3 --no-default-features"
 );
 
 pub mod analysis;

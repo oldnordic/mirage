@@ -7,15 +7,13 @@
 #![allow(dead_code)]
 
 // Compile-time guard: prevent enabling both backends simultaneously
-#[cfg(all(feature = "sqlite", feature = "native-v3"))]
+#[cfg(all(feature = "backend-sqlite", feature = "backend-native-v3"))]
 compile_error!(
-    "Features 'sqlite' and 'native-v3' are mutually exclusive. \
-     Enable only one backend feature. Remove one of: \
-     --features sqlite \
-     --features native-v3 \
+    "Features 'backend-sqlite' and 'backend-native-v3' are mutually exclusive. \
+     Enable only one backend feature. Use either: \
      \
-     Default is SQLite, so use `cargo build` with no features, or \
-     `cargo build --features native-v3` for the native-v3 backend."
+     SQLite (default): cargo build \
+     Native-V3: cargo build --features backend-native-v3 --no-default-features"
 );
 
 use clap::Parser;

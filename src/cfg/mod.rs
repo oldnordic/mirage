@@ -32,8 +32,10 @@ pub use hotpaths::{compute_hot_paths, HotPath, HotpathsOptions};
 pub use loops::detect_natural_loops;
 #[allow(unused_imports)] // Used in tests within the module
 pub use paths::{
-    Path, PathKind, PathLimits, enumerate_paths, enumerate_paths_cached,
-    enumerate_paths_cached_with_context, enumerate_paths_with_context,
+    Path, PathKind, PathLimits, enumerate_paths, enumerate_paths_iterative,
+    enumerate_paths_cached, enumerate_paths_cached_with_context,
+    enumerate_paths_with_context, enumerate_paths_with_metadata,
+    PathEnumerationResult, LimitsHit, EnumerationStats,
     EnumerationContext, get_or_enumerate_paths,
     enumerate_paths_incremental, IncrementalPathsResult,
 };

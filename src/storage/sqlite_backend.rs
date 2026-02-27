@@ -21,11 +21,23 @@
 //! # }
 //! ```
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
-use std::path::Path;
+use std::path::Path as StdPath;
 
 use super::{CfgBlockData, StorageTrait};
+use crate::cfg::Path;
+
+/// Convert string from database to PathKind
+fn str_to_path_kind(s: &str) -> Result<crate::cfg::PathKind> {
+    match s {
+        "Normal" => Ok(crate::cfg::PathKind::Normal),
+        "Error" => Ok(crate::cfg::PathKind::Error),
+        "Degenerate" => Ok(crate::cfg::PathKind::Degenerate),
+        "Unreachable" => Ok(crate::cfg::PathKind::Unreachable),
+        _ => anyhow::bail!("Unknown path kind: {}", s),
+    }
+}
 
 /// SQLite backend implementation
 ///
@@ -57,7 +69,7 @@ impl SqliteStorage {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn open(db_path: &Path) -> Result<Self> {
+    pub fn open(db_path: &StdPath) -> Result<Self> {
         let conn = Connection::open(db_path)
             .map_err(|e| anyhow::anyhow!("Failed to open SQLite database: {}", e))?;
         Ok(Self { conn })
@@ -165,15 +177,63 @@ impl StorageTrait for SqliteStorage {
     /// * `Ok(Some(paths))` - Cached paths if available
     /// * `Ok(None)` - No cached paths
     /// * `Err(...)` - Error if query fails
-    ///
-    /// # Note
-    ///
-    /// This is a placeholder for future path caching implementation.
-    /// Currently returns Ok(None) for all functions.
-    fn get_cached_paths(&self, _function_id: i64) -> Result<Option<Vec<crate::cfg::Path>>> {
-        // TODO: Implement path caching in Phase 071 (Mirage Advanced Commands)
-        // Query cfg_paths and cfg_path_elements tables
-        Ok(None)
+    fn get_cached_paths(&self, function_id: i64) -> Result<Option<Vec<Path>>> {
+        // Query cfg_paths table for all paths of this function
+        let mut stmt = self.conn.prepare(
+            "SELECT path_id, path_kind, entry_block, exit_block
+             FROM cfg_paths
+             WHERE function_id = ?1"
+        ).context("Failed to prepare cfg_paths query")?;
+
+        let path_rows = stmt.query_map(params![function_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        }).context("Failed to execute cfg_paths query")?;
+
+        let mut paths = Vec::new();
+
+        for path_row in path_rows {
+            let (path_id, kind_str, entry, exit) = path_row?;
+            let kind = str_to_path_kind(&kind_str)
+                .with_context(|| format!("Invalid path kind: {}", kind_str))?;
+
+            // Query cfg_path_elements for blocks in this path
+            let mut elem_stmt = self.conn.prepare(
+                "SELECT block_id
+                 FROM cfg_path_elements
+                 WHERE path_id = ?1
+                 ORDER BY sequence_order ASC"
+            ).context("Failed to prepare cfg_path_elements query")?;
+
+            let block_rows = elem_stmt.query_map(params![&path_id], |row| {
+                row.get::<_, i64>(0)
+            }).context("Failed to execute cfg_path_elements query")?;
+
+            let mut blocks = Vec::new();
+            for block_row in block_rows {
+                let block_id: i64 = block_row?;
+                // BlockId in Path is usize, convert from i64
+                blocks.push(block_id as usize);
+            }
+
+            paths.push(Path {
+                path_id,
+                blocks,
+                kind,
+                entry: entry as usize,
+                exit: exit as usize,
+            });
+        }
+
+        if paths.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(paths))
+        }
     }
 }
 
@@ -236,6 +296,38 @@ mod tests {
 
         conn.execute(
             "CREATE INDEX idx_cfg_blocks_function ON cfg_blocks(function_id)",
+            [],
+        ).unwrap();
+
+        // Create cfg_paths table
+        conn.execute(
+            "CREATE TABLE cfg_paths (
+                path_id TEXT PRIMARY KEY,
+                function_id INTEGER NOT NULL,
+                path_kind TEXT NOT NULL,
+                entry_block INTEGER NOT NULL,
+                exit_block INTEGER NOT NULL,
+                length INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (function_id) REFERENCES graph_entities(id)
+            )",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cfg_paths_function ON cfg_paths(function_id)",
+            [],
+        ).unwrap();
+
+        // Create cfg_path_elements table
+        conn.execute(
+            "CREATE TABLE cfg_path_elements (
+                path_id TEXT NOT NULL,
+                sequence_order INTEGER NOT NULL,
+                block_id INTEGER NOT NULL,
+                PRIMARY KEY (path_id, sequence_order),
+                FOREIGN KEY (path_id) REFERENCES cfg_paths(path_id)
+            )",
             [],
         ).unwrap();
 
@@ -319,5 +411,51 @@ mod tests {
 
         let entity = storage.get_entity(999);
         assert!(entity.is_none(), "Should return None for non-existent entity");
+    }
+
+    #[test]
+    fn test_sqlite_storage_get_cached_paths_none_when_empty() {
+        let temp_file = create_test_db();
+        let storage = SqliteStorage::open(temp_file.path()).unwrap();
+
+        // No cached paths for function 1
+        let paths = storage.get_cached_paths(1).unwrap();
+        assert!(paths.is_none(), "Should return None when no cached paths");
+    }
+
+    #[test]
+    fn test_sqlite_storage_get_cached_paths_with_data() {
+        let temp_file = create_test_db();
+        let conn = Connection::open(temp_file.path()).unwrap();
+
+        // Insert a test path into cfg_paths
+        conn.execute(
+            "INSERT INTO cfg_paths (path_id, function_id, path_kind, entry_block, exit_block, length, created_at)
+             VALUES ('test_path_123', 1, 'Normal', 100, 102, 3, 1000)",
+            [],
+        ).unwrap();
+
+        // Insert path elements into cfg_path_elements
+        conn.execute(
+            "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES
+             ('test_path_123', 0, 100),
+             ('test_path_123', 1, 101),
+             ('test_path_123', 2, 102)",
+            [],
+        ).unwrap();
+
+        let storage = SqliteStorage::open(temp_file.path()).unwrap();
+        let paths = storage.get_cached_paths(1).unwrap();
+
+        assert!(paths.is_some(), "Should return Some when cached paths exist");
+        let paths = paths.unwrap();
+        assert_eq!(paths.len(), 1, "Should have 1 path");
+
+        let path = &paths[0];
+        assert_eq!(path.path_id, "test_path_123");
+        assert_eq!(path.blocks, vec![100, 101, 102]);
+        assert_eq!(path.kind, crate::cfg::PathKind::Normal);
+        assert_eq!(path.entry, 100);
+        assert_eq!(path.exit, 102);
     }
 }

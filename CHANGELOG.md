@@ -5,6 +5,33 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-27
+
+### Added
+- **Iterative Path Enumeration:** New `enumerate_paths_iterative()` function using stack-based DFS
+  - Prevents stack overflow on deeply nested CFGs
+  - Early path deduplication via `BTreeSet` (no duplicate paths stored)
+  - Produces identical results to recursive version with better safety
+
+- **Path Metadata API:** New `enumerate_paths_with_metadata()` function
+  - Returns `PathEnumerationResult` with paths and detailed statistics
+  - `EnumerationStats`: total paths, classification breakdown, avg/max length, loop count
+  - `LimitsHit` enum: indicates if enumeration was complete or truncated
+
+- **SQLite Backend Path Caching:** Implemented `get_cached_paths()` for SQLite backend
+  - Queries `cfg_paths` and `cfg_path_elements` tables
+  - Returns previously enumerated paths with full metadata
+
+- **Source Location Extraction:** AST-based CFG now extracts source locations from tree-sitter nodes
+  - `ast_to_cfg()` accepts optional `file_path` parameter
+  - `SourceLocation` includes byte range and line/column info
+
+### Changed
+- **Magellan dependency:** Updated from 2.4 → 2.5.0 (caller/callee references, batch insert, parent resolution)
+
+### Fixed
+- **SQLite Backend:** Fixed path caching implementation to properly query stored paths
+
 ## [1.0.6] - 2026-02-22
 
 ### Fixed

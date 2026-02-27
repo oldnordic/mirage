@@ -1115,6 +1115,314 @@ fn dfs_enumerate(
     current_path.pop();
 }
 
+/// Iterative DFS path enumeration (stack-based, no recursion)
+///
+/// Improved version of `enumerate_paths` that:
+/// - Uses an explicit stack instead of recursion (prevents stack overflow)
+/// - Performs early path deduplication (no duplicate paths stored)
+/// - Tracks more path metadata during enumeration
+///
+/// **Advantages over recursive version:**
+/// - No stack overflow on deeply nested CFGs
+/// - Better memory locality (stack array vs recursive calls)
+/// - Easier to add path metadata tracking
+/// - Early deduplication saves memory/time
+///
+/// **Algorithm:**
+/// 1. Push entry block onto work stack
+/// 2. While stack not empty:
+///    a. Pop current state
+///    b. If at exit, record path (if unique)
+///    c. Otherwise, push successors
+/// 3. Track visited nodes per-path for cycle detection
+///
+/// # Arguments
+///
+/// * `cfg` - Control flow graph to analyze
+/// * `limits` - Path enumeration limits
+///
+/// # Returns
+///
+/// Vector of unique paths through the CFG
+///
+/// # Example
+///
+/// ```rust,no_run
+/// # use mirage_analyzer::cfg::{enumerate_paths_iterative, PathLimits, Cfg};
+/// # let graph: Cfg = unimplemented!();
+/// let paths = enumerate_paths_iterative(&graph, &PathLimits::default());
+/// println!("Found {} unique paths", paths.len());
+/// ```
+pub fn enumerate_paths_iterative(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
+    use std::collections::BTreeSet;
+
+    // Get entry block
+    let entry = match crate::cfg::analysis::find_entry(cfg) {
+        Some(e) => e,
+        None => return vec![],
+    };
+
+    // Get exit blocks
+    let exits: HashSet<NodeIndex> = crate::cfg::analysis::find_exits(cfg)
+        .into_iter()
+        .collect();
+
+    if exits.is_empty() {
+        return vec![]; // No exits means no complete paths
+    }
+
+    // Pre-compute analysis
+    let reachable_nodes = crate::cfg::reachability::find_reachable(cfg);
+    let reachable_blocks: HashSet<BlockId> = reachable_nodes
+        .iter()
+        .map(|&idx| cfg[idx].id)
+        .collect();
+    let loop_headers = crate::cfg::loops::find_loop_headers(cfg);
+
+    // Path deduplication: use BTreeSet keyed by block sequence
+    // This prevents storing duplicate paths during enumeration
+    let mut seen_paths: BTreeSet<Vec<BlockId>> = BTreeSet::new();
+
+    // Work stack: each element is (current_node, current_path, visited_set, loop_iteration_count)
+    struct StackFrame {
+        node: NodeIndex,
+        path: Vec<BlockId>,
+        visited: HashSet<NodeIndex>,
+        loop_iterations: HashMap<NodeIndex, usize>,
+    }
+
+    let mut stack = Vec::new();
+    let mut paths = Vec::new();
+
+    // Initialize with entry block
+    let entry_block_id = cfg[entry].id;
+    let mut initial_visited = HashSet::new();
+    initial_visited.insert(entry);
+
+    stack.push(StackFrame {
+        node: entry,
+        path: vec![entry_block_id],
+        visited: initial_visited,
+        loop_iterations: HashMap::new(),
+    });
+
+    while let Some(frame) = stack.pop() {
+        let StackFrame {
+            node: current,
+            path: current_path,
+            visited: current_visited,
+            mut loop_iterations,
+        } = frame;
+
+        // Check path length limit
+        if current_path.len() > limits.max_length {
+            continue;
+        }
+
+        // Check if we've reached an exit
+        if exits.contains(&current) {
+            // Deduplicate: only add if we haven't seen this exact path
+            if seen_paths.insert(current_path.clone()) {
+                let kind = classify_path_precomputed(cfg, &current_path, &reachable_blocks);
+                let path = Path::new(current_path, kind);
+                paths.push(path);
+            }
+            continue;
+        }
+
+        // Check path count limit
+        if paths.len() >= limits.max_paths {
+            break;
+        }
+
+        // Get successors
+        let mut successors: Vec<NodeIndex> = cfg.neighbors(current).collect();
+        successors.sort_by_key(|n| n.index()); // Deterministic order
+
+        for succ in successors {
+            // Skip already visited nodes (cycle detection)
+            // Exception: back-edges to loop headers are allowed (bounded)
+            let is_back_edge = loop_headers.contains(&succ)
+                && loop_iterations.get(&succ).copied().unwrap_or(0) < limits.loop_unroll_limit;
+
+            if current_visited.contains(&succ) && !is_back_edge {
+                continue;
+            }
+
+            // Check loop iteration limit for back-edges
+            if is_back_edge {
+                let count = loop_iterations.entry(succ).or_insert(0);
+                if *count >= limits.loop_unroll_limit {
+                    continue;
+                }
+                *count += 1;
+            }
+
+            // Create new path with successor
+            let mut new_path = current_path.clone();
+            let block_id = cfg[succ].id;
+            new_path.push(block_id);
+
+            // Create new visited set
+            let mut new_visited = current_visited.clone();
+            new_visited.insert(succ);
+
+            // Push onto stack
+            stack.push(StackFrame {
+                node: succ,
+                path: new_path,
+                visited: new_visited,
+                loop_iterations: loop_iterations.clone(),
+            });
+        }
+    }
+
+    paths
+}
+
+/// Path enumeration result with metadata
+///
+/// Enhanced result that includes statistics about the enumeration
+/// to help AI agents understand the analysis quality.
+#[derive(Debug, Clone)]
+pub struct PathEnumerationResult {
+    /// The enumerated paths
+    pub paths: Vec<Path>,
+    /// Whether the enumeration hit any limits
+    pub limits_hit: LimitsHit,
+    /// Statistics about the enumeration
+    pub stats: EnumerationStats,
+}
+
+/// Which limits were hit during enumeration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LimitsHit {
+    /// No limits hit - complete enumeration
+    None,
+    /// Hit max path length limit
+    MaxLength,
+    /// Hit max path count limit
+    MaxPaths,
+    /// Hit loop unroll limit
+    LoopUnroll,
+    /// Multiple limits hit
+    Multiple,
+}
+
+/// Statistics about path enumeration
+#[derive(Debug, Clone)]
+pub struct EnumerationStats {
+    /// Total paths found
+    pub total_paths: usize,
+    /// Normal paths (entry → return)
+    pub normal_paths: usize,
+    /// Error paths (contains panic/abort)
+    pub error_paths: usize,
+    /// Degenerate paths (dead ends, infinite loops)
+    pub degenerate_paths: usize,
+    /// Unreachable paths
+    pub unreachable_paths: usize,
+    /// Average path length
+    pub avg_path_length: f64,
+    /// Maximum path length found
+    pub max_path_length: usize,
+    /// Number of loops detected
+    pub loop_count: usize,
+}
+
+/// Enumerate paths with detailed metadata
+///
+/// Returns both the paths and information about enumeration quality.
+/// This helps AI agents understand if results are complete or truncated.
+///
+/// **Use case:** When you need to know if enumeration was complete
+///
+/// # Arguments
+///
+/// * `cfg` - Control flow graph to analyze
+/// * `limits` - Path enumeration limits
+///
+/// # Returns
+///
+/// `PathEnumerationResult` with paths and metadata
+///
+/// # Example
+///
+/// ```rust,no_run
+/// # use mirage_analyzer::cfg::{enumerate_paths_with_metadata, PathLimits, Cfg};
+/// # let graph: Cfg = unimplemented!();
+/// let result = enumerate_paths_with_metadata(&graph, &PathLimits::default());
+///
+/// match result.limits_hit {
+///     mirage_analyzer::cfg::paths::LimitsHit::None => {
+///         println!("Complete enumeration: {} paths", result.stats.total_paths);
+///     }
+///     mirage_analyzer::cfg::paths::LimitsHit::MaxPaths => {
+///         println!("Hit path limit - results may be truncated");
+///     }
+///     _ => {}
+/// }
+/// ```
+pub fn enumerate_paths_with_metadata(cfg: &Cfg, limits: &PathLimits) -> PathEnumerationResult {
+    let paths = enumerate_paths_iterative(cfg, limits);
+
+    let mut stats = EnumerationStats {
+        total_paths: paths.len(),
+        normal_paths: 0,
+        error_paths: 0,
+        degenerate_paths: 0,
+        unreachable_paths: 0,
+        avg_path_length: 0.0,
+        max_path_length: 0,
+        loop_count: 0,
+    };
+
+    if paths.is_empty() {
+        return PathEnumerationResult {
+            paths,
+            limits_hit: LimitsHit::None,
+            stats,
+        };
+    }
+
+    let mut total_length = 0;
+
+    for path in &paths {
+        match path.kind {
+            PathKind::Normal => stats.normal_paths += 1,
+            PathKind::Error => stats.error_paths += 1,
+            PathKind::Degenerate => stats.degenerate_paths += 1,
+            PathKind::Unreachable => stats.unreachable_paths += 1,
+        }
+
+        let len = path.len();
+        total_length += len;
+        if len > stats.max_path_length {
+            stats.max_path_length = len;
+        }
+    }
+
+    stats.avg_path_length = total_length as f64 / paths.len() as f64;
+
+    // Count loops
+    stats.loop_count = crate::cfg::loops::find_loop_headers(cfg).len();
+
+    // Determine if limits were hit
+    let limits_hit = if paths.len() >= limits.max_paths {
+        LimitsHit::MaxPaths
+    } else if stats.max_path_length >= limits.max_length {
+        LimitsHit::MaxLength
+    } else {
+        LimitsHit::None
+    };
+
+    PathEnumerationResult {
+        paths,
+        limits_hit,
+        stats,
+    }
+}
+
 /// Get paths from cache or enumerate them
 ///
 /// This bridge function connects the caching layer to path enumeration.
@@ -4417,4 +4725,197 @@ pub fn enumerate_paths_incremental(
         skipped_functions: 0,  // TODO: Would require scanning all functions
         paths: all_paths,
     })
+}
+
+// Tests for new iterative path enumeration
+
+#[cfg(test)]
+mod iterative_tests {
+    use super::*;
+    use crate::cfg::{BlockKind, BasicBlock, Cfg, EdgeType, Terminator};
+    use petgraph::graph::DiGraph;
+
+    fn create_simple_diamond_cfg() -> Cfg {
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::SwitchInt {
+                targets: vec![1],
+                otherwise: 2,
+            },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::TrueBranch);
+        g.add_edge(b0, b2, EdgeType::FalseBranch);
+        g.add_edge(b1, b3, EdgeType::Fallthrough);
+        g.add_edge(b2, b3, EdgeType::Fallthrough);
+
+        g
+    }
+
+    #[test]
+    fn test_enumerate_paths_iterative_diamond_cfg() {
+        let cfg = create_simple_diamond_cfg();
+        let limits = PathLimits::default();
+        let paths = enumerate_paths_iterative(&cfg, &limits);
+
+        // Diamond CFG produces 2 paths
+        assert_eq!(paths.len(), 2);
+
+        // Both paths should be unique
+        let path1 = &paths[0];
+        let path2 = &paths[1];
+
+        assert_ne!(path1.blocks, path2.blocks);
+
+        // Both should start at 0 and end at 3
+        assert_eq!(path1.entry, 0);
+        assert_eq!(path1.exit, 3);
+        assert_eq!(path2.entry, 0);
+        assert_eq!(path2.exit, 3);
+    }
+
+    #[test]
+    fn test_enumerate_paths_iterative_produces_same_results_as_recursive() {
+        let cfg = create_simple_diamond_cfg();
+        let limits = PathLimits::default();
+
+        let recursive_paths = enumerate_paths(&cfg, &limits);
+        let iterative_paths = enumerate_paths_iterative(&cfg, &limits);
+
+        // Should produce same number of paths
+        assert_eq!(recursive_paths.len(), iterative_paths.len());
+
+        // Paths should be identical (as sets)
+        let recursive_set: std::collections::HashSet<Vec<_>> = recursive_paths
+            .iter()
+            .map(|p| p.blocks.clone())
+            .collect();
+        let iterative_set: std::collections::HashSet<Vec<_>> = iterative_paths
+            .iter()
+            .map(|p| p.blocks.clone())
+            .collect();
+
+        assert_eq!(recursive_set, iterative_set);
+    }
+
+    #[test]
+    fn test_enumerate_paths_with_metadata_diamond() {
+        let cfg = create_simple_diamond_cfg();
+        let result = enumerate_paths_with_metadata(&cfg, &PathLimits::default());
+
+        // Should have 2 paths
+        assert_eq!(result.stats.total_paths, 2);
+
+        // Both should be normal paths
+        assert_eq!(result.stats.normal_paths, 2);
+        assert_eq!(result.stats.error_paths, 0);
+
+        // Average path length should be 3 blocks ([0,1,3] and [0,2,3])
+        assert_eq!(result.stats.avg_path_length, 3.0);
+
+        // Max path length
+        assert_eq!(result.stats.max_path_length, 3);
+
+        // No limits hit
+        assert_eq!(result.limits_hit, LimitsHit::None);
+    }
+
+    #[test]
+    fn test_enumerate_paths_with_metadata_limits_hit() {
+        let cfg = create_simple_diamond_cfg();
+        let limits = PathLimits {
+            max_paths: 1,
+            ..Default::default()
+        };
+        let result = enumerate_paths_with_metadata(&cfg, &limits);
+
+        // Should hit max_paths limit
+        assert_eq!(result.limits_hit, LimitsHit::MaxPaths);
+
+        // Should only return 1 path
+        assert_eq!(result.stats.total_paths, 1);
+    }
+
+    #[test]
+    fn test_enumerate_paths_iterative_with_loop() {
+        // Create a simple loop CFG
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::SwitchInt {
+                targets: vec![1],
+                otherwise: 2,
+            },
+            source_location: None,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 0 }, // Back edge to entry
+            source_location: None,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+        });
+
+        g.add_edge(b0, b1, EdgeType::TrueBranch);
+        g.add_edge(b0, b2, EdgeType::FalseBranch);
+        g.add_edge(b1, b0, EdgeType::LoopBack);
+
+        let limits = PathLimits {
+            loop_unroll_limit: 2,
+            ..Default::default()
+        };
+        let paths = enumerate_paths_iterative(&g, &limits);
+
+        // Should produce at least 2 paths (0->2, and 0->1->0->2 with loop unrolled once)
+        assert!(paths.len() >= 2);
+    }
+
+    #[test]
+    fn test_enumerate_paths_iterative_empty_cfg() {
+        let cfg = DiGraph::new();
+        let paths = enumerate_paths_iterative(&cfg, &PathLimits::default());
+
+        assert_eq!(paths.len(), 0);
+    }
 }

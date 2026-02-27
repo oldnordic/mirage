@@ -7,8 +7,9 @@
 //! - Branch targets (consequent/alternative of conditionals)
 //! - Instructions after branches (merge points)
 
-use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
+use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, SourceLocation, Terminator};
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use tree_sitter::Node;
 
 /// Build CFG from a function node in tree-sitter AST
@@ -16,11 +17,12 @@ use tree_sitter::Node;
 /// # Arguments
 /// * `fn_node` - The function definition node from tree-sitter
 /// * `source` - The source code text (for extracting statement text)
+/// * `file_path` - Optional file path for source location tracking
 ///
 /// # Returns
 /// A control flow graph with basic blocks and edges
-pub fn ast_to_cfg(fn_node: Node, source: &str) -> Cfg {
-    let builder = CFGBuilder::new(source);
+pub fn ast_to_cfg(fn_node: Node, source: &str, file_path: Option<&Path>) -> Cfg {
+    let builder = CFGBuilder::new(source, file_path);
     builder.build_from_function(fn_node)
 }
 
@@ -33,6 +35,8 @@ pub fn ast_to_cfg(fn_node: Node, source: &str) -> Cfg {
 pub struct CFGBuilder<'a> {
     /// Source code for extracting statement text
     source: &'a str,
+    /// Optional file path for source location tracking
+    file_path: Option<String>,
     /// The resulting CFG graph
     graph: Cfg,
     /// Leader node IDs (basic block boundaries)
@@ -49,9 +53,10 @@ pub struct CFGBuilder<'a> {
 
 impl<'a> CFGBuilder<'a> {
     /// Create a new CFG builder
-    pub fn new(source: &'a str) -> Self {
+    pub fn new(source: &'a str, file_path: Option<&Path>) -> Self {
         Self {
             source,
+            file_path: file_path.map(|p| p.to_string_lossy().to_string()),
             graph: Cfg::new(),
             leaders: HashSet::new(),
             blocks: HashMap::new(),
@@ -185,6 +190,22 @@ impl<'a> CFGBuilder<'a> {
                 self.classify_block(statements)
             };
 
+            // Extract source location from node ranges
+            let source_location = if let (Some(ref file_path), Some(first), Some(last)) =
+                (&self.file_path, statements.first(), statements.last())
+            {
+                let byte_start = first.start_byte();
+                let byte_end = last.end_byte();
+                Some(SourceLocation::from_bytes(
+                    file_path,
+                    self.source,
+                    byte_start,
+                    byte_end,
+                ))
+            } else {
+                None
+            };
+
             let basic_block = BasicBlock {
                 id,
                 kind,
@@ -193,7 +214,7 @@ impl<'a> CFGBuilder<'a> {
                     .map(|n| self.node_text(*n))
                     .collect(),
                 terminator: self.extract_terminator(statements),
-                source_location: None, // TODO: Extract from tree-sitter node ranges
+                source_location,
             };
 
             let node_idx = self.graph.add_node(basic_block);
@@ -441,7 +462,7 @@ mod tests {
     #[test]
     fn test_cfg_builder_new() {
         let source = "fn test() { return; }";
-        let builder = CFGBuilder::new(source);
+        let builder = CFGBuilder::new(source, None);
         assert_eq!(builder.source, source);
         assert_eq!(builder.next_block_id, 0);
         assert!(builder.leaders.is_empty());
@@ -450,34 +471,34 @@ mod tests {
 
     #[test]
     fn test_leader_detection_empty() {
-        let builder = CFGBuilder::new("");
+        let builder = CFGBuilder::new("", None);
         assert!(builder.leaders.is_empty());
     }
 
     #[test]
     fn test_block_kind_classification() {
-        let builder = CFGBuilder::new("");
+        let builder = CFGBuilder::new("", None);
         // Empty block is Normal
         assert_eq!(builder.classify_block(&[]), BlockKind::Normal);
     }
 
     #[test]
     fn test_terminator_extraction_return() {
-        let builder = CFGBuilder::new("");
+        let builder = CFGBuilder::new("", None);
         // Empty slice -> Return terminator (default for empty)
         assert_eq!(builder.extract_terminator(&[]), Terminator::Return);
     }
 
     #[test]
     fn test_find_block_containing_empty() {
-        let builder = CFGBuilder::new("");
+        let builder = CFGBuilder::new("", None);
         // No blocks exist, should return default 0
         assert_eq!(builder.find_block_containing(999), 0);
     }
 
     #[test]
     fn test_find_block_for_node_none() {
-        let builder = CFGBuilder::new("");
+        let builder = CFGBuilder::new("", None);
         // None node returns None
         assert_eq!(builder.find_block_for_node(None), None);
     }
@@ -485,7 +506,7 @@ mod tests {
     #[test]
     fn test_cfg_builder_state_initialization() {
         let source = "fn example() { let x = 1; }";
-        let builder = CFGBuilder::new(source);
+        let builder = CFGBuilder::new(source, None);
 
         // Verify initial state
         assert_eq!(builder.source, source);

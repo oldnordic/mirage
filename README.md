@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/mirage-analyzer)](https://crates.io/crates/mirage-analyzer)
 [![Documentation](https://docs.rs/mirage-analyzer/badge.svg)](https://docs.rs/mirage-analyzer)
 
-**Version:** 1.0.4
+**Version:** 1.1.0
 
 Path-aware code intelligence engine for Rust. Analyzes control-flow graphs to find execution paths, dead code, and impact zones.
 

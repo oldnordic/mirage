@@ -1,6 +1,6 @@
 //! Mirage - Path-Aware Code Intelligence Engine
 //!
-//! A control-flow and logic graph engine for Rust codebases.
+//! A control-flow and logic graph engine for multi-language codebases.
 //!
 //! # Getting Started
 //!

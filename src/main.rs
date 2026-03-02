@@ -1,7 +1,7 @@
 // Mirage: Path-Aware Code Intelligence Engine
 //
-// A control-flow and logic graph engine for Rust codebases.
-// Extracts MIR from rustc, builds CFGs, enumerates execution paths,
+// A control-flow and logic graph engine for multi-language codebases.
+// Extracts CFGs from Magellan (Rust via MIR, C/C++ via AST), enumerates execution paths,
 // and provides graph-based reasoning capabilities.
 
 #![allow(dead_code)]

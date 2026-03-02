@@ -681,7 +681,7 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
             id INTEGER PRIMARY KEY CHECK (id = 1),
             mirage_schema_version INTEGER NOT NULL,
             magellan_schema_version INTEGER NOT NULL,
-            rustc_version TEXT,
+            compiler_version TEXT,
             created_at INTEGER NOT NULL
         )",
         [],

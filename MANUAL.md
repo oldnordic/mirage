@@ -1,12 +1,12 @@
 # Mirage User Manual
 
-Version 1.1.0
+Version 1.2.0
 
 ---
 
 ## Overview
 
-Mirage is a path-aware code intelligence tool for Rust. It extracts control-flow graphs (CFG) from Rust MIR, enumerates execution paths, and provides graph-based analysis capabilities.
+Mirage is a path-aware code intelligence tool. It reads Magellan code graphs and analyzes control-flow graphs to enumerate execution paths, detect dead code, and compute dominance relationships.
 
 **Core Principle:** An agent may only speak if it can reference a graph artifact.
 

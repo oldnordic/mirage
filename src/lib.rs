@@ -46,6 +46,7 @@ compile_error!(
 pub mod analysis;
 pub mod cli;
 pub mod cfg;
+pub mod integrations;
 pub mod mir;
 pub mod output;
 pub mod storage;

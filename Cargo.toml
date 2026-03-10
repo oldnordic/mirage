@@ -1,6 +1,6 @@
 [package]
 name = "mirage-analyzer"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Mirage Contributors"]
@@ -24,12 +24,15 @@ clap = { version = "4.5", features = ["derive", "env"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Magellan for inter-procedural analysis (required for CFG data)
-magellan = { version = "3.0", path = "/home/feanor/Projects/magellan", default-features = false, features = ["sqlite-backend"] }
+magellan = { version = "3.0", path = "/home/feanor/Projects/magellan", default-features = false, features = ["sqlite-backend", "geometric-backend"] }
 
 
 
 # sqlitegraph for GraphBackend trait
 sqlitegraph = { version = "2.0", path = "/home/feanor/Projects/sqlitegraph/sqlitegraph-core", default-features = false, features = ["sqlite-backend"] }
+
+# GeoGraphDB core for geometric backend algorithms (optional)
+geographdb-core = { path = "/home/feanor/Projects/geographdb-core", optional = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -65,11 +68,11 @@ default = ["unix", "backend-sqlite"]
 unix = []
 windows = []
 
-# Backend selection - SQLite by default, Native-V3 available with feature flag
+# Backend selection
 backend-sqlite = ["sqlitegraph/sqlite-backend"]
-# Alias for backward compatibility
 sqlite = ["backend-sqlite"]
-# Native V3 backend - high performance binary format with B+Tree
+backend-geometric = ["magellan/geometric-backend", "geographdb-core"]
+geometric = ["backend-geometric"]
 backend-native-v3 = ["magellan/native-v3", "sqlitegraph/native-v3"]
 native-v3 = ["backend-native-v3"]
 

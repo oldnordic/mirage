@@ -15,12 +15,16 @@ pub mod paths;
 pub mod sqlite_backend;
 #[cfg(feature = "backend-native-v3")]
 pub mod kv_backend;
+#[cfg(feature = "backend-geometric")]
+pub mod geometric;
 
 // Also support the aliased feature names for convenience
 #[cfg(all(feature = "sqlite", not(feature = "backend-sqlite")))]
 pub mod sqlite_backend;
 #[cfg(all(feature = "native-v3", not(feature = "backend-native-v3")))]
 pub mod kv_backend;
+#[cfg(all(feature = "geometric", not(feature = "backend-geometric")))]
+pub mod geometric;
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -39,6 +43,8 @@ use sqlitegraph::{GraphBackend, GraphConfig, SnapshotId, open_graph};
 pub use sqlite_backend::SqliteStorage;
 #[cfg(feature = "backend-native-v3")]
 pub use kv_backend::KvStorage;
+#[cfg(feature = "backend-geometric")]
+pub use geometric::GeometricStorage;
 
 // Re-export path caching functions
 // Note: Some exports like PathCache, store_paths, etc. are not currently used
@@ -159,7 +165,7 @@ pub struct CfgBlockData {
 
 /// Storage backend enum (Phase 069-01)
 ///
-/// This enum wraps either SqliteStorage or KvStorage and delegates
+/// This enum wraps SqliteStorage, KvStorage, or GeometricStorage and delegates
 /// StorageTrait methods to the appropriate implementation.
 ///
 /// Follows llmgrep's Backend pattern for consistency across tools.
@@ -172,13 +178,15 @@ pub enum Backend {
     /// Native-V3 storage backend (high-performance, requires native-v3 feature)
     #[cfg(feature = "backend-native-v3")]
     NativeV3(KvStorage),
+    /// Geometric storage backend for .geo files (Magellan 3.0+)
+    #[cfg(feature = "backend-geometric")]
+    Geometric(GeometricStorage),
 }
 
 impl Backend {
     /// Detect backend format from database file and open appropriate backend
     ///
-    /// Uses `magellan::migrate_backend_cmd::detect_backend_format` for
-    /// consistent backend detection across tools.
+    /// Uses file extension and magellan's detection for consistent backend detection.
     ///
     /// # Arguments
     ///
@@ -201,7 +209,17 @@ impl Backend {
     pub fn detect_and_open(db_path: &Path) -> Result<Self> {
         use magellan::migrate_backend_cmd::detect_backend_format;
 
-        // First try magellan's detection (only detects SQLite)
+        // Check for .geo extension first (Magellan 3.0+ geometric backend)
+        let is_geo = db_path.extension().and_then(|e| e.to_str()) == Some("geo");
+
+        #[cfg(feature = "backend-geometric")]
+        {
+            if is_geo {
+                return GeometricStorage::open(db_path).map(Backend::Geometric);
+            }
+        }
+
+        // For non-.geo files, use magellan's detection (SQLite vs Native-V3)
         let sqlite_detected = detect_backend_format(db_path).is_ok();
 
         #[cfg(feature = "backend-sqlite")]
@@ -221,6 +239,38 @@ impl Backend {
                 return KvStorage::open(db_path).map(Backend::NativeV3);
             }
         }
+
+        #[cfg(not(any(feature = "backend-sqlite", feature = "backend-native-v3", feature = "backend-geometric")))]
+        {
+        Err(anyhow::anyhow!("No storage backend feature enabled"))
+        }
+    }
+
+    /// Check if this is a Geometric backend
+    pub fn is_geometric(&self) -> bool {
+        match self {
+            #[cfg(feature = "backend-geometric")]
+            Backend::Geometric(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if this is a SQLite backend
+    pub fn is_sqlite(&self) -> bool {
+        match self {
+            #[cfg(feature = "backend-sqlite")]
+            Backend::Sqlite(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if this is a Native-V3 backend
+    pub fn is_native_v3(&self) -> bool {
+        match self {
+            #[cfg(feature = "backend-native-v3")]
+            Backend::NativeV3(_) => true,
+            _ => false,
+        }
     }
 
     /// Delegate get_cfg_blocks to inner backend
@@ -230,6 +280,8 @@ impl Backend {
             Backend::Sqlite(s) => s.get_cfg_blocks(function_id),
             #[cfg(feature = "backend-native-v3")]
             Backend::NativeV3(k) => k.get_cfg_blocks(function_id),
+            #[cfg(feature = "backend-geometric")]
+            Backend::Geometric(g) => g.get_cfg_blocks(function_id),
             #[allow(unreachable_patterns)]
             _ => Err(anyhow::anyhow!("No storage backend available")),
         }
@@ -242,6 +294,8 @@ impl Backend {
             Backend::Sqlite(s) => s.get_entity(entity_id),
             #[cfg(feature = "backend-native-v3")]
             Backend::NativeV3(k) => k.get_entity(entity_id),
+            #[cfg(feature = "backend-geometric")]
+            Backend::Geometric(g) => g.get_entity(entity_id),
             #[allow(unreachable_patterns)]
             _ => None,
         }
@@ -254,6 +308,8 @@ impl Backend {
             Backend::Sqlite(s) => s.get_cached_paths(function_id),
             #[cfg(feature = "backend-native-v3")]
             Backend::NativeV3(k) => k.get_cached_paths(function_id),
+            #[cfg(feature = "backend-geometric")]
+            Backend::Geometric(g) => g.get_cached_paths(function_id),
             #[allow(unreachable_patterns)]
             _ => Err(anyhow::anyhow!("No storage backend available")),
         }
@@ -285,6 +341,8 @@ pub enum BackendFormat {
     SQLite,
     /// Native-v3 backend (requires native-v3 feature)
     NativeV3,
+    /// Geometric backend (.geo files, Magellan 3.0+)
+    Geometric,
     /// Unknown or unrecognized format
     Unknown,
 }
@@ -300,6 +358,11 @@ impl BackendFormat {
     pub fn detect(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Ok(BackendFormat::Unknown);
+        }
+
+        // Check for .geo extension first (Magellan 3.0+ geometric backend)
+        if path.extension().and_then(|e| e.to_str()) == Some("geo") {
+            return Ok(BackendFormat::Geometric);
         }
 
         let mut file = std::fs::File::open(path)?;
@@ -418,6 +481,11 @@ impl MirageDb {
         let cfg = match detected_backend {
             BackendFormat::SQLite => GraphConfig::sqlite(),
             BackendFormat::NativeV3 => GraphConfig::native(),
+            BackendFormat::Geometric => {
+                // Geometric backend uses Magellan's GeometricBackend directly
+                // No GraphConfig needed
+                GraphConfig::native() // Placeholder - not used for geometric
+            }
             BackendFormat::Unknown => {
                 anyhow::bail!(
                     "Unknown database format: {}. Cannot determine backend.",

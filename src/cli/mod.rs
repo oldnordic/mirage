@@ -426,6 +426,8 @@ pub enum BackendFormat {
     Sqlite,
     /// Native V3 database (high-performance backend)
     NativeV3,
+    /// Geometric database (.geo files, Magellan 3.0+)
+    Geometric,
 }
 
 impl std::fmt::Display for BackendFormat {
@@ -433,6 +435,7 @@ impl std::fmt::Display for BackendFormat {
         match self {
             Self::Sqlite => write!(f, "sqlite"),
             Self::NativeV3 => write!(f, "native-v3"),
+            Self::Geometric => write!(f, "geometric"),
         }
     }
 }
@@ -4173,6 +4176,7 @@ pub mod cmds {
         let actual_format_cli = match actual_format {
             StorageBackendFormat::SQLite => BackendFormat::Sqlite,
             StorageBackendFormat::NativeV3 => BackendFormat::NativeV3,
+            StorageBackendFormat::Geometric => BackendFormat::Geometric,
             StorageBackendFormat::Unknown => {
                 return Err(anyhow::anyhow!("Cannot detect backend format: unknown format"));
             }

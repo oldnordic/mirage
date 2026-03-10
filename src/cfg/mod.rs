@@ -28,6 +28,7 @@ pub use dominators::DominatorTree;
 pub use post_dominators::PostDominatorTree;
 pub use edge::EdgeType;
 pub use export::{export_dot, export_json, CFGExport};
+#[allow(unused_imports)] // Public API re-export, used directly by consumers
 pub use hotpaths::{compute_hot_paths, HotPath, HotpathsOptions};
 pub use loops::detect_natural_loops;
 #[allow(unused_imports)] // Used in tests within the module

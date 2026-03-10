@@ -5,6 +5,23 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-10
+
+### Added
+- **Geometric Backend Support**: `.geo` file format via Magellan 3.0+
+- **MagellanAdapter**: Contract-aware integration with path normalization and ambiguity handling
+- **GeometricBridge**: Dedicated bridge type for .geo databases
+- **backend-geometric**: Feature flag for .geo backend support
+
+### Changed
+- **Magellan dependency**: Updated to 3.0+ with geometric-backend feature
+- **Documentation**: Updated README, MANUAL for .geo backend support
+
+### Added Documentation
+- **ARCHITECTURE.md**: Design documentation and component overview
+- **API_INTEGRATION.md**: Magellan contract documentation
+- **INVARIANTS.md**: Behavioral guarantees documentation
+
 ## [1.1.0] - 2026-02-27
 
 ### Added

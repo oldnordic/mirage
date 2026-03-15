@@ -3,6 +3,8 @@
 //! This module provides integration with Magellan's GeometricBackend for .geo database files.
 //! It wraps the geometric backend and implements the StorageTrait for CFG analysis.
 
+#![cfg(feature = "backend-geometric")]
+
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 

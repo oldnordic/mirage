@@ -24,12 +24,12 @@ clap = { version = "4.5", features = ["derive", "env"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Magellan for inter-procedural analysis (required for CFG data)
-magellan = { version = "3.0", path = "/home/feanor/Projects/magellan", default-features = false, features = ["sqlite-backend", "geometric-backend"] }
+magellan = { version = "3.1", default-features = false, features = ["sqlite-backend"] }
 
 
 
 # sqlitegraph for GraphBackend trait
-sqlitegraph = { version = "2.0", path = "/home/feanor/Projects/sqlitegraph/sqlitegraph-core", default-features = false, features = ["sqlite-backend"] }
+sqlitegraph = { version = "2.0", default-features = false, features = ["sqlite-backend"] }
 
 # GeoGraphDB core for geometric backend algorithms (optional)
 # Note: Not published to crates.io, only available when building from source
@@ -72,7 +72,9 @@ windows = []
 # Backend selection
 backend-sqlite = ["sqlitegraph/sqlite-backend"]
 sqlite = ["backend-sqlite"]
-backend-geometric = ["magellan/geometric-backend"]
+# backend-geometric requires geographdb-core which is not on crates.io
+# backend-geometric = ["magellan/geometric-backend"]
+backend-geometric = []
 geometric = ["backend-geometric"]
 backend-native-v3 = ["magellan/native-v3", "sqlitegraph/native-v3"]
 native-v3 = ["backend-native-v3"]

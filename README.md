@@ -65,4 +65,4 @@ cargo install mirage-analyzer --features backend-sqlite --no-default-features
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE).
+GPL-3.0. See [LICENSE](LICENSE).

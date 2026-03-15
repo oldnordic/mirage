@@ -49,6 +49,7 @@ pub mod cfg;
 pub mod integrations;
 pub mod mir;
 pub mod output;
+pub mod router;
 pub mod storage;
 
 // Public API exports

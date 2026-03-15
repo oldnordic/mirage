@@ -39,11 +39,11 @@ impl BackendRouter for SqliteRouter {
     }
 
     fn get_function_name(&self, function_id: i64) -> Option<String> {
-        self.db.get_function_name(function_id).ok()
+        self.db.get_function_name(function_id)
     }
 
     fn get_function_file(&self, function_id: i64) -> Option<String> {
-        self.db.get_function_file(function_id).ok()
+        self.db.get_function_file(function_id)
     }
 
     fn function_exists(&self, function_id: i64) -> bool {
@@ -53,13 +53,32 @@ impl BackendRouter for SqliteRouter {
             .is_ok()
     }
 
-    fn enumerate_paths(&self, function_id: i64, _max_paths: usize) -> Result<Vec<ExecutionPath>> {
-        // Load CFG and enumerate paths
-        let _cfg = self.load_cfg(function_id)?;
+    fn enumerate_paths(&self, function_id: i64, max_paths: usize) -> Result<Vec<ExecutionPath>> {
+        // Load CFG for the function
+        let cfg = self.load_cfg(function_id)?;
 
-        // TODO: Implement path enumeration using existing CFG algorithms
-        // For now, return empty
-        Ok(vec![])
+        // Use the cfg::paths module to enumerate paths
+        use crate::cfg::paths::{enumerate_paths, PathLimits};
+
+        let limits = PathLimits {
+            max_paths,
+            max_length: 100, // Default max path length
+            loop_unroll_limit: 3, // Default loop unrolling
+        };
+
+        let paths = enumerate_paths(&cfg, &limits);
+
+        // Convert cfg::paths::Path to router::ExecutionPath
+        let execution_paths: Vec<ExecutionPath> = paths
+            .into_iter()
+            .map(|path| ExecutionPath {
+                path_id: path.path_id,
+                blocks: path.blocks.iter().map(|&b| b as i64).collect(),
+                length: path.blocks.len(),
+            })
+            .collect();
+
+        Ok(execution_paths)
     }
 
     fn get_cfg_blocks(&self, function_id: i64) -> Result<Vec<CfgBlockInfo>> {
@@ -70,7 +89,7 @@ impl BackendRouter for SqliteRouter {
             .map(|b| CfgBlockInfo {
                 id: b.id,
                 kind: b.kind,
-                terminator: b.terminator,
+                terminator: Some(b.terminator),
                 byte_start: b.byte_start,
                 byte_end: b.byte_end,
                 start_line: b.start_line,

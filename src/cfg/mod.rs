@@ -72,68 +72,80 @@ pub type Cfg = DiGraph<BasicBlock, EdgeType>;
 ///
 /// # Edge Construction Rules
 ///
-/// - "fallthrough" -> Single EdgeType::Fallthrough edge to next sequential block
+/// - "fallthrough" -> Single EdgeType::Fallthrough edge to next block by byte order
 /// - "conditional" -> Two edges: TrueBranch (next block), FalseBranch (block after that)
-/// - "goto" -> Single EdgeType::Fallthrough edge to next sequential block
+/// - "goto" -> Single EdgeType::Fallthrough edge to next block by byte order
 /// - "return" | "panic" -> No outgoing edges (exit block)
 /// - "break" | "continue" -> No edges (loop control - handled in analysis phase)
-/// - "call" -> EdgeType::Call edge to next sequential block
+/// - "call" -> EdgeType::Call edge to next block by byte order
 ///
 /// # Notes
 ///
-/// - This is a simplified implementation that assumes sequential block ordering
-/// - Future enhancement: use proper target resolution for goto/call terminators
+/// - Uses byte offsets to determine control flow order (not sequential indices)
+/// - Blocks are sorted by byte_start to determine execution order
 /// - Loop back-edges will be detected during loop analysis phase
 pub fn build_edges_from_terminators(
     graph: &mut Cfg,
     blocks: &[(i64, String, Option<String>, Option<i64>, Option<i64>,
               Option<i64>, Option<i64>, Option<i64>, Option<i64>)],
-    _db_id_to_node: &HashMap<i64, usize>,
+    db_id_to_node: &HashMap<i64, usize>,
 ) -> Result<()> {
     use petgraph::graph::NodeIndex;
 
-    // For each block, analyze terminator to find successors
-    for (idx, (_, _kind, terminator_opt, _, _, _, _, _, _)) in blocks.iter().enumerate() {
+    // Sort blocks by byte_start to get execution order
+    // This is crucial because block IDs are not necessarily in control flow order
+    let mut blocks_with_idx: Vec<(usize, &(i64, String, Option<String>, Option<i64>, Option<i64>,
+              Option<i64>, Option<i64>, Option<i64>, Option<i64>))> = blocks.iter().enumerate().collect();
+    blocks_with_idx.sort_by_key(|(_, (_, _, _, byte_start, _, _, _, _, _))| *byte_start);
+
+    // Build a map from position in sorted order to node index
+    let mut sorted_pos_to_node: HashMap<usize, usize> = HashMap::new();
+    for (sorted_pos, (original_idx, (db_id, _, _, _, _, _, _, _, _))) in blocks_with_idx.iter().enumerate() {
+        if let Some(&node_idx) = db_id_to_node.get(db_id) {
+            sorted_pos_to_node.insert(sorted_pos, node_idx);
+        }
+    }
+
+    // For each block in sorted order, analyze terminator to find successors
+    for (sorted_pos, (original_idx, (_, _kind, terminator_opt, _, _, _, _, _, _))) in blocks_with_idx.iter().enumerate() {
         let terminator = terminator_opt.as_deref().unwrap_or("");
+        let current_node = *sorted_pos_to_node.get(&sorted_pos)
+            .ok_or_else(|| anyhow::anyhow!("Block at position {} not found in node map", sorted_pos))?;
 
         match terminator {
-            "fallthrough" => {
-                // Edge to next sequential block
-                if idx + 1 < blocks.len() {
-                    graph.add_edge(
-                        NodeIndex::new(idx),
-                        NodeIndex::new(idx + 1),
-                        EdgeType::Fallthrough,
-                    );
+            "fallthrough" | "goto" => {
+                // Edge to next block in byte order
+                if sorted_pos + 1 < blocks_with_idx.len() {
+                    if let Some(&target_node) = sorted_pos_to_node.get(&(sorted_pos + 1)) {
+                        graph.add_edge(
+                            NodeIndex::new(current_node),
+                            NodeIndex::new(target_node),
+                            EdgeType::Fallthrough,
+                        );
+                    }
                 }
             }
             "conditional" => {
                 // Two edges: true and false branches
-                // True branch is next block (if), false is after that (else/end)
-                if idx + 1 < blocks.len() {
-                    graph.add_edge(
-                        NodeIndex::new(idx),
-                        NodeIndex::new(idx + 1),
-                        EdgeType::TrueBranch,
-                    );
+                // True branch is next block in byte order (if branch)
+                if sorted_pos + 1 < blocks_with_idx.len() {
+                    if let Some(&true_target) = sorted_pos_to_node.get(&(sorted_pos + 1)) {
+                        graph.add_edge(
+                            NodeIndex::new(current_node),
+                            NodeIndex::new(true_target),
+                            EdgeType::TrueBranch,
+                        );
+                    }
                 }
-                if idx + 2 < blocks.len() {
-                    graph.add_edge(
-                        NodeIndex::new(idx),
-                        NodeIndex::new(idx + 2),
-                        EdgeType::FalseBranch,
-                    );
-                }
-            }
-            "goto" => {
-                // Find target by analyzing control flow structure
-                // For now, fallthrough to next (will be refined with proper target resolution)
-                if idx + 1 < blocks.len() {
-                    graph.add_edge(
-                        NodeIndex::new(idx),
-                        NodeIndex::new(idx + 1),
-                        EdgeType::Fallthrough,
-                    );
+                // False branch is block after next (else/end)
+                if sorted_pos + 2 < blocks_with_idx.len() {
+                    if let Some(&false_target) = sorted_pos_to_node.get(&(sorted_pos + 2)) {
+                        graph.add_edge(
+                            NodeIndex::new(current_node),
+                            NodeIndex::new(false_target),
+                            EdgeType::FalseBranch,
+                        );
+                    }
                 }
             }
             "return" | "panic" => {
@@ -145,12 +157,14 @@ pub fn build_edges_from_terminators(
             }
             "call" => {
                 // Function call - edge to next block (normal return path)
-                if idx + 1 < blocks.len() {
-                    graph.add_edge(
-                        NodeIndex::new(idx),
-                        NodeIndex::new(idx + 1),
-                        EdgeType::Call,
-                    );
+                if sorted_pos + 1 < blocks_with_idx.len() {
+                    if let Some(&target_node) = sorted_pos_to_node.get(&(sorted_pos + 1)) {
+                        graph.add_edge(
+                            NodeIndex::new(current_node),
+                            NodeIndex::new(target_node),
+                            EdgeType::Call,
+                        );
+                    }
                 }
             }
             _ => {

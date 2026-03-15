@@ -5,22 +5,46 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-03-15
+
+### Fixed
+- **CFG path enumeration with SQLite backend** - Fixed `paths` command returning 0 paths
+  - Fixed `build_edges_from_terminators` to use byte offsets instead of sequential indices
+  - Implemented `enumerate_paths` in SQLite router using CFG module
+  - Paths now correctly enumerated from Magellan-indexed SQLite databases
+
+### Changed
+- **SQLite backend compatibility** - Now compatible with Magellan 3.1.1 SQLite databases
+  - Call graph features (`cycles`, `status`) work correctly
+  - CFG features work when database has proper terminator data
+
 ## [1.2.0] - 2026-03-10
 
 ### Added
-- **Geometric Backend Support**: `.geo` file format via Magellan 3.0+
+- **Geometric Backend Support**: `.geo` file format via Magellan 3.1.0+
+- **GeometricRouter**: Full `BackendRouter` trait implementation for `.geo` databases
+  - `enumerate_paths()` - Path enumeration through CFG
+  - `get_loops()` - Natural loop detection with back edges
+  - `get_dominators()` - Dominance tree computation
+  - `get_blast_zone()` - Reachability-based impact analysis
+  - `find_cycles()` - Call graph cycle detection
+  - `slice_forward/backward()` - Program slicing
+  - `compute_hotspots()` - Risk scoring analysis
+  - `compute_icfg()` - Inter-procedural CFG construction
+  - All 17 tests passing in `tests/geometric_router_features_test.rs`
 - **MagellanAdapter**: Contract-aware integration with path normalization and ambiguity handling
 - **GeometricBridge**: Dedicated bridge type for .geo databases
 - **backend-geometric**: Feature flag for .geo backend support
 
 ### Changed
-- **Magellan dependency**: Updated to 3.0+ with geometric-backend feature
+- **Magellan dependency**: Updated to 3.1.0+ with geometric-backend feature
 - **Documentation**: Updated README, MANUAL for .geo backend support
 
 ### Added Documentation
 - **ARCHITECTURE.md**: Design documentation and component overview
 - **API_INTEGRATION.md**: Magellan contract documentation
 - **INVARIANTS.md**: Behavioral guarantees documentation
+- **Geometric Router Tests**: `tests/geometric_router_features_test.rs` with 17 comprehensive tests
 
 ## [1.1.0] - 2026-02-27
 

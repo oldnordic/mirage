@@ -57,7 +57,7 @@
 
 use anyhow::Result;
 use magellan::graph::geometric_backend::GeometricBackend;
-use magellan::graph::path_utils::normalize_path;
+use magellan::validation::normalize_path;
 use std::path::Path;
 
 /// Result type for symbol lookup that may have ambiguity
@@ -245,35 +245,36 @@ impl<'a> MagellanAdapter<'a> {
         // Normalize path first (GEO_QUERY_CONTRACT §Path Normalization)
         let normalized_path = normalize_path_for_query(path);
 
-        // Use Magellan's contract-compliant find_symbol_id_by_path_and_name
+        // Use Magellan's contract-compliant find_symbol_id_by_name_and_path
+        // Returns Option<u64> - Some(id) if unique match found, None if not found or ambiguous
         match self
             .backend
-            .find_symbol_id_by_path_and_name(&normalized_path, name)
+            .find_symbol_id_by_name_and_path(name, &normalized_path)
         {
-            Ok(Some(id)) => {
+            Some(id) => {
                 // Unique match found - get the symbol info
                 match self.backend.find_symbol_by_id_info(id) {
                     Some(info) => SymbolLookupResult::Unique(info),
                     None => SymbolLookupResult::NotFound,
                 }
             }
-            Ok(None) => SymbolLookupResult::NotFound,
-            Err(_ambiguity_err) => {
-                // Ambiguity detected - get ALL candidates
+            None => {
+                // Not found or ambiguous - get ALL candidates to determine which
                 let all_symbols = self
                     .backend
                     .symbols_in_file(&normalized_path)
                     .unwrap_or_default();
                 let matching: Vec<_> = all_symbols.into_iter().filter(|s| s.name == name).collect();
 
-                if matching.is_empty() {
-                    SymbolLookupResult::NotFound
-                } else {
+                if matching.len() > 1 {
+                    // Truly ambiguous
                     SymbolLookupResult::Ambiguous {
                         path: normalized_path,
                         name: name.to_string(),
                         candidates: matching,
                     }
+                } else {
+                    SymbolLookupResult::NotFound
                 }
             }
         }
@@ -365,23 +366,58 @@ impl<'a> MagellanAdapter<'a> {
         }
 
         // As last resort, search by simple name across all files
-        // This WILL return ambiguity if multiple files have symbols with this name
         let all_matching = self.backend.find_symbols_by_name_info(identifier);
 
-        match all_matching.len() {
+        // Deduplicate by symbol ID - the ID is the unique primary key in the database.
+        // This handles cases where the same symbol may be indexed multiple times with
+        // identical (name, file_path, location) data but different internal records.
+        let mut unique_symbols: Vec<magellan::graph::geometric_backend::SymbolInfo> = Vec::new();
+        let mut seen_ids: std::collections::HashSet<u64> = std::collections::HashSet::new();
+        
+        for sym in all_matching {
+            if seen_ids.insert(sym.id) {
+                unique_symbols.push(sym);
+            }
+        }
+
+        match unique_symbols.len() {
             0 => Err(ResolveError::NotFound {
                 identifier: identifier.to_string(),
                 reason: "No symbol with this name, FQN, or ID exists".to_string(),
             }),
-            1 => Ok(all_matching[0].id),
-            n => Err(ResolveError::Ambiguous {
-                identifier: identifier.to_string(),
-                candidates: all_matching.into_iter().map(|c| c.id).collect(),
-                hint: format!(
-                    "Found {} symbols named '{}' - use FQN or path to disambiguate",
-                    n, identifier
-                ),
-            }),
+            1 => Ok(unique_symbols[0].id),
+            n => {
+                // Check if all candidates are at the same location (duplicates) or genuinely different
+                // Normalize paths for consistent comparison
+                let normalize_path = |p: &str| -> String {
+                    p.replace("\\", "/").replace("/./", "/")
+                };
+                
+                let first = &unique_symbols[0];
+                let first_path_normalized = normalize_path(&first.file_path);
+                let all_same_location = unique_symbols.iter().all(|sym| {
+                    let sym_path_normalized = normalize_path(&sym.file_path);
+                    sym.name == first.name 
+                        && sym_path_normalized == first_path_normalized
+                        && sym.start_line == first.start_line 
+                        && sym.start_col == first.start_col
+                });
+                
+                if all_same_location {
+                    // All same location - they're duplicates, pick the first one
+                    Ok(unique_symbols[0].id)
+                } else {
+                    // Genuinely ambiguous - different functions with same name
+                    Err(ResolveError::Ambiguous {
+                        identifier: identifier.to_string(),
+                        candidates: unique_symbols.into_iter().map(|c| c.id).collect(),
+                        hint: format!(
+                            "Found {} unique symbols named '{}' - use FQN or path to disambiguate",
+                            n, identifier
+                        ),
+                    })
+                }
+            }
         }
     }
 }
@@ -952,12 +988,18 @@ impl GeometricBridge {
 /// assert_eq!(normalize_path_for_query("src//lib.rs"), "src/lib.rs");
 /// ```
 pub fn normalize_path_for_query(path: &str) -> String {
-    match normalize_path(path, None) {
+    use std::path::Path;
+    
+    // Pre-process path to handle double slashes and backslashes
+    // This ensures consistent behavior before canonicalization
+    let preprocessed = path.replace("//", "/").replace('\\', "/");
+    
+    match normalize_path(Path::new(&preprocessed)) {
         Ok(normalized) => normalized,
         Err(_) => {
-            // Fallback to original path if normalization fails
+            // Fallback to preprocessed path if normalization fails
             // This preserves functionality for edge cases
-            path.to_string()
+            preprocessed
         }
     }
 }

@@ -6,7 +6,7 @@
 use super::*;
 use crate::storage::GeometricStorage;
 use anyhow::Result;
-use magellan::graph::backend::Backend;
+
 use std::path::Path;
 
 /// Geometric backend router
@@ -53,7 +53,7 @@ impl BackendRouter for GeometricRouter {
             let data = crate::storage::CfgBlockData {
                 id: block.id as i64,
                 kind: block.block_kind,
-                terminator: Some(block.terminator),
+                terminator: block.terminator,
                 byte_start: block.byte_start,
                 byte_end: block.byte_end,
                 start_line: block.start_line,
@@ -71,17 +71,17 @@ impl BackendRouter for GeometricRouter {
 
             // Convert terminator string to Terminator enum
             // Note: .geo stores terminators as lowercase strings
-            let terminator = match data.terminator.as_deref() {
-                Some("return") | None => crate::cfg::Terminator::Return,
-                Some("unreachable") => crate::cfg::Terminator::Unreachable,
-                Some("goto") | Some("fallthrough") | Some("jump") => {
+            let terminator = match data.terminator.as_str() {
+                "" | "return" => crate::cfg::Terminator::Return,
+                "unreachable" => crate::cfg::Terminator::Unreachable,
+                "goto" | "fallthrough" | "jump" => {
                     crate::cfg::Terminator::Goto { target: 0 }
                 }
-                Some("conditional") => crate::cfg::Terminator::SwitchInt {
+                "conditional" => crate::cfg::Terminator::SwitchInt {
                     targets: vec![],
                     otherwise: 0,
                 },
-                Some(t) => crate::cfg::Terminator::Abort(t.to_string()),
+                t => crate::cfg::Terminator::Abort(t.to_string()),
             };
 
             // Create source location
@@ -105,15 +105,15 @@ impl BackendRouter for GeometricRouter {
             block_map.insert(block.id, node_idx);
         }
 
-        // Get edges from storage
+        // Get CFG edges from storage (not graph edges)
         let inner = self.storage.inner();
-        let edges = inner.get_all_edges();
+        let cfg_edges = inner.get_all_cfg_edges();
 
-        for edge in edges {
+        for edge in cfg_edges {
             if let (Some(&src_idx), Some(&dst_idx)) =
-                (block_map.get(&edge.src), block_map.get(&edge.dst))
+                (block_map.get(&edge.src_id), block_map.get(&edge.dst_id))
             {
-                // Use Fallthrough edge type (Flow doesn't exist)
+                // Use Fallthrough edge type
                 cfg.add_edge(src_idx, dst_idx, crate::cfg::EdgeType::Fallthrough);
             }
         }
@@ -210,31 +210,26 @@ impl BackendRouter for GeometricRouter {
     }
 
     fn enumerate_paths(&self, function_id: i64, max_paths: usize) -> Result<Vec<ExecutionPath>> {
-        let inner = self.storage.inner();
-        // Entry block is typically 0
-        let entry_block = 0u64;
-        println!(
-            "DEBUG enumerate_paths: function_id={}, entry_block={}, max_paths={}",
-            function_id, entry_block, max_paths
-        );
-        let k_paths = inner.find_cfg_k_paths(function_id, entry_block, u64::MAX, max_paths);
-        println!("DEBUG: found {} paths", k_paths.len());
-        for (i, path) in k_paths.iter().enumerate() {
-            println!(
-                "DEBUG: path[{}]: node_ids={:?}, length={}",
-                i,
-                path.node_ids,
-                path.node_ids.len()
-            );
-        }
-
-        Ok(k_paths
+        // Load CFG for the function
+        let cfg = self.load_cfg(function_id)?;
+        
+        // Use Mirage's path enumeration algorithm on the loaded CFG
+        let limits = crate::cfg::PathLimits::default()
+            .with_max_paths(max_paths);
+        
+        let paths = crate::cfg::enumerate_paths(&cfg, &limits);
+        
+        // Convert to ExecutionPath format
+        Ok(paths
             .into_iter()
-            .enumerate()
-            .map(|(idx, path)| ExecutionPath {
-                path_id: format!("path_{}_{}", function_id, idx),
-                blocks: path.node_ids.iter().map(|id| *id as i64).collect(),
-                length: path.node_ids.len(),
+            .map(|path| {
+                let path_id = path.path_id.clone();
+                let len = path.len();
+                ExecutionPath {
+                    path_id,
+                    blocks: path.blocks.iter().map(|&b| b as i64).collect(),
+                    length: len,
+                }
             })
             .collect())
     }
@@ -261,25 +256,26 @@ impl BackendRouter for GeometricRouter {
     }
 
     fn get_dominators(&self, function_id: i64) -> Result<DominatorTree> {
-        let inner = self.storage.inner();
-        let result = inner.compute_dominance(function_id, 0);
-        let mut dominators: std::collections::HashMap<i64, Vec<i64>> =
-            std::collections::HashMap::new();
-
-        for (&node, &idom) in &result.idom {
-            let mut dom_list = vec![idom as i64];
-            // Recursively add parent dominators
-            let mut current = idom;
-            while let Some(&next_idom) = result.idom.get(&current) {
-                if next_idom == current {
-                    break;
-                } // Cycle protection
-                dom_list.push(next_idom as i64);
-                current = next_idom;
-            }
-            dominators.insert(node as i64, dom_list);
+        // Load CFG and compute dominators
+        let cfg = self.load_cfg(function_id)?;
+        
+        use crate::cfg::dominators::DominatorTree as CfgDominatorTree;
+        
+        let dom_tree = CfgDominatorTree::new(&cfg)
+            .ok_or_else(|| anyhow::anyhow!("Failed to compute dominator tree - CFG may have no entry"))?;
+        
+        // Convert to router format
+        let mut dominators = std::collections::HashMap::new();
+        
+        for node in cfg.node_indices() {
+            let node_id = cfg.node_weight(node).map(|n| n.id as i64).unwrap_or(0);
+            let dominated: Vec<i64> = dom_tree.children(node)
+                .into_iter()
+                .map(|child_idx| cfg.node_weight(*child_idx).map(|n| n.id as i64).unwrap_or(0))
+                .collect();
+            dominators.insert(node_id, dominated);
         }
-
+        
         Ok(DominatorTree {
             function_id,
             dominators,
@@ -287,99 +283,233 @@ impl BackendRouter for GeometricRouter {
     }
 
     fn get_loops(&self, function_id: i64) -> Result<Vec<NaturalLoop>> {
-        let inner = self.storage.inner();
-        let result = inner.find_natural_loops(function_id, 0);
-        Ok(result
-            .loops
+        // Load CFG and detect loops
+        let cfg = self.load_cfg(function_id)?;
+        
+        use crate::cfg::loops::detect_natural_loops;
+        
+        let loops = detect_natural_loops(&cfg);
+        
+        // Convert to router format
+        Ok(loops
             .into_iter()
             .map(|l| NaturalLoop {
-                header: l.header as i64,
-                blocks: l.body.iter().map(|b| *b as i64).collect(),
+                header: cfg[l.header].id as i64,
+                blocks: l.body.iter().map(|&n| cfg[n].id as i64).collect(),
             })
             .collect())
     }
 
     fn find_unreachable(&self, _within_functions: bool) -> Result<Vec<UnreachableCode>> {
+        // For now, return empty - this would require scanning all functions
+        // and checking for unreachable blocks in each CFG
         Ok(vec![])
     }
-    fn get_patterns(&self, _function_id: i64) -> Result<Vec<BranchPattern>> {
-        Ok(vec![])
+    fn get_patterns(&self, function_id: i64) -> Result<Vec<BranchPattern>> {
+        // Load CFG and detect patterns
+        let cfg = self.load_cfg(function_id)?;
+        
+        use crate::cfg::patterns::detect_all_patterns;
+        
+        let (if_else_patterns, match_patterns) = detect_all_patterns(&cfg);
+        
+        // Convert to router format
+        let mut patterns = Vec::new();
+        
+        for (idx, p) in if_else_patterns.iter().enumerate() {
+            let mut blocks = vec![
+                cfg.node_weight(p.condition).map(|n| n.id as i64).unwrap_or(0),
+                cfg.node_weight(p.true_branch).map(|n| n.id as i64).unwrap_or(0),
+                cfg.node_weight(p.false_branch).map(|n| n.id as i64).unwrap_or(0),
+            ];
+            if let Some(merge) = p.merge_point {
+                blocks.push(cfg.node_weight(merge).map(|n| n.id as i64).unwrap_or(0));
+            }
+            patterns.push(BranchPattern {
+                pattern_id: format!("ifelse_{}", idx),
+                kind: "IfElse".to_string(),
+                blocks,
+            });
+        }
+        
+        for (idx, p) in match_patterns.iter().enumerate() {
+            let mut blocks = vec![
+                cfg.node_weight(p.switch_node).map(|n| n.id as i64).unwrap_or(0),
+            ];
+            for target in &p.targets {
+                blocks.push(cfg.node_weight(*target).map(|n| n.id as i64).unwrap_or(0));
+            }
+            blocks.push(cfg.node_weight(p.otherwise).map(|n| n.id as i64).unwrap_or(0));
+            patterns.push(BranchPattern {
+                pattern_id: format!("match_{}", idx),
+                kind: "Match".to_string(),
+                blocks,
+            });
+        }
+        
+        Ok(patterns)
     }
 
     fn get_frontiers(&self, function_id: i64) -> Result<DominanceFrontiers> {
-        let inner = self.storage.inner();
-        let result = inner.compute_dominance_frontier(function_id, 0);
-        let frontiers: std::collections::HashMap<i64, Vec<i64>> = result
-            .frontier
-            .into_iter()
-            .map(|(k, v)| (k as i64, v.iter().map(|b| *b as i64).collect()))
-            .collect();
+        // Load CFG and compute dominance frontiers
+        let cfg = self.load_cfg(function_id)?;
+        
+        use crate::cfg::dominance_frontiers::DominanceFrontiers as CfgFrontiers;
+        use crate::cfg::dominators::DominatorTree;
+        
+        let dom_tree = DominatorTree::new(&cfg)
+            .ok_or_else(|| anyhow::anyhow!("Failed to compute dominator tree"))?;
+        
+        let frontiers = CfgFrontiers::new(&cfg, dom_tree);
+        
+        // Convert to router format
+        let mut frontier_map = std::collections::HashMap::new();
+        
+        for node in cfg.node_indices() {
+            let node_id = cfg[node].id as i64;
+            let node_frontier: Vec<i64> = frontiers.frontier(node)
+                .iter()
+                .map(|&n| cfg[n].id as i64)
+                .collect();
+            frontier_map.insert(node_id, node_frontier);
+        }
+        
         Ok(DominanceFrontiers {
             function_id,
-            frontiers,
+            frontiers: frontier_map,
         })
     }
 
     fn find_cycles(&self) -> Result<Vec<CallCycle>> {
-        Ok(vec![])
+        // Call cycle detection is available through Magellan's GeometricBackend
+        let cycles = self.storage.inner().find_call_graph_cycles();
+        Ok(cycles
+            .into_iter()
+            .enumerate()
+            .map(|(idx, cycle)| CallCycle {
+                cycle_id: format!("cycle_{}", idx),
+                functions: cycle.iter().map(|id| *id as i64).collect(),
+            })
+            .collect())
     }
 
     fn get_blast_zone(&self, function_id: i64, block_id: Option<i64>) -> Result<BlastZone> {
+        // Use geometric backend's reachability analysis
         let inner = self.storage.inner();
-        let affected_blocks: Vec<i64> = if let Some(bid) = block_id {
-            inner
-                .get_reachable_from(function_id, bid as u64)
-                .into_iter()
-                .map(|b| b as i64)
-                .collect()
+        
+        // Get forward reachable (affected by this function/block)
+        let forward_reachable = inner.reachable_from(function_id as u64);
+        
+        // Get backward reachable (can reach this function)
+        let backward_reachable = inner.reverse_reachable_from(function_id as u64);
+        
+        // Get affected blocks from CFG if block_id specified
+        let affected_blocks = if let Some(bid) = block_id {
+            vec![bid]
         } else {
-            vec![]
+            // Get all blocks in the function
+            let cfg = self.load_cfg(function_id)?;
+            cfg.node_indices().map(|n| cfg[n].id as i64).collect()
         };
+        
         Ok(BlastZone {
             center_function: function_id,
             center_block: block_id,
-            affected_functions: vec![function_id],
+            affected_functions: forward_reachable.iter().map(|&id| id as i64).collect(),
             affected_blocks,
         })
     }
 
     fn slice(&self, symbol: &str, direction: SliceDirection) -> Result<crate::router::SliceResult> {
-        let inner = self.storage.inner();
-        let function_id = self.resolve_function(symbol)?;
-        let symbol_id = function_id as u64;
-        let (nodes, dir_str) = match direction {
+        // Resolve the symbol
+        let symbol_id = self.resolve_function(symbol)?;
+        
+        let affected_symbols = match direction {
             SliceDirection::Forward => {
-                (inner.forward_slice(function_id, symbol_id).nodes, "forward")
+                // Forward: what this symbol affects
+                self.storage.inner()
+                    .reachable_from(symbol_id as u64)
+                    .into_iter()
+                    .filter_map(|id| self.get_function_name(id as i64))
+                    .collect()
             }
-            SliceDirection::Backward => (
-                inner.backward_slice(function_id, symbol_id).nodes,
-                "backward",
-            ),
-            SliceDirection::Both => (inner.full_slice(function_id, symbol_id).nodes, "both"),
+            SliceDirection::Backward => {
+                // Backward: what affects this symbol
+                self.storage.inner()
+                    .reverse_reachable_from(symbol_id as u64)
+                    .into_iter()
+                    .filter_map(|id| self.get_function_name(id as i64))
+                    .collect()
+            }
+            SliceDirection::Both => {
+                let mut forward: std::collections::HashSet<String> = self.storage.inner()
+                    .reachable_from(symbol_id as u64)
+                    .into_iter()
+                    .filter_map(|id| self.get_function_name(id as i64))
+                    .collect();
+                let backward: std::collections::HashSet<String> = self.storage.inner()
+                    .reverse_reachable_from(symbol_id as u64)
+                    .into_iter()
+                    .filter_map(|id| self.get_function_name(id as i64))
+                    .collect();
+                forward.extend(backward);
+                forward.into_iter().collect()
+            }
         };
+        
         Ok(crate::router::SliceResult {
             symbol: symbol.to_string(),
-            direction: dir_str.to_string(),
-            affected_symbols: nodes.iter().map(|b| b.to_string()).collect(),
+            direction: match direction {
+                SliceDirection::Forward => "forward".to_string(),
+                SliceDirection::Backward => "backward".to_string(),
+                SliceDirection::Both => "both".to_string(),
+            },
+            affected_symbols,
         })
     }
 
     fn get_hotspots(&self) -> Result<Vec<Hotspot>> {
-        Ok(vec![])
-    }
-    fn get_hotpaths(&self, function_id: Option<i64>) -> Result<Vec<HotPath>> {
-        if let Some(fid) = function_id {
-            let paths = self.enumerate_paths(fid, 10)?;
-            Ok(paths
-                .into_iter()
-                .map(|p| HotPath {
-                    path: p.blocks,
-                    frequency: 1.0,
-                })
-                .collect())
-        } else {
-            Ok(vec![])
+        // Get all symbols
+        let symbols = self.storage.inner()
+            .get_all_symbols()
+            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?;
+        
+        let mut hotspots = Vec::new();
+        
+        for symbol in symbols {
+            // Calculate complexity from CFG
+            let complexity = if let Ok(cfg) = self.load_cfg(symbol.id as i64) {
+                // Simple complexity metric: block count
+                cfg.node_count() as f64
+            } else {
+                0.0
+            };
+            
+            // Calculate frequency from call graph
+            let frequency = self.storage.inner()
+                .get_callers(symbol.id)
+                .len() as f64;
+            
+            hotspots.push(Hotspot {
+                function_id: symbol.id as i64,
+                complexity,
+                frequency,
+            });
         }
+        
+        // Sort by combined risk score (complexity * frequency)
+        hotspots.sort_by(|a, b| {
+            let a_score = a.complexity * a.frequency;
+            let b_score = b.complexity * b.frequency;
+            b_score.partial_cmp(&a_score).unwrap()
+        });
+        
+        Ok(hotspots)
+    }
+    fn get_hotpaths(&self, _function_id: Option<i64>) -> Result<Vec<HotPath>> {
+        // For now, return empty - hot path analysis requires path frequency data
+        // which isn't available in the geometric backend
+        Ok(vec![])
     }
 
     fn verify_path(&self, path_id: &str) -> Result<PathVerification> {
@@ -406,20 +536,73 @@ impl BackendRouter for GeometricRouter {
     }
 
     fn get_icfg(&self, function_id: i64) -> Result<InterProceduralCfg> {
+        // Build ICFG from call graph and individual CFGs
+        let inner = self.storage.inner();
+        
+        // Get direct callees
+        let callees = inner.get_callees(function_id as u64);
+        
+        let mut nodes = Vec::new();
+        let edges = Vec::new();
+        let mut node_counter: i64 = 0;
+        
+        // Add entry function nodes
+        if let Ok(cfg) = self.load_cfg(function_id) {
+            for node_idx in cfg.node_indices() {
+                let block_id = cfg[node_idx].id as i64;
+                nodes.push(IcfgNode {
+                    id: node_counter,
+                    function_id,
+                    block_id,
+                });
+                node_counter += 1;
+            }
+        }
+        
+        // Add callee function nodes and call edges
+        for callee_id in callees {
+            if let Ok(cfg) = self.load_cfg(callee_id as i64) {
+                for node_idx in cfg.node_indices() {
+                    let block_id = cfg[node_idx].id as i64;
+                    nodes.push(IcfgNode {
+                        id: node_counter,
+                        function_id: callee_id as i64,
+                        block_id,
+                    });
+                    node_counter += 1;
+                }
+            }
+        }
+        
         Ok(InterProceduralCfg {
             entry_function: function_id,
-            nodes: vec![IcfgNode {
-                id: 0,
-                function_id,
-                block_id: 0,
-            }],
-            edges: vec![],
+            nodes,
+            edges,
         })
     }
     fn get_call_graph(&self) -> Result<CallGraph> {
-        Ok(CallGraph {
-            nodes: vec![],
-            edges: vec![],
-        })
+        // Build call graph from actual call edges in the geometric backend
+        let inner = self.storage.inner();
+        let symbols = inner.get_all_symbols()
+            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?;
+        let call_edges = inner.get_call_edges();
+        
+        let nodes: Vec<CallGraphNode> = symbols
+            .into_iter()
+            .map(|s| CallGraphNode {
+                id: s.id as i64,
+                function_name: s.fqn,
+            })
+            .collect();
+        
+        let edges: Vec<CallGraphEdge> = call_edges
+            .into_iter()
+            .map(|e| CallGraphEdge {
+                caller_id: e.src_symbol_id as i64,
+                callee_id: e.dst_symbol_id as i64,
+            })
+            .collect();
+        
+        Ok(CallGraph { nodes, edges })
     }
 }

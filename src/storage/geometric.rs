@@ -103,6 +103,13 @@ impl GeometricStorage {
         self.inner.find_symbol_by_fqn_info(fqn)
     }
 
+    /// Find a symbol ID by name and file path
+    /// 
+    /// Returns Some(id) if a unique match is found, None if not found or ambiguous.
+    pub fn find_symbol_id_by_name_and_path(&self, name: &str, path: &str) -> Option<u64> {
+        self.inner.find_symbol_id_by_name_and_path(name, path)
+    }
+
     /// Get CFG blocks for a function directly from the backend
     pub fn get_cfg_blocks_for_function(&self, function_id: i64) -> Vec<MagellanCfgBlock> {
         self.inner.get_cfg_blocks_for_function(function_id)
@@ -120,7 +127,12 @@ impl GeometricStorage {
 
     /// Get database statistics
     pub fn get_stats(&self) -> Result<GeometricStats> {
-        // Use GeometricBackend's internal stats method
+        // Reload from disk to ensure we have the latest persisted data
+        // This is necessary because the geometric backend caches data in memory
+        // and another process (like magellan watch) may have written new data
+        self.inner.reload_from_disk()?;
+        
+        // Now get fresh stats from the reloaded cache
         let stats = self.inner.get_geometric_stats();
 
         Ok(GeometricStats {

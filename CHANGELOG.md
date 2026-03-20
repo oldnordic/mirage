@@ -5,6 +5,21 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-03-20
+
+### Added
+- **`--file` option to disambiguate functions with duplicate names**
+  - Added to `cfg`, `paths`, `dominators`, `loops`, `patterns`, `frontiers` commands
+  - Allows selecting the correct function when multiple functions share the same name
+  - Example: `mirage cfg --function index_file --file ops.rs`
+  - Location: `src/cli/mod.rs`
+
+### Fixed
+- **Function resolution ambiguity**
+  - `resolve_function_name_sqlite()` now supports optional file path filtering
+  - Added `resolve_function_name_with_file()` for backend-agnostic API
+  - Uses LIKE pattern matching for partial file paths
+
 ## [1.2.2] - 2026-03-19
 
 ### Fixed

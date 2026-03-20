@@ -214,6 +214,7 @@ impl Backend {
         use magellan::migrate_backend_cmd::detect_backend_format;
 
         // Check for .geo extension first (Magellan 3.0+ geometric backend)
+        #[cfg(feature = "backend-geometric")]
         let is_geo = db_path.extension().and_then(|e| e.to_str()) == Some("geo");
 
         #[cfg(feature = "backend-geometric")]
@@ -264,6 +265,7 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(_) => true,
+            #[cfg(not(feature = "backend-sqlite"))]
             _ => false,
         }
     }
@@ -1288,6 +1290,26 @@ impl MirageDb {
     /// ```
     #[cfg(feature = "backend-sqlite")]
     pub fn resolve_function_name(&self, name_or_id: &str) -> Result<i64> {
+        self.resolve_function_name_with_file(name_or_id, None)
+    }
+
+    /// Resolve a function name or ID to a function_id with optional file filter
+    ///
+    /// This method works with both SQLite and geometric backends.
+    /// For SQLite backend: queries the graph_entities table
+    /// For geometric backend: uses GraphBackend::get_node
+    ///
+    /// # Arguments
+    ///
+    /// * `name_or_id` - Function name (string) or function_id (numeric string)
+    /// * `file_filter` - Optional file path to disambiguate functions with same name
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(i64)` - The function_id if found
+    /// * `Err(...)` - Error if function not found or query fails
+    #[cfg(feature = "backend-sqlite")]
+    pub fn resolve_function_name_with_file(&self, name_or_id: &str, file_filter: Option<&str>) -> Result<i64> {
         // Try to parse as numeric ID first
         if let Ok(id) = name_or_id.parse::<i64>() {
             return Ok(id);
@@ -1295,7 +1317,7 @@ impl MirageDb {
 
         // Check if we have a SQLite connection (geometric backend has conn=None)
         if let Ok(conn) = self.conn() {
-            resolve_function_name_sqlite(conn, name_or_id)
+            resolve_function_name_sqlite(conn, name_or_id, file_filter)
         } else {
             // For geometric backend, use the storage backend directly
             #[cfg(feature = "backend-geometric")]
@@ -1728,7 +1750,7 @@ impl MirageDb {
 /// This is a helper function for the SQLite backend. For backend-agnostic
 /// resolution, use `MirageDb::resolve_function_name` which takes `&MirageDb`.
 #[cfg(feature = "backend-sqlite")]
-fn resolve_function_name_sqlite(conn: &Connection, name_or_id: &str) -> Result<i64> {
+fn resolve_function_name_sqlite(conn: &Connection, name_or_id: &str, file_filter: Option<&str>) -> Result<i64> {
     // First try to look up by symbol_id (hex hash like 7ca9eebfa98204a5)
     // Magellan stores symbol_id inside the data JSON column
     let function_id_by_symbol: Option<i64> = conn
@@ -1751,9 +1773,28 @@ fn resolve_function_name_sqlite(conn: &Connection, name_or_id: &str) -> Result<i
         return Ok(id);
     }
 
-    // Then try to look up by function name
-    let function_id: Option<i64> = conn
-        .query_row(
+    // Then try to look up by function name, optionally filtered by file
+    let function_id: Option<i64> = if let Some(file_path) = file_filter {
+        // With file filter - use LIKE to match partial paths
+        let pattern = format!("%{}%", file_path);
+        conn.query_row(
+            "SELECT id FROM graph_entities
+             WHERE kind = 'Symbol'
+             AND json_extract(data, '$.kind') = 'Function'
+             AND name = ?
+             AND file_path LIKE ?
+             LIMIT 1",
+            params![name_or_id, pattern],
+            |row| row.get(0),
+        )
+        .optional()
+        .context(format!(
+            "Failed to query function with name '{}' in file '{}'",
+            name_or_id, file_path
+        ))?
+    } else {
+        // Without file filter - original behavior
+        conn.query_row(
             "SELECT id FROM graph_entities
              WHERE kind = 'Symbol'
              AND json_extract(data, '$.kind') = 'Function'
@@ -1766,7 +1807,8 @@ fn resolve_function_name_sqlite(conn: &Connection, name_or_id: &str) -> Result<i
         .context(format!(
             "Failed to query function with name '{}'",
             name_or_id
-        ))?;
+        ))?
+    };
 
     function_id.context(format!(
         "Function '{}' not found in database. Run 'magellan watch' to index functions.",
@@ -1972,6 +2014,37 @@ fn load_cfg_from_rows(
 /// ```
 pub fn resolve_function_name(db: &MirageDb, name_or_id: &str) -> Result<i64> {
     db.resolve_function_name(name_or_id)
+}
+
+/// Resolve a function name or ID to a function_id with optional file filter
+///
+/// This is a helper function that delegates to `MirageDb::resolve_function_name_with_file`.
+/// Use this for a backend-agnostic API.
+///
+/// # Arguments
+///
+/// * `db` - Database reference (works with both backends)
+/// * `name_or_id` - Function name or numeric ID string
+/// * `file_filter` - Optional file path to disambiguate functions with same name
+///
+/// # Returns
+///
+/// * `Ok(i64)` - The function_id if found
+/// * `Err(...)` - Error if function not found or query fails
+///
+/// # Examples
+///
+/// ```no_run
+/// # use mirage_analyzer::storage::{resolve_function_name_with_file, MirageDb};
+/// # fn main() -> anyhow::Result<()> {
+/// # let db = MirageDb::open("test.db")?;
+/// // Resolve with file filter to disambiguate
+/// let func_id = resolve_function_name_with_file(&db, "process", Some("src/lib.rs"))?;
+/// # Ok(())
+/// # }
+/// ```
+pub fn resolve_function_name_with_file(db: &MirageDb, name_or_id: &str, file_filter: Option<&str>) -> Result<i64> {
+    db.resolve_function_name_with_file(name_or_id, file_filter)
 }
 
 /// Get the function name for a given function_id (backend-agnostic)

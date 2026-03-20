@@ -5,6 +5,17 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-03-19
+
+### Fixed
+- **Compiler warnings** - Fixed 7 warnings across the codebase
+  - Fixed unused variable `is_geo` in storage/mod.rs (added proper cfg attribute)
+  - Fixed unused variables `original_idx` in cfg/mod.rs (prefixed with underscore)
+  - Fixed unused variable `label` in cfg/icfg.rs (prefixed with underscore)
+  - Fixed unused variables `db`, `input_db`, `output_db` in cli/mod.rs (added cfg attributes)
+  - Fixed unreachable pattern warning in `is_sqlite()` function
+  - Build now completes with only minor unused import warnings
+
 ## [1.2.1] - 2026-03-15
 
 ### Fixed

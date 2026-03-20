@@ -19,7 +19,7 @@ pub mod source;
 pub mod summary;
 
 pub use analysis::{find_entry, find_exits};
-pub use crate::storage::{load_cfg_from_db, resolve_function_name};
+pub use crate::storage::{load_cfg_from_db, resolve_function_name, resolve_function_name_with_file};
 
 #[cfg(feature = "sqlite")]
 pub use crate::storage::{load_cfg_from_db_with_conn, resolve_function_name_with_conn};
@@ -100,14 +100,14 @@ pub fn build_edges_from_terminators(
 
     // Build a map from position in sorted order to node index
     let mut sorted_pos_to_node: HashMap<usize, usize> = HashMap::new();
-    for (sorted_pos, (original_idx, (db_id, _, _, _, _, _, _, _, _))) in blocks_with_idx.iter().enumerate() {
+    for (sorted_pos, (_original_idx, (db_id, _, _, _, _, _, _, _, _))) in blocks_with_idx.iter().enumerate() {
         if let Some(&node_idx) = db_id_to_node.get(db_id) {
             sorted_pos_to_node.insert(sorted_pos, node_idx);
         }
     }
 
     // For each block in sorted order, analyze terminator to find successors
-    for (sorted_pos, (original_idx, (_, _kind, terminator_opt, _, _, _, _, _, _))) in blocks_with_idx.iter().enumerate() {
+    for (sorted_pos, (_original_idx, (_, _kind, terminator_opt, _, _, _, _, _, _))) in blocks_with_idx.iter().enumerate() {
         let terminator = terminator_opt.as_deref().unwrap_or("");
         let current_node = *sorted_pos_to_node.get(&sorted_pos)
             .ok_or_else(|| anyhow::anyhow!("Block at position {} not found in node map", sorted_pos))?;

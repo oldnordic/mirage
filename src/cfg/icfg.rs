@@ -339,7 +339,7 @@ pub fn to_dot(icfg: &Icfg) -> String {
     // Add nodes
     for node in icfg.graph.node_indices() {
         let node_data = &icfg.graph[node];
-        let label = format!(
+        let _label = format!(
             "F{}_B{}",
             node_data.function_id,
             if node_data.block_id < 0 {

@@ -122,6 +122,10 @@ pub struct PathsArgs {
     #[arg(long)]
     pub function: String,
 
+    /// File path to disambiguate functions with same name (optional)
+    #[arg(long)]
+    pub file: Option<String>,
+
     /// Show only error paths
     #[arg(long)]
     pub show_errors: bool,
@@ -149,6 +153,10 @@ pub struct CfgArgs {
     #[arg(long)]
     pub function: String,
 
+    /// File path to disambiguate functions with same name (optional)
+    #[arg(long)]
+    pub file: Option<String>,
+
     /// Output format
     #[arg(long, value_enum)]
     pub format: Option<CfgFormat>,
@@ -159,6 +167,10 @@ pub struct DominatorsArgs {
     /// Function symbol ID or name
     #[arg(long)]
     pub function: String,
+
+    /// File path to disambiguate functions with same name (optional)
+    #[arg(long)]
+    pub file: Option<String>,
 
     /// Show blocks that must pass through this block
     #[arg(long)]
@@ -178,6 +190,10 @@ pub struct LoopsArgs {
     /// Function to analyze for loops
     #[arg(long)]
     pub function: String,
+
+    /// File path to disambiguate functions with same name (optional)
+    #[arg(long)]
+    pub file: Option<String>,
 
     /// Show detailed loop body blocks
     #[arg(long)]
@@ -205,6 +221,10 @@ pub struct PatternsArgs {
     #[arg(long)]
     pub function: String,
 
+    /// File path to disambiguate functions with same name (optional)
+    #[arg(long)]
+    pub file: Option<String>,
+
     /// Show only if/else patterns
     #[arg(long)]
     pub if_else: bool,
@@ -219,6 +239,10 @@ pub struct FrontiersArgs {
     /// Function to analyze for dominance frontiers
     #[arg(long)]
     pub function: String,
+
+    /// File path to disambiguate functions with same name (optional)
+    #[arg(long)]
+    pub file: Option<String>,
 
     /// Show iterated dominance frontier (for phi placement)
     #[arg(long)]
@@ -241,6 +265,10 @@ pub struct BlastZoneArgs {
     /// Function symbol ID or name (for block-based analysis)
     #[arg(long)]
     pub function: Option<String>,
+
+    /// File path to disambiguate functions with same name (optional)
+    #[arg(long)]
+    pub file: Option<String>,
 
     /// Block ID to analyze impact from (default: entry block 0)
     #[arg(long)]
@@ -991,7 +1019,7 @@ pub mod cmds {
 
     pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{PathKind, PathLimits, get_or_enumerate_paths, enumerate_paths_incremental};
-        use crate::cfg::{resolve_function_name, load_cfg_from_db};
+        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
         use crate::storage::{MirageDb, get_function_hash_db};
 
         // Resolve database path
@@ -1117,8 +1145,8 @@ pub mod cmds {
             }
         };
 
-        // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(&db, &args.function) {
+        // Resolve function name/ID to function_id (with optional file filter)
+        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1267,7 +1295,7 @@ pub mod cmds {
 
     pub fn cfg(args: &CfgArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{export_dot, export_json, CFGExport};
-        use crate::cfg::{resolve_function_name, load_cfg_from_db};
+        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -1291,8 +1319,8 @@ pub mod cmds {
             }
         };
 
-        // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(&db, &args.function) {
+        // Resolve function name/ID to function_id (with optional file filter)
+        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1411,7 +1439,7 @@ pub mod cmds {
 
     pub fn dominators(args: &DominatorsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{DominatorTree, PostDominatorTree};
-        use crate::cfg::{resolve_function_name, load_cfg_from_db};
+        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -1440,8 +1468,8 @@ pub mod cmds {
             }
         };
 
-        // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(&db, &args.function) {
+        // Resolve function name/ID to function_id (with optional file filter)
+        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -1937,7 +1965,7 @@ pub mod cmds {
 
     pub fn loops(args: &LoopsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::detect_natural_loops;
-        use crate::cfg::{resolve_function_name, load_cfg_from_db};
+        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -1961,8 +1989,8 @@ pub mod cmds {
             }
         };
 
-        // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(&db, &args.function) {
+        // Resolve function name/ID to function_id (with optional file filter)
+        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3217,7 +3245,8 @@ pub mod cmds {
         let db_path = super::resolve_db_path(cli.db.clone())?;
 
         // Open Mirage database for intra-procedural analysis
-        let mut db = match MirageDb::open(&db_path) {
+        #[cfg(feature = "sqlite")]
+        let db = match MirageDb::open(&db_path) {
             Ok(db) => db,
             Err(e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3521,7 +3550,7 @@ pub mod cmds {
 
     pub fn patterns(args: &PatternsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{detect_if_else_patterns, detect_match_patterns};
-        use crate::cfg::{resolve_function_name, load_cfg_from_db};
+        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -3545,8 +3574,8 @@ pub mod cmds {
             }
         };
 
-        // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(&db, &args.function) {
+        // Resolve function name/ID to function_id (with optional file filter)
+        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -3685,7 +3714,7 @@ pub mod cmds {
 
     pub fn frontiers(args: &FrontiersArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{compute_dominance_frontiers, DominatorTree};
-        use crate::cfg::{resolve_function_name, load_cfg_from_db};
+        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -3709,8 +3738,8 @@ pub mod cmds {
             }
         };
 
-        // Resolve function name/ID to function_id
-        let function_id = match resolve_function_name(&db, &args.function) {
+        // Resolve function name/ID to function_id (with optional file filter)
+        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
             Ok(id) => id,
             Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -4242,7 +4271,9 @@ pub mod cmds {
         match (args.from, args.to) {
             (BackendFormat::Sqlite, BackendFormat::NativeV3) => {
                 // Use magellan's run_migrate_backend for in-place migration
+                #[cfg(feature = "backend-native-v3")]
                 let input_db = std::path::PathBuf::from(&args.db);
+                #[cfg(feature = "backend-native-v3")]
                 let output_db = input_db.clone(); // In-place migration
 
                 #[cfg(feature = "backend-native-v3")]

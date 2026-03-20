@@ -4516,6 +4516,7 @@ mod cfg_tests {
             output: OutputFormat::Human,
             command: Some(Commands::Cfg(CfgArgs {
                 function: "test".to_string(),
+                file: None,
                 format: None,
             })),
             detect_backend: false,
@@ -4541,6 +4542,7 @@ mod cfg_tests {
             output: OutputFormat::Json,
             command: Some(Commands::Cfg(CfgArgs {
                 function: "test".to_string(),
+                file: None,
                 format: None,
             })),
             detect_backend: false,
@@ -4925,6 +4927,7 @@ mod paths_tests {
     fn test_paths_args_function_extraction() {
         let args = PathsArgs {
             function: "test_function".to_string(),
+            file: None,
             show_errors: false,
             max_length: None,
             with_blocks: false,
@@ -4943,6 +4946,7 @@ mod paths_tests {
     fn test_paths_args_with_flags() {
         let args = PathsArgs {
             function: "my_func".to_string(),
+            file: None,
             show_errors: true,
             max_length: Some(10),
             with_blocks: true,
@@ -5064,6 +5068,7 @@ mod paths_tests {
     fn test_paths_args_with_blocks_flag() {
         let args_with = PathsArgs {
             function: "test".to_string(),
+            file: None,
             show_errors: false,
             max_length: None,
             with_blocks: true,
@@ -5073,6 +5078,7 @@ mod paths_tests {
 
         let args_without = PathsArgs {
             function: "test".to_string(),
+            file: None,
             show_errors: false,
             max_length: None,
             with_blocks: false,
@@ -6091,6 +6097,7 @@ mod dominators_tests {
     fn test_dominators_args_fields() {
         let args = DominatorsArgs {
             function: "test_func".to_string(),
+            file: None,
             must_pass_through: Some("1".to_string()),
             post: false,
             inter_procedural: false,
@@ -6107,6 +6114,7 @@ mod dominators_tests {
     fn test_dominators_args_with_post_flag() {
         let args = DominatorsArgs {
             function: "my_function".to_string(),
+            file: None,
             must_pass_through: None,
             post: true,
             inter_procedural: false,
@@ -7010,6 +7018,7 @@ mod output_format_tests {
     fn test_loops_args_fields() {
         let args = LoopsArgs {
             function: "my_function".to_string(),
+            file: None,
             verbose: true,
         };
 
@@ -7068,11 +7077,13 @@ mod output_format_tests {
     fn test_loops_verbose_flag() {
         let args_verbose = LoopsArgs {
             function: "test".to_string(),
+            file: None,
             verbose: true,
         };
 
         let args_not_verbose = LoopsArgs {
             function: "test".to_string(),
+            file: None,
             verbose: false,
         };
 
@@ -7153,6 +7164,7 @@ mod output_format_tests {
         // Test argument parsing - command structure is correct
         let args = PatternsArgs {
             function: "test_func".to_string(),
+            file: None,
             if_else: true,
             r#match: false,
         };
@@ -7169,6 +7181,7 @@ mod output_format_tests {
         // Test argument parsing - command structure is correct
         let args = PatternsArgs {
             function: "test_func".to_string(),
+            file: None,
             if_else: false,
             r#match: true,
         };
@@ -7185,6 +7198,7 @@ mod output_format_tests {
         // Test argument parsing - command structure is correct
         let args = PatternsArgs {
             function: "test_func".to_string(),
+            file: None,
             if_else: false,
             r#match: false,
         };
@@ -7394,6 +7408,7 @@ mod frontiers_tests {
     fn test_frontiers_iterated_flag() {
         let args = FrontiersArgs {
             function: "test_func".to_string(),
+            file: None,
             iterated: true,
             node: None,
         };
@@ -7407,6 +7422,7 @@ mod frontiers_tests {
     fn test_frontiers_node_flag() {
         let args = FrontiersArgs {
             function: "test_func".to_string(),
+            file: None,
             iterated: false,
             node: Some(5),
         };
@@ -7740,6 +7756,7 @@ mod frontiers_tests {
     fn test_dominators_args_has_inter_procedural_flag() {
         let args = DominatorsArgs {
             function: "main".to_string(),
+            file: None,
             must_pass_through: Some("block1".to_string()),
             post: false,
             inter_procedural: true,
@@ -7756,6 +7773,7 @@ mod frontiers_tests {
     fn test_dominators_args_default_intra_procedural() {
         let args = DominatorsArgs {
             function: "main".to_string(),
+            file: None,
             must_pass_through: None,
             post: false,
             inter_procedural: false,  // default
@@ -7772,6 +7790,7 @@ mod frontiers_tests {
         // In practice, inter_procedural mode should take precedence
         let args = DominatorsArgs {
             function: "entry".to_string(),
+            file: None,
             must_pass_through: None,
             post: true,
             inter_procedural: true,
@@ -7788,6 +7807,7 @@ mod frontiers_tests {
         // These flags can coexist in args struct
         let args = DominatorsArgs {
             function: "main".to_string(),
+            file: None,
             must_pass_through: Some("some_block".to_string()),
             post: false,
             inter_procedural: true,

@@ -1642,7 +1642,7 @@ pub fn enumerate_paths_cached_with_context(
 
     // Try cache first
     let current_hash: Option<String> = db_conn.query_row(
-        "SELECT function_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
+        "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
         rusqlite::params![function_id],
         |row| row.get(0),
     ).unwrap_or(None);

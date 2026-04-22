@@ -1479,7 +1479,7 @@ pub fn get_or_enumerate_paths(
 
     // Check current hash in cfg_blocks
     let current_hash: Option<String> = db_conn.query_row(
-        "SELECT function_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
+        "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
         rusqlite::params![function_id],
         |row| row.get(0),
     ).unwrap_or(None);
@@ -1504,7 +1504,7 @@ pub fn get_or_enumerate_paths(
     store_paths(db_conn, function_id, &paths)
         .map_err(|e| format!("Failed to store enumerated paths: {}", e))?;
 
-    // Note: function_hash tracking removed - not available in Magellan's cfg_blocks schema
+    // Note: cfg_hash is used for cache validation with Magellan v11+
     // Magellan manages its own caching and re-indexing when source files change
 
     Ok(paths)
@@ -1774,20 +1774,30 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 2 },
+            terminator: Terminator::Goto { target: 2 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
@@ -1795,7 +1805,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::Fallthrough);
@@ -1808,31 +1821,46 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::SwitchInt {
                 targets: vec![1],
                 otherwise: 2,
-            },
+    
+        },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 },
+            terminator: Terminator::Goto { target: 3 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b2 = g.add_node(BasicBlock {
+
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 },
+            terminator: Terminator::Goto { target: 3 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
@@ -1840,7 +1868,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
         g.add_edge(b0, b2, EdgeType::FalseBranch);
@@ -1855,31 +1886,46 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
                 targets: vec![2],
                 otherwise: 3,
-            },
+
+        },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
+
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
@@ -1887,7 +1933,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::TrueBranch);
@@ -2056,12 +2105,17 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
@@ -2069,7 +2123,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Abort("panic!".to_string()),
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -2081,12 +2138,17 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
@@ -2094,7 +2156,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Unreachable,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -2111,7 +2176,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // Block 1 is not reachable from entry
         let _b1 = g.add_node(BasicBlock {
@@ -2120,7 +2188,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g
     }
@@ -2130,14 +2201,19 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Call {
                 target: Some(1),
                 unwind: Some(2), // Has unwind -> Error path
-            },
+
+        },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -2146,7 +2222,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let _b2 = g.add_node(BasicBlock {
             id: 2,
@@ -2154,7 +2233,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -2226,7 +2308,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let path = vec![0];
         let kind = classify_path(&g, &path);
@@ -2474,7 +2559,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // A single block that is both entry and exit
         let paths = enumerate_paths(&g, &PathLimits::default());
@@ -2491,12 +2579,17 @@ mod tests {
 
         // Block 0: entry
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // Block 1: return
         let b1 = g.add_node(BasicBlock {
@@ -2505,7 +2598,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // Block 2: unreachable (not connected)
         let _b2 = g.add_node(BasicBlock {
@@ -2514,7 +2610,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Unreachable,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -2577,12 +2676,17 @@ mod tests {
 
         // Entry block with conditional
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 },
+            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // Normal branch
         let b1 = g.add_node(BasicBlock {
@@ -2591,7 +2695,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // Error branch (panic)
         let b2 = g.add_node(BasicBlock {
@@ -2600,7 +2707,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Abort("panic!".to_string()),
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
         g.add_edge(b0, b2, EdgeType::FalseBranch);
@@ -2650,36 +2760,56 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 2 },
+            terminator: Terminator::Goto { target: 2 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b2 = g.add_node(BasicBlock {
+
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 },
+            terminator: Terminator::Goto { target: 3 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b3 = g.add_node(BasicBlock {
+
             id: 3,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 4 },
+            terminator: Terminator::Goto { target: 4 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b4 = g.add_node(BasicBlock {
             id: 4,
@@ -2687,7 +2817,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::Fallthrough);
@@ -2769,21 +2902,31 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
             // Self-loop: always goes back to itself
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -2827,36 +2970,56 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 4 },
+            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 4 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b2 = g.add_node(BasicBlock {
+
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 },
+            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b3 = g.add_node(BasicBlock {
+
             id: 3,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 2 },
+            terminator: Terminator::Goto { target: 2 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b4 = g.add_node(BasicBlock {
             id: 4,
@@ -2864,7 +3027,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::TrueBranch);
@@ -2897,47 +3063,72 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // Outer loop header
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 6 },
+            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 6 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // Middle loop header
         let b2 = g.add_node(BasicBlock {
+
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 },
+            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // Inner loop header
         let b3 = g.add_node(BasicBlock {
+
             id: 3,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![4], otherwise: 2 },
+            terminator: Terminator::SwitchInt { targets: vec![4], otherwise: 2 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b4 = g.add_node(BasicBlock {
+
             id: 4,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 },
+            terminator: Terminator::Goto { target: 3 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b6 = g.add_node(BasicBlock {
             id: 6,
@@ -2945,7 +3136,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::TrueBranch);
@@ -3145,14 +3339,19 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Call {
                 target: Some(1),
                 unwind: None,
-            },
+    
+        },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -3161,7 +3360,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -3187,14 +3389,19 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Call {
                 target: None, // No target - always unwinds
                 unwind: Some(1),
-            },
+    
+        },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -3203,7 +3410,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -3453,14 +3663,19 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Call {
                 target: Some(1),
                 unwind: None,
-            },
+    
+        },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -3469,7 +3684,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -3498,21 +3716,31 @@ mod tests {
 
         // Entry: check x > 5
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 },
+            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // True branch: check x < 3 (conflicts with x > 5)
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 3 },
+            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 3 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // False branch: just return
         let b2 = g.add_node(BasicBlock {
@@ -3521,7 +3749,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         // After conflicting check: return
         let b3 = g.add_node(BasicBlock {
@@ -3530,7 +3761,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
         g.add_edge(b0, b2, EdgeType::FalseBranch);
@@ -4336,7 +4570,10 @@ mod tests {
                 statements: vec![],
                 terminator,
                 source_location: None,
-            });
+                coord_x: 0,
+                coord_y: 0,
+                coord_z: 0,
+    });
         }
 
         // Add edges
@@ -4387,7 +4624,10 @@ mod tests {
                 statements: vec![],
                 terminator,
                 source_location: None,
-            });
+                coord_x: 0,
+                coord_y: 0,
+                coord_z: 0,
+    });
             nodes.push(node);
         }
 
@@ -4493,36 +4733,56 @@ mod tests {
 
         // Create 2-level nested loop
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
+            terminator: Terminator::Goto { target: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 5 },
+            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 5 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b2 = g.add_node(BasicBlock {
+
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 },
+            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b3 = g.add_node(BasicBlock {
+
             id: 3,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 2 },
+            terminator: Terminator::Goto { target: 2 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b5 = g.add_node(BasicBlock {
             id: 5,
@@ -4530,7 +4790,10 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::TrueBranch);
@@ -4739,31 +5002,46 @@ mod iterative_tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::SwitchInt {
                 targets: vec![1],
                 otherwise: 2,
-            },
+    
+        },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 },
+            terminator: Terminator::Goto { target: 3 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b2 = g.add_node(BasicBlock {
+
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 },
+            terminator: Terminator::Goto { target: 3 
+        },
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
@@ -4771,7 +5049,10 @@ mod iterative_tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
         g.add_edge(b0, b2, EdgeType::FalseBranch);
@@ -4871,23 +5152,33 @@ mod iterative_tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
+
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::SwitchInt {
                 targets: vec![1],
                 otherwise: 2,
-            },
+    
+        },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
+
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 0 }, // Back edge to entry
+            terminator: Terminator::Goto { target: 0 
+        }, // Back edge to entry
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
@@ -4895,7 +5186,10 @@ mod iterative_tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-        });
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+    });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
         g.add_edge(b0, b2, EdgeType::FalseBranch);

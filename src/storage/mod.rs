@@ -1000,22 +1000,9 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
         [],
     )?;
 
-    // Create cfg_edges table (kept for backward compatibility with tests and existing databases)
-    // Note: New code should compute edges in memory using build_edges_from_terminators()
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS cfg_edges (
-            from_id INTEGER NOT NULL,
-            to_id INTEGER NOT NULL,
-            edge_type TEXT NOT NULL,
-            PRIMARY KEY (from_id, to_id, edge_type),
-            FOREIGN KEY (from_id) REFERENCES cfg_blocks(id),
-            FOREIGN KEY (to_id) REFERENCES cfg_blocks(id)
-        )",
-        [],
-    )?;
-
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cfg_edges_from ON cfg_edges(from_id)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cfg_edges_to ON cfg_edges(to_id)", [])?;
+    // cfg_edges table is managed by Magellan v11+ with schema:
+    //   (id, function_id, source_idx, target_idx, edge_type)
+    // Mirage computes edges in memory via build_edges_from_terminators().
 
     // Create cfg_paths table
     conn.execute(

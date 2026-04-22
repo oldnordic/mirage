@@ -165,6 +165,13 @@ pub struct CfgBlockData {
     pub end_line: u64,
     /// Column where block ends (0-indexed)
     pub end_col: u64,
+    /// 4D Spatial Coordinates
+    /// X coordinate: dominator depth (control flow hierarchy level)
+    pub coord_x: i64,
+    /// Y coordinate: loop nesting depth (how many loops surround this block)
+    pub coord_y: i64,
+    /// Z coordinate: branch distance from entry point
+    pub coord_z: i64,
 }
 
 /// Storage backend enum (Phase 069-01)
@@ -1176,11 +1183,14 @@ impl MirageDb {
                 });
             }
         }
-        
+
         // For native-v3 or other backends
+        #[allow(deprecated)]
+        // cfg_edges field is kept for backward compatibility with existing databases
+        // Edges are now computed in memory from terminator data (per commit 20a28d4)
         Ok(DatabaseStatus {
             cfg_blocks: 0,
-            cfg_edges: 0,
+            cfg_edges: 0,  // Always 0 for new databases, kept for backward compatibility
             cfg_paths: 0,
             cfg_dominators: 0,
             mirage_schema_version: MIRAGE_SCHEMA_VERSION,
@@ -1601,7 +1611,8 @@ impl MirageDb {
 
         // Convert CfgBlockData to the tuple format expected by load_cfg_from_rows
         let block_rows: Vec<(i64, String, Option<String>, Option<i64>, Option<i64>,
-                              Option<i64>, Option<i64>, Option<i64>, Option<i64>)> = blocks
+                              Option<i64>, Option<i64>, Option<i64>, Option<i64>,
+                              Option<i64>, Option<i64>, Option<i64>)> = blocks
             .into_iter()
             .enumerate()
             .map(|(idx, b)| (
@@ -1614,6 +1625,9 @@ impl MirageDb {
                 Some(b.start_col as i64),
                 Some(b.end_line as i64),
                 Some(b.end_col as i64),
+                Some(b.coord_x),
+                Some(b.coord_y),
+                Some(b.coord_z),
             ))
             .collect();
 
@@ -1837,16 +1851,19 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
 
     // Query all blocks for this function from Magellan's cfg_blocks table
     // Magellan schema v7+ uses: kind (not block_kind), terminator as TEXT, and line/col columns
+    // Also includes 4D spatial coordinates: coord_x (dominator depth), coord_y (loop nesting), coord_z (branch distance)
     let mut stmt = conn.prepare_cached(
         "SELECT id, kind, terminator, byte_start, byte_end,
-                start_line, start_col, end_line, end_col
+                start_line, start_col, end_line, end_col,
+                coord_x, coord_y, coord_z
          FROM cfg_blocks
          WHERE function_id = ?
          ORDER BY id ASC",
     ).context("Failed to prepare cfg_blocks query")?;
 
     let block_rows: Vec<(i64, String, Option<String>, Option<i64>, Option<i64>,
-                          Option<i64>, Option<i64>, Option<i64>, Option<i64>)> = stmt
+                          Option<i64>, Option<i64>, Option<i64>, Option<i64>,
+                          Option<i64>, Option<i64>, Option<i64>)> = stmt
         .query_map(params![function_id], |row| {
             Ok((
                 row.get(0)?,     // id (database primary key)
@@ -1858,6 +1875,9 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
                 row.get(6)?,     // start_col
                 row.get(7)?,     // end_line
                 row.get(8)?,     // end_col
+                row.get(9)?,     // coord_x (dominator depth)
+                row.get(10)?,    // coord_y (loop nesting depth)
+                row.get(11)?,    // coord_z (branch distance)
             ))
         })
         .context("Failed to execute cfg_blocks query")?
@@ -1877,17 +1897,22 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
 /// Load CFG from native-v3 backend
 ///
 /// This helper function loads CFG blocks from the native-v3 KV store.
-/// TODO: Implement using sqlitegraph native-v3 APIs.
+///
+/// **NOT YET IMPLEMENTED**: This feature requires additional development.
+/// The native-v3 backend uses sqlitegraph's KV store interface, which needs
+/// custom implementation for CFG block loading.
+///
+/// To use CFG functionality with native-v3, please use the SQLite backend
+/// instead (which is the default).
 #[cfg(feature = "backend-native-v3")]
 fn load_cfg_from_native_v3(
     _backend: &dyn GraphBackend,
     _function_id: i64,
 ) -> Result<crate::cfg::Cfg> {
-    // TODO: Implement native-v3 CFG loading using sqlitegraph APIs
-    // This requires using the KV store interface from sqlitegraph native-v3
-    anyhow::bail!(
-        "Native-V3 CFG loading is not yet fully implemented. \
-         Please use the SQLite backend for now."
+    compile_error!(
+        "Native-V3 CFG loading is not yet implemented. \
+        Please disable the 'backend-native-v3' feature and use the default SQLite backend. \
+        See: https://github.com/yourusername/mirage/issues for implementation status."
     )
 }
 
@@ -1897,7 +1922,8 @@ fn load_cfg_from_native_v3(
 /// It is shared between both backend implementations to ensure consistency.
 fn load_cfg_from_rows(
     block_rows: Vec<(i64, String, Option<String>, Option<i64>, Option<i64>,
-                     Option<i64>, Option<i64>, Option<i64>, Option<i64>)>,
+                     Option<i64>, Option<i64>, Option<i64>, Option<i64>,
+                     Option<i64>, Option<i64>, Option<i64>)>,
     file_path: Option<std::path::PathBuf>,
 ) -> Result<crate::cfg::Cfg> {
     use crate::cfg::{BasicBlock, BlockKind, Cfg, Terminator};
@@ -1911,7 +1937,8 @@ fn load_cfg_from_rows(
 
     // Add each block to the graph
     for (node_idx, (db_id, kind_str, terminator_str, byte_start, byte_end,
-                     start_line, start_col, end_line, end_col)) in
+                     start_line, start_col, end_line, end_col,
+                     coord_x, coord_y, coord_z)) in
         block_rows.iter().enumerate()
     {
         // Parse Magellan's block kind to Mirage's BlockKind
@@ -1969,6 +1996,10 @@ fn load_cfg_from_rows(
             statements: vec![], // Empty for now - future enhancement
             terminator,
             source_location,
+            // 4D spatial coordinates from Magellan's cfg_blocks table
+            coord_x: coord_x.unwrap_or(0),
+            coord_y: coord_y.unwrap_or(0),
+            coord_z: coord_z.unwrap_or(0),
         };
 
         graph.add_node(block);
@@ -2478,15 +2509,15 @@ pub fn get_function_hash(conn: &Connection, function_id: i64) -> Option<String> 
 ///
 /// # Note
 ///
-/// Magellan's cfg_blocks table doesn't store function_hash, so this function
-/// always returns true (indicating re-indexing needed) when using Magellan's schema.
+/// Compare stored cfg_hash against new hash to detect function changes.
+/// Returns true if hashes differ or no hash is found (indicating re-indexing needed).
 pub fn hash_changed(
     conn: &Connection,
     function_id: i64,
     _new_hash: &str,
 ) -> Result<bool> {
     let old_hash: Option<String> = conn.query_row(
-        "SELECT function_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
+        "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
         params![function_id],
         |row| row.get(0)
     ).optional()?;
@@ -3247,6 +3278,9 @@ mod tests {
                 start_col INTEGER NOT NULL,
                 end_line INTEGER NOT NULL,
                 end_col INTEGER NOT NULL,
+                coord_x INTEGER NOT NULL DEFAULT 0,
+                coord_y INTEGER NOT NULL DEFAULT 0,
+                coord_z INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id)
             )",
             [],

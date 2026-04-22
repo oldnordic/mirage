@@ -520,15 +520,16 @@ pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
 /// Auto-discover database file in common locations
 ///
 /// Searches in priority order:
-/// 1. .codemcp/*.db files
-/// 2. .forge/*.db files  
-/// 3. *.db in current directory
-/// 4. codegraph.db, mirage.db, magellan.db in current directory
+/// 1. .magellan/*.db files (Magellan's conventional location)
+/// 2. .codemcp/*.db files
+/// 3. .forge/*.db files
+/// 4. *.db in current directory
+/// 5. codegraph.db, mirage.db, magellan.db in current directory
 fn auto_discover_db() -> Option<String> {
     use std::path::Path;
     
     // Search directories in priority order
-    let search_dirs = [".codemcp", ".forge", "."];
+    let search_dirs = [".magellan", ".codemcp", ".forge", "."];
     
     for dir in &search_dirs {
         if let Ok(entries) = std::fs::read_dir(dir) {
@@ -562,7 +563,7 @@ fn auto_discover_db() -> Option<String> {
     }
     
     // Check for specific filenames in current directory
-    let candidates = ["codegraph.db", "mirage.db", "magellan.db", "graph.db"];
+    let candidates = [".magellan/magellan.db", "codegraph.db", "mirage.db", "magellan.db", "graph.db"];
     for name in &candidates {
         if Path::new(name).exists() {
             return Some(name.to_string());

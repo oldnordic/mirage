@@ -4,9 +4,9 @@
 //! must go through d. Post-dominance is the dual of dominance, computed
 //! by running the dominance algorithm on a reversed CFG.
 
-use crate::cfg::{Cfg, BlockId};
 use crate::cfg::analysis::find_exits;
 use crate::cfg::dominators::DominatorTree;
+use crate::cfg::{BlockId, Cfg};
 use petgraph::algo::dominators::simple_fast;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::Reversed;
@@ -166,8 +166,7 @@ impl PostDominatorTree {
     /// post-dominated by all other common post-dominators.
     pub fn common_post_dominator(&self, a: NodeIndex, b: NodeIndex) -> Option<NodeIndex> {
         // Collect a's post-dominators
-        let a_pdoms: std::collections::HashSet<NodeIndex> =
-            self.post_dominators(a).collect();
+        let a_pdoms: std::collections::HashSet<NodeIndex> = self.post_dominators(a).collect();
 
         // Find first (nearest) post-dominator of b that's also in a's post-dominators
         for pdom in self.post_dominators(b) {
@@ -228,7 +227,11 @@ pub fn compute_post_dominator_tree(cfg: &Cfg) -> Option<PostDominatorTree> {
 /// Get immediate post-dominator as BlockId
 ///
 /// Convenience function that converts NodeIndex to BlockId.
-pub fn immediate_post_dominator_id(tree: &PostDominatorTree, block_id: BlockId, cfg: &Cfg) -> Option<BlockId> {
+pub fn immediate_post_dominator_id(
+    tree: &PostDominatorTree,
+    block_id: BlockId,
+    cfg: &Cfg,
+) -> Option<BlockId> {
     let node = node_from_id(cfg, block_id)?;
     let ipdom_node = tree.immediate_post_dominator(node)?;
     Some(cfg[ipdom_node].id)
@@ -236,14 +239,13 @@ pub fn immediate_post_dominator_id(tree: &PostDominatorTree, block_id: BlockId, 
 
 /// Helper: find NodeIndex from BlockId
 fn node_from_id(cfg: &Cfg, block_id: BlockId) -> Option<NodeIndex> {
-    cfg.node_indices()
-        .find(|&n| cfg[n].id == block_id)
+    cfg.node_indices().find(|&n| cfg[n].id == block_id)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cfg::{BasicBlock, BlockKind, Terminator, EdgeType};
+    use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
     use petgraph::graph::DiGraph;
 
     /// Create a simple diamond CFG:
@@ -259,8 +261,14 @@ mod tests {
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![1],
+                otherwise: 2,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -269,6 +277,9 @@ mod tests {
             statements: vec!["branch 1".to_string()],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -277,6 +288,9 @@ mod tests {
             statements: vec!["branch 2".to_string()],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -285,6 +299,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -304,16 +321,28 @@ mod tests {
         assert_eq!(post_dom_tree.root(), NodeIndex::new(3));
 
         // Exit has no immediate post-dominator
-        assert_eq!(post_dom_tree.immediate_post_dominator(NodeIndex::new(3)), None);
+        assert_eq!(
+            post_dom_tree.immediate_post_dominator(NodeIndex::new(3)),
+            None
+        );
 
         // Node 1 is immediately post-dominated by exit (3)
-        assert_eq!(post_dom_tree.immediate_post_dominator(NodeIndex::new(1)), Some(NodeIndex::new(3)));
+        assert_eq!(
+            post_dom_tree.immediate_post_dominator(NodeIndex::new(1)),
+            Some(NodeIndex::new(3))
+        );
 
         // Node 2 is immediately post-dominated by exit (3)
-        assert_eq!(post_dom_tree.immediate_post_dominator(NodeIndex::new(2)), Some(NodeIndex::new(3)));
+        assert_eq!(
+            post_dom_tree.immediate_post_dominator(NodeIndex::new(2)),
+            Some(NodeIndex::new(3))
+        );
 
         // Node 0 is immediately post-dominated by exit (3) in diamond CFG
-        assert_eq!(post_dom_tree.immediate_post_dominator(NodeIndex::new(0)), Some(NodeIndex::new(3)));
+        assert_eq!(
+            post_dom_tree.immediate_post_dominator(NodeIndex::new(0)),
+            Some(NodeIndex::new(3))
+        );
     }
 
     #[test]
@@ -390,10 +419,16 @@ mod tests {
         let exit = NodeIndex::new(3);
 
         // Common post-dominator of 1 and 2 is exit (3)
-        assert_eq!(post_dom_tree.common_post_dominator(node1, node2), Some(exit));
+        assert_eq!(
+            post_dom_tree.common_post_dominator(node1, node2),
+            Some(exit)
+        );
 
         // Common post-dominator of node with itself is the node
-        assert_eq!(post_dom_tree.common_post_dominator(node1, node1), Some(node1));
+        assert_eq!(
+            post_dom_tree.common_post_dominator(node1, node1),
+            Some(node1)
+        );
     }
 
     #[test]
@@ -427,6 +462,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -435,6 +473,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -443,6 +484,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -451,6 +495,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -469,8 +516,8 @@ mod tests {
     #[test]
     fn test_reversed_is_zero_copy() {
         // This test verifies that Reversed is a view, not a clone
-        use petgraph::visit::NodeCount;
         use petgraph::visit::EdgeCount;
+        use petgraph::visit::NodeCount;
 
         let cfg = create_diamond_cfg();
 

@@ -44,13 +44,14 @@ compile_error!(
 );
 
 pub mod analysis;
-pub mod cli;
 pub mod cfg;
+pub mod cli;
 pub mod integrations;
 pub mod mir;
 pub mod output;
+pub mod platform;
 pub mod router;
 pub mod storage;
 
 // Public API exports
-pub use storage::{MirageDb, create_schema, DatabaseStatus, Backend, StorageTrait, CfgBlockData};
+pub use storage::{create_schema, Backend, CfgBlockData, DatabaseStatus, MirageDb, StorageTrait};

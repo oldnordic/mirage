@@ -53,8 +53,6 @@ use std::collections::{HashMap, HashSet};
 
 use sqlitegraph::{GraphBackend, NeighborQuery, SnapshotId};
 
-use crate::storage::CfgBlockData;
-
 /// Inter-procedural Control Flow Graph
 ///
 /// Combines multiple function CFGs with call/return edges.
@@ -94,9 +92,7 @@ pub enum IcfgNodeType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IcfgEdge {
     /// Intra-procedural edge (within a function)
-    IntraProcedural {
-        edge_type: String,
-    },
+    IntraProcedural { edge_type: String },
     /// Call edge from call site to function entry
     Call {
         from_function: i64,
@@ -221,24 +217,36 @@ pub fn build_icfg(
                 "fallthrough" | "goto" | "call" => {
                     if idx + 1 < blocks.len() {
                         let to_idx = icfg.node_map[&(function_id, blocks[idx + 1].id)];
-                        icfg.graph.add_edge(from_idx, to_idx, IcfgEdge::IntraProcedural {
-                            edge_type: "fallthrough".to_string(),
-                        });
+                        icfg.graph.add_edge(
+                            from_idx,
+                            to_idx,
+                            IcfgEdge::IntraProcedural {
+                                edge_type: "fallthrough".to_string(),
+                            },
+                        );
                     }
                 }
                 "conditional" => {
                     // Two edges: true and false branches
                     if idx + 1 < blocks.len() {
                         let to_idx = icfg.node_map[&(function_id, blocks[idx + 1].id)];
-                        icfg.graph.add_edge(from_idx, to_idx, IcfgEdge::IntraProcedural {
-                            edge_type: "true".to_string(),
-                        });
+                        icfg.graph.add_edge(
+                            from_idx,
+                            to_idx,
+                            IcfgEdge::IntraProcedural {
+                                edge_type: "true".to_string(),
+                            },
+                        );
                     }
                     if idx + 2 < blocks.len() {
                         let to_idx = icfg.node_map[&(function_id, blocks[idx + 2].id)];
-                        icfg.graph.add_edge(from_idx, to_idx, IcfgEdge::IntraProcedural {
-                            edge_type: "false".to_string(),
-                        });
+                        icfg.graph.add_edge(
+                            from_idx,
+                            to_idx,
+                            IcfgEdge::IntraProcedural {
+                                edge_type: "false".to_string(),
+                            },
+                        );
                     }
                 }
                 "return" | "panic" | "break" | "continue" => {
@@ -259,9 +267,13 @@ pub fn build_icfg(
         if let Some(first_block) = blocks.first() {
             let entry = icfg.node_map[&(function_id, -1)];
             let first = icfg.node_map[&(function_id, first_block.id)];
-            icfg.graph.add_edge(entry, first, IcfgEdge::IntraProcedural {
-                edge_type: "entry".to_string(),
-            });
+            icfg.graph.add_edge(
+                entry,
+                first,
+                IcfgEdge::IntraProcedural {
+                    edge_type: "entry".to_string(),
+                },
+            );
         }
 
         // Query CALLS graph to find callees for call sites
@@ -293,21 +305,30 @@ pub fn build_icfg(
                 let callee_entry = icfg.node_map.get(&(callee_id, -1));
 
                 if let Some(&entry_idx) = callee_entry {
-                    icfg.graph.add_edge(call_site_idx, entry_idx, IcfgEdge::Call {
-                        from_function: function_id,
-                        to_function: callee_id,
-                    });
+                    icfg.graph.add_edge(
+                        call_site_idx,
+                        entry_idx,
+                        IcfgEdge::Call {
+                            from_function: function_id,
+                            to_function: callee_id,
+                        },
+                    );
 
                     // Add return edge from callee exit back to call site's successor
                     if options.include_return_edges {
                         if let Some(exit_idx) = icfg.node_map.get(&(callee_id, -2)) {
                             // Find successor to call site (next block after call)
                             if block_idx + 1 < blocks.len() {
-                                let successor_idx = icfg.node_map[&(function_id, blocks[block_idx + 1].id)];
-                                icfg.graph.add_edge(*exit_idx, successor_idx, IcfgEdge::Return {
-                                    from_function: callee_id,
-                                    to_function: function_id,
-                                });
+                                let successor_idx =
+                                    icfg.node_map[&(function_id, blocks[block_idx + 1].id)];
+                                icfg.graph.add_edge(
+                                    *exit_idx,
+                                    successor_idx,
+                                    IcfgEdge::Return {
+                                        from_function: callee_id,
+                                        to_function: function_id,
+                                    },
+                                );
                             }
                         }
                     }
@@ -380,8 +401,13 @@ pub fn to_dot(icfg: &Icfg) -> String {
             _ => "",
         };
 
-        dot.push_str(&format!("  \"{}\" -> \"{}\" [label=\"{}\"{}];\n",
-            from.index(), to.index(), label, style));
+        dot.push_str(&format!(
+            "  \"{}\" -> \"{}\" [label=\"{}\"{}];\n",
+            from.index(),
+            to.index(),
+            label,
+            style
+        ));
     }
 
     dot.push_str("}\n");
@@ -420,7 +446,9 @@ impl IcfgJson {
 
         let mut function_ids = HashSet::new();
 
-        let nodes: Vec<IcfgNodeJson> = icfg.graph.node_indices()
+        let nodes: Vec<IcfgNodeJson> = icfg
+            .graph
+            .node_indices()
             .map(|idx| {
                 let node = &icfg.graph[idx];
                 function_ids.insert(node.function_id);
@@ -434,7 +462,9 @@ impl IcfgJson {
             })
             .collect();
 
-        let edges: Vec<IcfgEdgeJson> = icfg.graph.edge_indices()
+        let edges: Vec<IcfgEdgeJson> = icfg
+            .graph
+            .edge_indices()
             .map(|idx| {
                 let (from, to) = icfg.graph.edge_endpoints(idx).unwrap();
                 let edge = &icfg.graph[idx];

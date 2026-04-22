@@ -48,7 +48,12 @@ impl SourceLocation {
     ///
     /// This is a simplified implementation. For production use,
     /// you'd want to cache line endings and handle edge cases.
-    pub fn from_bytes(file_path: impl Into<PathBuf>, source: &str, byte_start: usize, byte_end: usize) -> Self {
+    pub fn from_bytes(
+        file_path: impl Into<PathBuf>,
+        source: &str,
+        byte_start: usize,
+        byte_end: usize,
+    ) -> Self {
         let (start_line, start_col) = byte_to_line_column(source, byte_start);
         let (end_line, end_col) = byte_to_line_column(source, byte_end);
 
@@ -246,15 +251,7 @@ mod tests {
 
     #[test]
     fn test_source_location_new() {
-        let loc = SourceLocation::new(
-            "path/to/file.rs",
-            100,
-            200,
-            10,
-            5,
-            15,
-            20,
-        );
+        let loc = SourceLocation::new("path/to/file.rs", 100, 200, 10, 5, 15, 20);
 
         assert_eq!(loc.file_path, PathBuf::from("path/to/file.rs"));
         assert_eq!(loc.byte_start, 100);
@@ -369,7 +366,7 @@ mod tests {
         assert_eq!(loc.file_path, PathBuf::from("test.rs"));
         assert_eq!(loc.byte_start, 10);
         assert_eq!(loc.byte_end, 20);
-        assert_eq!(loc.start_line, 0);  // No source = 0
+        assert_eq!(loc.start_line, 0); // No source = 0
         assert_eq!(loc.start_column, 0);
         assert_eq!(loc.end_line, 0);
         assert_eq!(loc.end_column, 0);

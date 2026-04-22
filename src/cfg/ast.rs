@@ -209,12 +209,13 @@ impl<'a> CFGBuilder<'a> {
             let basic_block = BasicBlock {
                 id,
                 kind,
-                statements: statements
-                    .iter()
-                    .map(|n| self.node_text(*n))
-                    .collect(),
+                statements: statements.iter().map(|n| self.node_text(*n)).collect(),
                 terminator: self.extract_terminator(statements),
                 source_location,
+                // AST-based CFG doesn't compute spatial coordinates (use 0 defaults)
+                coord_x: 0,
+                coord_y: 0,
+                coord_z: 0,
             };
 
             let node_idx = self.graph.add_node(basic_block);
@@ -235,9 +236,7 @@ impl<'a> CFGBuilder<'a> {
     /// Get the function body block from a function definition
     fn get_function_body(&self, fn_node: Node<'a>) -> Node<'a> {
         let mut cursor = fn_node.walk();
-        let result = fn_node
-            .children(&mut cursor)
-            .find(|n| n.kind() == "block");
+        let result = fn_node.children(&mut cursor).find(|n| n.kind() == "block");
         match result {
             Some(block) => block,
             None => fn_node,
@@ -273,9 +272,7 @@ impl<'a> CFGBuilder<'a> {
     fn classify_block(&self, statements: &[Node<'a>]) -> BlockKind {
         if let Some(last) = statements.last() {
             match last.kind() {
-                "return_statement" | "break_statement" | "continue_statement" => {
-                    BlockKind::Exit
-                }
+                "return_statement" | "break_statement" | "continue_statement" => BlockKind::Exit,
                 _ => BlockKind::Normal,
             }
         } else {
@@ -293,12 +290,10 @@ impl<'a> CFGBuilder<'a> {
                     targets: vec![],
                     otherwise: 0,
                 },
-                "while_statement" | "for_statement" | "loop_statement" => {
-                    Terminator::SwitchInt {
-                        targets: vec![],
-                        otherwise: 0,
-                    }
-                }
+                "while_statement" | "for_statement" | "loop_statement" => Terminator::SwitchInt {
+                    targets: vec![],
+                    otherwise: 0,
+                },
                 _ => Terminator::Goto { target: 0 },
             }
         } else {

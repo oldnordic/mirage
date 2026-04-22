@@ -106,7 +106,7 @@ impl GeometricStorage {
     }
 
     /// Find a symbol ID by name and file path
-    /// 
+    ///
     /// Returns Some(id) if a unique match is found, None if not found or ambiguous.
     pub fn find_symbol_id_by_name_and_path(&self, name: &str, path: &str) -> Option<u64> {
         self.inner.find_symbol_id_by_name_and_path(name, path)
@@ -133,7 +133,7 @@ impl GeometricStorage {
         // This is necessary because the geometric backend caches data in memory
         // and another process (like magellan watch) may have written new data
         self.inner.reload_from_disk()?;
-        
+
         // Now get fresh stats from the reloaded cache
         let stats = self.inner.get_geometric_stats();
 
@@ -175,6 +175,11 @@ impl StorageTrait for GeometricStorage {
                     start_col: block.start_col,
                     end_line: block.end_line,
                     end_col: block.end_col,
+                    // Map geometric backend fields to 4D spatial coordinates
+                    // X = dominator_depth, Y = loop_nesting, Z = branch_count
+                    coord_x: block.dominator_depth as i64,
+                    coord_y: block.loop_nesting as i64,
+                    coord_z: block.branch_count as i64,
                 }
             })
             .collect())

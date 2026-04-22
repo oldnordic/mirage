@@ -122,8 +122,12 @@ impl<T: serde::Serialize> JsonResponse<T> {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let timestamp = chrono::Utc::now().to_rfc3339();
-        let exec_id = format!("{:x}-{}",
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+        let exec_id = format!(
+            "{:x}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             std::process::id()
         );
 
@@ -175,8 +179,9 @@ impl JsonError {
         Self::new(
             "DatabaseNotFound",
             &format!("Database not found: {}", path),
-            E_DATABASE_NOT_FOUND
-        ).with_remediation(R_HINT_INDEX)
+            E_DATABASE_NOT_FOUND,
+        )
+        .with_remediation(R_HINT_INDEX)
     }
 
     /// Function not found error with remediation
@@ -184,8 +189,9 @@ impl JsonError {
         Self::new(
             "FunctionNotFound",
             &format!("Function '{}' not found in database", name),
-            E_FUNCTION_NOT_FOUND
-        ).with_remediation(R_HINT_LIST_FUNCTIONS)
+            E_FUNCTION_NOT_FOUND,
+        )
+        .with_remediation(R_HINT_LIST_FUNCTIONS)
     }
 
     /// Block not found error
@@ -193,7 +199,7 @@ impl JsonError {
         Self::new(
             "BlockNotFound",
             &format!("Block {} not found in CFG", id),
-            E_BLOCK_NOT_FOUND
+            E_BLOCK_NOT_FOUND,
         )
     }
 
@@ -202,8 +208,9 @@ impl JsonError {
         Self::new(
             "PathNotFound",
             &format!("Path '{}' not found or no longer valid", id),
-            E_PATH_NOT_FOUND
-        ).with_remediation("Run 'mirage verify --path-id ID' to check path validity")
+            E_PATH_NOT_FOUND,
+        )
+        .with_remediation("Run 'mirage verify --path-id ID' to check path validity")
     }
 }
 

@@ -1,8 +1,8 @@
 //! Branching pattern recovery from CFG shapes
 
-use crate::cfg::{BlockId, Cfg, Terminator};
 use crate::cfg::analysis::is_branch_point;
 use crate::cfg::EdgeType;
+use crate::cfg::{BlockId, Cfg, Terminator};
 use petgraph::graph::NodeIndex;
 use std::collections::HashSet;
 
@@ -229,7 +229,8 @@ pub fn detect_if_else_patterns(cfg: &Cfg) -> Vec<IfElsePattern> {
             let merge_point = find_common_successor(cfg, successors[0], successors[1]);
 
             // Determine which branch is true/false based on edge type
-            let (true_branch, false_branch) = order_branches_by_edge_type(cfg, branch, successors[0], successors[1]);
+            let (true_branch, false_branch) =
+                order_branches_by_edge_type(cfg, branch, successors[0], successors[1]);
 
             patterns.push(IfElsePattern {
                 condition: branch,
@@ -253,8 +254,12 @@ fn order_branches_by_edge_type(
     succ1: NodeIndex,
     succ2: NodeIndex,
 ) -> (NodeIndex, NodeIndex) {
-    let edge1_type = cfg.find_edge(from, succ1).and_then(|e| cfg.edge_weight(e).copied());
-    let edge2_type = cfg.find_edge(from, succ2).and_then(|e| cfg.edge_weight(e).copied());
+    let edge1_type = cfg
+        .find_edge(from, succ1)
+        .and_then(|e| cfg.edge_weight(e).copied());
+    let edge2_type = cfg
+        .find_edge(from, succ2)
+        .and_then(|e| cfg.edge_weight(e).copied());
 
     match (edge1_type, edge2_type) {
         (Some(EdgeType::TrueBranch), _) => (succ1, succ2),
@@ -326,10 +331,7 @@ fn find_node_by_id(cfg: &Cfg, id: BlockId) -> Option<NodeIndex> {
 /// Returns both if/else and match patterns for a complete view
 /// of control flow structure.
 pub fn detect_all_patterns(cfg: &Cfg) -> (Vec<IfElsePattern>, Vec<MatchPattern>) {
-    (
-        detect_if_else_patterns(cfg),
-        detect_match_patterns(cfg),
-    )
+    (detect_if_else_patterns(cfg), detect_match_patterns(cfg))
 }
 
 #[cfg(test)]
@@ -349,6 +351,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 1: if condition
@@ -356,8 +361,14 @@ mod tests {
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 3 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 3,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 2: true branch
@@ -367,6 +378,9 @@ mod tests {
             statements: vec!["true branch".to_string()],
             terminator: Terminator::Goto { target: 4 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 3: false branch
@@ -376,6 +390,9 @@ mod tests {
             statements: vec!["false branch".to_string()],
             terminator: Terminator::Goto { target: 4 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 4: merge point
@@ -385,6 +402,9 @@ mod tests {
             statements: vec!["merge".to_string()],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -416,7 +436,10 @@ mod tests {
         let cfg = create_diamond_cfg();
 
         assert_eq!(classify_branch(&cfg, NodeIndex::new(0)), BranchType::Linear);
-        assert_eq!(classify_branch(&cfg, NodeIndex::new(1)), BranchType::Conditional);
+        assert_eq!(
+            classify_branch(&cfg, NodeIndex::new(1)),
+            BranchType::Conditional
+        );
         assert_eq!(classify_branch(&cfg, NodeIndex::new(2)), BranchType::Linear);
         assert_eq!(classify_branch(&cfg, NodeIndex::new(4)), BranchType::Linear);
     }
@@ -430,8 +453,14 @@ mod tests {
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![1, 2], otherwise: 3 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![1, 2],
+                otherwise: 3,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -440,6 +469,9 @@ mod tests {
             statements: vec!["case 1".to_string()],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -448,6 +480,9 @@ mod tests {
             statements: vec!["case 2".to_string()],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -456,6 +491,9 @@ mod tests {
             statements: vec!["default".to_string()],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -480,8 +518,14 @@ mod tests {
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![1, 2], otherwise: 3 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![1, 2],
+                otherwise: 3,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         for i in 1..=3 {
@@ -491,6 +535,9 @@ mod tests {
                 statements: vec![],
                 terminator: Terminator::Return,
                 source_location: None,
+                coord_x: 0,
+                coord_y: 0,
+                coord_z: 0,
             });
         }
 
@@ -514,6 +561,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // If/else at block 1
@@ -521,8 +571,14 @@ mod tests {
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 3 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 3,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // True branch (leads to match)
@@ -531,8 +587,14 @@ mod tests {
             kind: BlockKind::Normal,
             statements: vec![],
             // Multi-way match with 2 targets (3 branches total)
-            terminator: Terminator::SwitchInt { targets: vec![4, 5], otherwise: 6 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![4, 5],
+                otherwise: 6,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // False branch
@@ -542,6 +604,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Match branches
@@ -551,6 +616,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b5 = g.add_node(BasicBlock {
@@ -559,6 +627,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b6 = g.add_node(BasicBlock {
@@ -567,6 +638,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Merge point
@@ -576,6 +650,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -620,6 +697,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -628,6 +708,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -636,6 +719,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);

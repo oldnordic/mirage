@@ -9,10 +9,10 @@
 //! - Control dependence analysis
 //! - Identifying join points in control flow
 
-use crate::cfg::Cfg;
 use crate::cfg::dominators::DominatorTree;
+use crate::cfg::Cfg;
 use petgraph::graph::NodeIndex;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 
 /// Dominance frontiers for all nodes in a CFG
 ///
@@ -82,9 +82,7 @@ impl DominanceFrontiers {
             // but does NOT strictly dominate v itself
             for &v in &nodes {
                 for p in cfg.neighbors_directed(v, petgraph::Direction::Incoming) {
-                    if dominator_tree.dominates(n, p)
-                        && !dominator_tree.strictly_dominates(n, v)
-                    {
+                    if dominator_tree.dominates(n, p) && !dominator_tree.strictly_dominates(n, v) {
                         df.insert(v);
                     }
                 }
@@ -106,7 +104,10 @@ impl DominanceFrontiers {
             frontiers.insert(n, df);
         }
 
-        Self { frontiers, dominator_tree }
+        Self {
+            frontiers,
+            dominator_tree,
+        }
     }
 
     /// Get dominance frontier for a node
@@ -168,7 +169,8 @@ impl DominanceFrontiers {
     ///
     /// These are the nodes that have join points in their dominated regions.
     pub fn nodes_with_frontiers(&self) -> impl Iterator<Item = NodeIndex> + '_ {
-        self.frontiers.iter()
+        self.frontiers
+            .iter()
             .filter(|(_, df)| !df.is_empty())
             .map(|(&n, _)| n)
     }
@@ -199,9 +201,7 @@ impl DominanceFrontiers {
     ///
     /// Returns the union of each node's dominance frontier.
     pub fn union_frontier(&self, nodes: &[NodeIndex]) -> HashSet<NodeIndex> {
-        nodes.iter()
-            .flat_map(|&n| self.frontier(n))
-            .collect()
+        nodes.iter().flat_map(|&n| self.frontier(n)).collect()
     }
 }
 
@@ -225,8 +225,8 @@ pub fn compute_dominance_frontiers(cfg: &Cfg, dominator_tree: DominatorTree) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cfg::{BasicBlock, BlockKind, Terminator, EdgeType};
     use crate::cfg::dominators::DominatorTree;
+    use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
     use petgraph::graph::DiGraph;
 
     /// Create a simple diamond CFG:
@@ -242,8 +242,14 @@ mod tests {
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![1],
+                otherwise: 2,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -252,6 +258,9 @@ mod tests {
             statements: vec!["branch 1".to_string()],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -260,6 +269,9 @@ mod tests {
             statements: vec!["branch 2".to_string()],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -268,6 +280,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -295,14 +310,23 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 3 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 3,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -311,6 +335,9 @@ mod tests {
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -319,6 +346,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -452,6 +482,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -460,6 +493,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -468,6 +504,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -476,6 +515,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -487,8 +529,10 @@ mod tests {
 
         // Linear CFG has no dominance frontiers (no join points)
         for node in g.node_indices() {
-            assert!(frontiers.frontier(node).is_empty(),
-                "Linear CFG should have empty dominance frontiers");
+            assert!(
+                frontiers.frontier(node).is_empty(),
+                "Linear CFG should have empty dominance frontiers"
+            );
         }
     }
 
@@ -508,8 +552,14 @@ mod tests {
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![1, 2], otherwise: 3 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![1, 2],
+                otherwise: 3,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -518,6 +568,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 4 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -526,6 +579,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 4 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -534,6 +590,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 5 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b4 = g.add_node(BasicBlock {
@@ -542,6 +601,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 5 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b5 = g.add_node(BasicBlock {
@@ -550,6 +612,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);

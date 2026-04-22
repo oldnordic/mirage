@@ -16,15 +16,17 @@ compile_error!(
      Native-V3: cargo build --features backend-native-v3 --no-default-features"
 );
 
-use clap::Parser;
 use anyhow::Result;
+use clap::Parser;
 
 mod analysis;
-mod cli;
 mod cfg;
+mod cli;
+mod integrations;
 mod mir;
 mod output;
 mod platform;
+mod router;
 mod storage;
 
 use cli::{Cli, Commands};
@@ -52,7 +54,9 @@ fn main() -> Result<()> {
 fn run_command(cli: Cli) -> Result<()> {
     // Handle --detect-backend flag before command dispatch
     if cli.detect_backend {
-        let db_str = cli.db.ok_or_else(|| anyhow::anyhow!("--db required for --detect-backend"))?;
+        let db_str = cli
+            .db
+            .ok_or_else(|| anyhow::anyhow!("--db required for --detect-backend"))?;
         let db_path = std::path::Path::new(&db_str);
 
         use mirage_analyzer::storage::BackendFormat;
@@ -66,7 +70,10 @@ fn run_command(cli: Cli) -> Result<()> {
             BackendFormat::Unknown => "unknown",
         };
 
-        if matches!(cli.output, cli::OutputFormat::Json | cli::OutputFormat::Pretty) {
+        if matches!(
+            cli.output,
+            cli::OutputFormat::Json | cli::OutputFormat::Pretty
+        ) {
             let output = serde_json::json!({
                 "backend": backend_str,
                 "database": db_str,
@@ -79,9 +86,9 @@ fn run_command(cli: Cli) -> Result<()> {
     }
 
     match cli.command {
-        None => {
-            Err(anyhow::anyhow!("No subcommand provided. Use --help for usage information."))
-        }
+        None => Err(anyhow::anyhow!(
+            "No subcommand provided. Use --help for usage information."
+        )),
         Some(ref cmd) => match cmd {
             Commands::Status(args) => cli::cmds::status(args, &cli),
             Commands::Paths(ref args) => cli::cmds::paths(args, &cli),
@@ -99,6 +106,8 @@ fn run_command(cli: Cli) -> Result<()> {
             Commands::Hotpaths(ref args) => cli::cmds::hotpaths(args, &cli),
             Commands::Diff(ref args) => cli::cmds::diff(args, &cli),
             Commands::Icfg(ref args) => cli::cmds::icfg(args, &cli),
+            // Commands::ComplexBlocks(ref args) => cli::cmds::complex_blocks(args, &cli),
+            // Commands::SpatialAnalysis(ref args) => cli::cmds::spatial_analysis(args, &cli),
             Commands::Migrate(ref args) => cli::cmds::migrate(args, &cli),
         },
     }

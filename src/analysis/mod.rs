@@ -20,15 +20,17 @@ pub use magellan::CodeGraph;
 
 // Re-export algorithm result types for ergonomic API
 pub use magellan::{
-    Cycle, CycleKind, CycleReport, CondensationResult, DeadSymbol,
-    ExecutionPath, PathEnumerationResult, SymbolInfo,
+    CondensationResult, Cycle, CycleKind, CycleReport, DeadSymbol, ExecutionPath,
+    PathEnumerationResult, SymbolInfo,
 };
 
 // Private imports for test compilation (not re-exported)
 // These are used in tests but not at module level
 #[allow(unused_imports)]
-use magellan::{CondensationGraph, PathStatistics, ProgramSlice, SliceDirection,
-    SliceResult, SliceStatistics, Supernode};
+use magellan::{
+    CondensationGraph, PathStatistics, ProgramSlice, SliceDirection, SliceResult, SliceStatistics,
+    Supernode,
+};
 
 /// Serializable wrapper for [`DeadSymbol`]
 ///
@@ -121,7 +123,10 @@ impl From<&SliceResult> for SliceWrapper {
         SliceWrapper {
             target: (&result.slice.target).into(),
             direction: format!("{:?}", result.slice.direction),
-            included_symbols: result.slice.included_symbols.iter()
+            included_symbols: result
+                .slice
+                .included_symbols
+                .iter()
                 .map(|s| s.into())
                 .collect(),
             symbol_count: result.slice.symbol_count,
@@ -230,11 +235,7 @@ impl From<&CondensationResult> for CondensationJson {
             .map(|sn| SupernodeJson {
                 id: sn.id.to_string(),
                 member_count: sn.members.len(),
-                members: sn
-                    .members
-                    .iter()
-                    .filter_map(|m| m.fqn.clone())
-                    .collect(),
+                members: sn.members.iter().filter_map(|m| m.fqn.clone()).collect(),
             })
             .collect();
 
@@ -268,7 +269,9 @@ pub struct CycleInfo {
 
 impl From<&Cycle> for CycleInfo {
     fn from(cycle: &Cycle) -> Self {
-        let members: Vec<String> = cycle.members.iter()
+        let members: Vec<String> = cycle
+            .members
+            .iter()
             .map(|m| m.fqn.as_deref().unwrap_or("<unknown>").to_string())
             .collect();
 
@@ -729,7 +732,9 @@ impl MagellanBridge {
         max_depth: usize,
         max_paths: usize,
     ) -> Result<PathEnumerationJson> {
-        let result = self.graph.enumerate_paths(start_symbol_id, end_symbol_id, max_depth, max_paths)?;
+        let result =
+            self.graph
+                .enumerate_paths(start_symbol_id, end_symbol_id, max_depth, max_paths)?;
         Ok((&result).into())
     }
 
@@ -809,7 +814,7 @@ mod tests {
     #[test]
     fn test_dead_symbol_json_from_dead_symbol() {
         // Test DeadSymbolJson conversion from DeadSymbol
-        use magellan::{SymbolInfo, DeadSymbol as MagellanDeadSymbol};
+        use magellan::{DeadSymbol as MagellanDeadSymbol, SymbolInfo};
 
         let symbol_info = SymbolInfo {
             symbol_id: Some("test_symbol_id".to_string()),
@@ -834,7 +839,7 @@ mod tests {
     #[test]
     fn test_enhanced_dead_code_serialization() {
         // Test EnhancedDeadCode can be serialized to JSON
-        use magellan::{SymbolInfo, DeadSymbol as MagellanDeadSymbol};
+        use magellan::{DeadSymbol as MagellanDeadSymbol, SymbolInfo};
 
         let symbol_info = SymbolInfo {
             symbol_id: Some("test_id".to_string()),
@@ -869,7 +874,7 @@ mod tests {
     #[test]
     fn test_cycle_info_from_cycle() {
         // Test CycleInfo conversion from Cycle
-        use magellan::{SymbolInfo, Cycle, CycleKind};
+        use magellan::{Cycle, CycleKind, SymbolInfo};
 
         let symbol1 = SymbolInfo {
             symbol_id: Some("func_a_id".to_string()),
@@ -914,23 +919,22 @@ mod tests {
         use std::collections::HashMap;
 
         let mut function_loops = HashMap::new();
-        function_loops.insert("test_func".to_string(), vec![
-            LoopInfo {
+        function_loops.insert(
+            "test_func".to_string(),
+            vec![LoopInfo {
                 header: 1,
                 back_edge_from: 2,
                 body_size: 3,
                 nesting_level: 0,
                 body_blocks: vec![1, 2, 3],
-            }
-        ]);
+            }],
+        );
 
-        let call_graph_cycles = vec![
-            CycleInfo {
-                members: vec!["func_a".to_string(), "func_b".to_string()],
-                cycle_type: "MutualRecursion".to_string(),
-                size: 2,
-            }
-        ];
+        let call_graph_cycles = vec![CycleInfo {
+            members: vec!["func_a".to_string(), "func_b".to_string()],
+            cycle_type: "MutualRecursion".to_string(),
+            size: 2,
+        }];
 
         let enhanced = EnhancedCycles {
             call_graph_cycles,
@@ -1090,14 +1094,12 @@ mod tests {
             },
         ];
 
-        let backward = vec![
-            SymbolInfoJson {
-                symbol_id: Some("main_id".to_string()),
-                fqn: Some("main".to_string()),
-                file_path: "main.rs".to_string(),
-                kind: "Function".to_string(),
-            },
-        ];
+        let backward = vec![SymbolInfoJson {
+            symbol_id: Some("main_id".to_string()),
+            fqn: Some("main".to_string()),
+            file_path: "main.rs".to_string(),
+            kind: "Function".to_string(),
+        }];
 
         let path_impact = PathImpactSummary {
             path_id: Some("test_path_id".to_string()),
@@ -1263,7 +1265,11 @@ mod tests {
         let supernode = SupernodeJson {
             id: "42".to_string(),
             member_count: 3,
-            members: vec!["func_a".to_string(), "func_b".to_string(), "func_c".to_string()],
+            members: vec![
+                "func_a".to_string(),
+                "func_b".to_string(),
+                "func_c".to_string(),
+            ],
         };
 
         assert_eq!(supernode.id, "42");
@@ -1278,7 +1284,7 @@ mod tests {
 
     #[test]
     fn test_execution_path_json_conversion() {
-        use magellan::{SymbolInfo, ExecutionPath};
+        use magellan::{ExecutionPath, SymbolInfo};
 
         let symbols = vec![
             SymbolInfo {
@@ -1341,19 +1347,14 @@ mod tests {
     fn test_path_enumeration_json_serialization() {
         use magellan::{ExecutionPath, PathStatistics};
 
-        let symbols = vec![
-            SymbolInfo {
-                symbol_id: Some("func1_id".to_string()),
-                fqn: Some("func1".to_string()),
-                file_path: "test.rs".to_string(),
-                kind: "Function".to_string(),
-            },
-        ];
+        let symbols = vec![SymbolInfo {
+            symbol_id: Some("func1_id".to_string()),
+            fqn: Some("func1".to_string()),
+            file_path: "test.rs".to_string(),
+            kind: "Function".to_string(),
+        }];
 
-        let _path = ExecutionPath {
-            symbols,
-            length: 1,
-        };
+        let _path = ExecutionPath { symbols, length: 1 };
 
         let _stats = PathStatistics {
             avg_length: 2.0,
@@ -1380,7 +1381,7 @@ mod tests {
 
     #[test]
     fn test_execution_path_json_empty_path() {
-        use magellan::{ExecutionPath};
+        use magellan::ExecutionPath;
 
         let path = ExecutionPath {
             symbols: vec![],
@@ -1409,13 +1410,15 @@ mod tests {
         let json = CondensationJson {
             supernode_count: 5,
             edge_count: 8,
-            supernodes: vec![
-                SupernodeJson {
-                    id: "scc0".to_string(),
-                    member_count: 3,
-                    members: vec!["func_a".to_string(), "func_b".to_string(), "func_c".to_string()],
-                }
-            ],
+            supernodes: vec![SupernodeJson {
+                id: "scc0".to_string(),
+                member_count: 3,
+                members: vec![
+                    "func_a".to_string(),
+                    "func_b".to_string(),
+                    "func_c".to_string(),
+                ],
+            }],
             largest_scc_size: 3,
         };
 
@@ -1433,14 +1436,12 @@ mod tests {
     #[test]
     fn test_execution_path_json_serialization() {
         let path = ExecutionPathJson {
-            symbols: vec![
-                SymbolInfoJson {
-                    symbol_id: Some("id1".to_string()),
-                    fqn: Some("main".to_string()),
-                    file_path: "main.rs".to_string(),
-                    kind: "Function".to_string(),
-                }
-            ],
+            symbols: vec![SymbolInfoJson {
+                symbol_id: Some("id1".to_string()),
+                fqn: Some("main".to_string()),
+                file_path: "main.rs".to_string(),
+                kind: "Function".to_string(),
+            }],
             length: 1,
         };
 
@@ -1486,13 +1487,11 @@ mod tests {
         let condensation = CondensationJson {
             supernode_count: 2,
             edge_count: 1,
-            supernodes: vec![
-                SupernodeJson {
-                    id: "scc0".to_string(),
-                    member_count: 2,
-                    members: vec!["func_a".to_string(), "func_b".to_string()],
-                }
-            ],
+            supernodes: vec![SupernodeJson {
+                id: "scc0".to_string(),
+                member_count: 2,
+                members: vec!["func_a".to_string(), "func_b".to_string()],
+            }],
             largest_scc_size: 2,
         };
 

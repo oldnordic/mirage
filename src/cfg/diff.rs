@@ -170,7 +170,10 @@ pub fn compute_cfg_diff(
                     source_location: format!(
                         "{}:{}:{}-{}:{}",
                         "", /* file could be added later */
-                        b.start_line, b.start_col, b.end_line, b.end_col
+                        b.start_line,
+                        b.start_col,
+                        b.end_line,
+                        b.end_col
                     ),
                 },
             )
@@ -190,7 +193,10 @@ pub fn compute_cfg_diff(
                     source_location: format!(
                         "{}:{}:{}-{}:{}",
                         "", /* file could be added later */
-                        b.start_line, b.start_col, b.end_line, b.end_col
+                        b.start_line,
+                        b.start_col,
+                        b.end_line,
+                        b.end_col
                     ),
                 },
             )
@@ -483,6 +489,9 @@ mod tests {
                 start_col: 0,
                 end_line: 2,
                 end_col: 0,
+                coord_x: 0,
+                coord_y: 0,
+                coord_z: 0,
             },
             CfgBlockData {
                 id: 1,
@@ -494,6 +503,9 @@ mod tests {
                 start_col: 0,
                 end_line: 3,
                 end_col: 0,
+                coord_x: 0,
+                coord_y: 0,
+                coord_z: 0,
             },
         ];
 

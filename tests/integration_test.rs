@@ -9,8 +9,8 @@
 //!
 //! For deeper functional testing, see the unit tests in src/cli/mod.rs.
 
-use std::process::Command;
 use std::path::PathBuf;
+use std::process::Command;
 use tempfile::TempDir;
 
 /// Test context for integration tests
@@ -87,7 +87,8 @@ impl TestContext {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -105,7 +106,8 @@ impl TestContext {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create cfg_blocks table
         conn.execute(
@@ -123,14 +125,16 @@ impl TestContext {
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id)
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Insert a test function
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data)
              VALUES ('Symbol', 'test_function', 'src/test.rs', '{\"kind\": \"Function\"}')",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Insert test CFG blocks
         conn.execute(
@@ -140,7 +144,8 @@ impl TestContext {
                     (1, 'normal', 'conditional', 10, 50, 2, 4, 5, 8),
                     (1, 'return', 'return', 50, 60, 5, 0, 5, 10)",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create mirage_meta table for Mirage schema
         conn.execute(
@@ -150,13 +155,15 @@ impl TestContext {
                 magellan_schema_version INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO mirage_meta (id, mirage_schema_version, magellan_schema_version)
              VALUES (1, 1, 7)",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create graph_meta table for sqlitegraph compatibility
         conn.execute(
@@ -166,13 +173,15 @@ impl TestContext {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO graph_meta (id, schema_version, created_at)
              VALUES (1, 3, 0)",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create cfg_edges table for Mirage
         conn.execute(
@@ -185,7 +194,8 @@ impl TestContext {
                 FOREIGN KEY (to_id) REFERENCES cfg_blocks(id)
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create cfg_paths table
         conn.execute(
@@ -197,7 +207,8 @@ impl TestContext {
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id)
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create cfg_path_elements table
         conn.execute(
@@ -210,14 +221,21 @@ impl TestContext {
                 FOREIGN KEY (block_id) REFERENCES cfg_blocks(id)
             )",
             [],
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Explicitly close the connection to ensure all writes are flushed
         drop(conn);
-        
+
         // Verify the database file exists and is readable
-        assert!(db_path.exists(), "Database file should exist after creation");
-        assert!(fs::metadata(db_path).unwrap().len() > 0, "Database file should not be empty");
+        assert!(
+            db_path.exists(),
+            "Database file should exist after creation"
+        );
+        assert!(
+            fs::metadata(db_path).unwrap().len() > 0,
+            "Database file should not be empty"
+        );
     }
 }
 
@@ -255,8 +273,10 @@ fn test_status_command() {
     let output = ctx.run_command(&["status"]);
 
     assert!(output.success(), "status command should succeed");
-    assert!(output.stdout_contains("Mirage") || output.stdout_contains("Database"),
-            "status output should contain database info");
+    assert!(
+        output.stdout_contains("Mirage") || output.stdout_contains("Database"),
+        "status output should contain database info"
+    );
 }
 
 #[test]
@@ -265,8 +285,14 @@ fn test_status_command_json() {
     let output = ctx.run_command(&["status", "--output", "json"]);
 
     assert!(output.success(), "status --output json should succeed");
-    assert!(output.stdout_contains("{"), "JSON output should contain opening brace");
-    assert!(output.stdout_contains("}"), "JSON output should contain closing brace");
+    assert!(
+        output.stdout_contains("{"),
+        "JSON output should contain opening brace"
+    );
+    assert!(
+        output.stdout_contains("}"),
+        "JSON output should contain closing brace"
+    );
 }
 
 #[test]
@@ -276,8 +302,12 @@ fn test_cfg_command() {
 
     // cfg command should work (may have no output if function not found)
     // We just verify it doesn't panic
-    assert!(output.success() || output.stderr_contains("not found") || output.stderr_contains("No function"),
-            "cfg command should succeed or show not found error");
+    assert!(
+        output.success()
+            || output.stderr_contains("not found")
+            || output.stderr_contains("No function"),
+        "cfg command should succeed or show not found error"
+    );
 }
 
 #[test]
@@ -286,8 +316,12 @@ fn test_paths_command() {
     let output = ctx.run_command(&["paths", "--function", "test_function"]);
 
     // paths command should work (may have no paths if none computed)
-    assert!(output.success() || output.stderr_contains("not found") || output.stderr_contains("No function"),
-            "paths command should succeed or show not found error");
+    assert!(
+        output.success()
+            || output.stderr_contains("not found")
+            || output.stderr_contains("No function"),
+        "paths command should succeed or show not found error"
+    );
 }
 
 #[test]
@@ -295,8 +329,12 @@ fn test_dominators_command() {
     let ctx = TestContext::new();
     let output = ctx.run_command(&["dominators", "--function", "test_function"]);
 
-    assert!(output.success() || output.stderr_contains("not found") || output.stderr_contains("No function"),
-            "dominators command should succeed or show not found error");
+    assert!(
+        output.success()
+            || output.stderr_contains("not found")
+            || output.stderr_contains("No function"),
+        "dominators command should succeed or show not found error"
+    );
 }
 
 #[test]
@@ -304,8 +342,12 @@ fn test_loops_command() {
     let ctx = TestContext::new();
     let output = ctx.run_command(&["loops", "--function", "test_function"]);
 
-    assert!(output.success() || output.stderr_contains("not found") || output.stderr_contains("No function"),
-            "loops command should succeed or show not found error");
+    assert!(
+        output.success()
+            || output.stderr_contains("not found")
+            || output.stderr_contains("No function"),
+        "loops command should succeed or show not found error"
+    );
 }
 
 #[test]
@@ -314,8 +356,12 @@ fn test_unreachable_command() {
     let output = ctx.run_command(&["unreachable", "--within-functions"]);
 
     // unreachable command may have no output for small test databases
-    assert!(output.success() || output.stdout_contains("No unreachable") || output.stdout_contains("Unreachable"),
-            "unreachable command should succeed or show message");
+    assert!(
+        output.success()
+            || output.stdout_contains("No unreachable")
+            || output.stdout_contains("Unreachable"),
+        "unreachable command should succeed or show message"
+    );
 }
 
 #[test]
@@ -323,8 +369,12 @@ fn test_patterns_command() {
     let ctx = TestContext::new();
     let output = ctx.run_command(&["patterns", "--function", "test_function"]);
 
-    assert!(output.success() || output.stderr_contains("not found") || output.stderr_contains("No function"),
-            "patterns command should succeed or show not found error");
+    assert!(
+        output.success()
+            || output.stderr_contains("not found")
+            || output.stderr_contains("No function"),
+        "patterns command should succeed or show not found error"
+    );
 }
 
 #[test]
@@ -332,8 +382,12 @@ fn test_frontiers_command() {
     let ctx = TestContext::new();
     let output = ctx.run_command(&["frontiers", "--function", "test_function"]);
 
-    assert!(output.success() || output.stderr_contains("not found") || output.stderr_contains("No function"),
-            "frontiers command should succeed or show not found error");
+    assert!(
+        output.success()
+            || output.stderr_contains("not found")
+            || output.stderr_contains("No function"),
+        "frontiers command should succeed or show not found error"
+    );
 }
 
 #[test]
@@ -342,8 +396,10 @@ fn test_cycles_command() {
     let output = ctx.run_command(&["cycles"]);
 
     // cycles command analyzes the entire codebase
-    assert!(output.success() || output.stdout_contains("No cycles") || output.stdout_contains("Cycles"),
-            "cycles command should succeed");
+    assert!(
+        output.success() || output.stdout_contains("No cycles") || output.stdout_contains("Cycles"),
+        "cycles command should succeed"
+    );
 }
 
 #[test]
@@ -352,26 +408,39 @@ fn test_hotspots_command() {
     let output = ctx.run_command(&["hotspots"]);
 
     // hotspots command may have no output for small test databases
-    assert!(output.success() || output.stdout_contains("No hotspots") || output.stdout.contains("Hotspots"),
-            "hotspots command should succeed");
+    assert!(
+        output.success()
+            || output.stdout_contains("No hotspots")
+            || output.stdout.contains("Hotspots"),
+        "hotspots command should succeed"
+    );
 }
 
 #[test]
 fn test_slice_command() {
     let ctx = TestContext::new();
-    let output = ctx.run_command(&["slice", "--symbol", "test_function", "--direction", "backward"]);
+    let output = ctx.run_command(&[
+        "slice",
+        "--symbol",
+        "test_function",
+        "--direction",
+        "backward",
+    ]);
 
     // slice command runs but may not find the symbol
     // We just verify it doesn't panic
     let stderr_lower = output.stderr.to_lowercase();
     let stdout_lower = output.stdout.to_lowercase();
-    assert!(output.success() ||
-            stderr_lower.contains("not found") ||
-            stderr_lower.contains("no symbol") ||
-            stderr_lower.contains("could not") ||
-            stdout_lower.contains("slice"),
-            "slice command should succeed or show appropriate message: stderr={}, stdout={}",
-            output.stderr, output.stdout);
+    assert!(
+        output.success()
+            || stderr_lower.contains("not found")
+            || stderr_lower.contains("no symbol")
+            || stderr_lower.contains("could not")
+            || stdout_lower.contains("slice"),
+        "slice command should succeed or show appropriate message: stderr={}, stdout={}",
+        output.stderr,
+        output.stdout
+    );
 }
 
 #[test]
@@ -380,8 +449,13 @@ fn test_blast_zone_command() {
     let output = ctx.run_command(&["blast-zone", "--function", "test_function"]);
 
     // blast-zone may not find the function, but should handle error gracefully
-    assert!(output.success() || output.stderr.contains("not found") || output.stderr.contains("No function") || output.stdout.contains("Blast"),
-            "blast-zone command should succeed or show not found error");
+    assert!(
+        output.success()
+            || output.stderr.contains("not found")
+            || output.stderr.contains("No function")
+            || output.stdout.contains("Blast"),
+        "blast-zone command should succeed or show not found error"
+    );
 }
 
 #[test]
@@ -391,8 +465,13 @@ fn test_verify_command() {
 
     // verify requires a valid path ID, so it will likely fail
     // We just verify it handles errors gracefully
-    assert!(output.success() || output.stderr.contains("not found") || output.stderr.contains("No path") || output.stdout.contains("Path"),
-            "verify command should succeed or show not found error");
+    assert!(
+        output.success()
+            || output.stderr.contains("not found")
+            || output.stderr.contains("No path")
+            || output.stdout.contains("Path"),
+        "verify command should succeed or show not found error"
+    );
 }
 
 #[test]
@@ -402,8 +481,10 @@ fn test_migrate_command_help() {
 
     // migrate --help should show usage
     assert!(output.success(), "migrate --help should succeed");
-    assert!(output.stdout_contains("migrate") || output.stdout_contains("MIGRATE"),
-            "migrate help should mention migrate");
+    assert!(
+        output.stdout_contains("migrate") || output.stdout_contains("MIGRATE"),
+        "migrate help should mention migrate"
+    );
 }
 
 #[test]
@@ -412,8 +493,12 @@ fn test_detect_backend_flag() {
     let output = ctx.run_command(&["--detect-backend"]);
 
     assert!(output.success(), "--detect-backend should succeed");
-    assert!(output.stdout_contains("sqlite") || output.stdout_contains("native-v3") || output.stdout.contains("{"),
-            "--detect-backend should output backend type");
+    assert!(
+        output.stdout_contains("sqlite")
+            || output.stdout_contains("native-v3")
+            || output.stdout.contains("{"),
+        "--detect-backend should output backend type"
+    );
 }
 
 #[test]
@@ -421,9 +506,18 @@ fn test_detect_backend_json() {
     let ctx = TestContext::new();
     let output = ctx.run_command(&["--detect-backend", "--output", "json"]);
 
-    assert!(output.success(), "--detect-backend --output json should succeed");
-    assert!(output.stdout_contains("\"backend\""), "JSON output should contain backend field");
-    assert!(output.stdout_contains("\"database\""), "JSON output should contain database field");
+    assert!(
+        output.success(),
+        "--detect-backend --output json should succeed"
+    );
+    assert!(
+        output.stdout_contains("\"backend\""),
+        "JSON output should contain backend field"
+    );
+    assert!(
+        output.stdout_contains("\"database\""),
+        "JSON output should contain database field"
+    );
 }
 
 #[test]
@@ -432,8 +526,10 @@ fn test_no_command_error() {
     let output = ctx.run_command(&[]);
 
     // Running without a command should show an error
-    assert!(!output.success() || output.stdout_contains("help") || output.stderr_contains("required"),
-            "Running without command should show error or help");
+    assert!(
+        !output.success() || output.stdout_contains("help") || output.stderr_contains("required"),
+        "Running without command should show error or help"
+    );
 }
 
 #[test]
@@ -442,10 +538,14 @@ fn test_help_flag() {
     let output = ctx.run_command(&["--help"]);
 
     assert!(output.success(), "--help should succeed");
-    assert!(output.stdout_contains("Mirage") || output.stdout_contains("mirage"),
-            "help should mention mirage");
-    assert!(output.stdout_contains("USAGE") || output.stdout_contains("Usage"),
-            "help should show usage");
+    assert!(
+        output.stdout_contains("Mirage") || output.stdout_contains("mirage"),
+        "help should mention mirage"
+    );
+    assert!(
+        output.stdout_contains("USAGE") || output.stdout_contains("Usage"),
+        "help should show usage"
+    );
 }
 
 #[test]
@@ -467,6 +567,8 @@ fn test_invalid_database() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Should fail gracefully
-    assert!(!output.status.success() || stderr.contains("not found") || stdout.contains("not found"),
-            "Invalid database path should show error");
+    assert!(
+        !output.status.success() || stderr.contains("not found") || stdout.contains("not found"),
+        "Invalid database path should show error"
+    );
 }

@@ -12,7 +12,8 @@ pub use crate::analysis::DeadSymbolJson;
 #[derive(Parser, Debug, Clone)]
 #[command(name = "mirage")]
 #[command(author, version, about)]
-#[command(long_about = "Mirage is a path-aware code intelligence engine that operates on graphs, not text.
+#[command(
+    long_about = "Mirage is a path-aware code intelligence engine that operates on graphs, not text.
 
 It materializes behavior explicitly: paths, proofs, counterexamples.
 
@@ -26,7 +27,8 @@ IS:
   - Graph-based reasoning about code behavior
   - Truth engine that materializes facts for LLM consumption
 
-The Golden Rule: An agent may only speak if it can reference a graph artifact.")]
+The Golden Rule: An agent may only speak if it can reference a graph artifact."
+)]
 pub struct Cli {
     /// Path to the Magellan/Mirage database
     #[arg(global = true, long, env = "MIRAGE_DB")]
@@ -499,18 +501,18 @@ pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
     if let Some(path) = cli_db {
         return Ok(path);
     }
-    
+
     // Try environment variable
     if let Ok(path) = std::env::var("MIRAGE_DB") {
         return Ok(path);
     }
-    
+
     // Auto-discover database in common locations
     if let Some(path) = auto_discover_db() {
         eprintln!("Info: Auto-discovered database at {}", path);
         return Ok(path);
     }
-    
+
     Err(anyhow::anyhow!(
         "No database specified. Use --db, set MIRAGE_DB env var, \
          or run from a directory with a .db file"
@@ -527,10 +529,10 @@ pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
 /// 5. codegraph.db, mirage.db, magellan.db in current directory
 fn auto_discover_db() -> Option<String> {
     use std::path::Path;
-    
+
     // Search directories in priority order
     let search_dirs = [".magellan", ".codemcp", ".forge", "."];
-    
+
     for dir in &search_dirs {
         if let Ok(entries) = std::fs::read_dir(dir) {
             let mut db_files: Vec<_> = entries
@@ -543,33 +545,42 @@ fn auto_discover_db() -> Option<String> {
                 })
                 .map(|e| e.path())
                 .collect();
-            
+
             // Sort for deterministic results
             db_files.sort();
-            
+
             // Return first match, preferring codegraph.db or magellan.db
             if let Some(preferred) = db_files.iter().find(|p| {
-                let name = p.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default();
+                let name = p
+                    .file_stem()
+                    .map(|s| s.to_string_lossy())
+                    .unwrap_or_default();
                 name == "codegraph" || name == "magellan" || name == "mirage"
             }) {
                 return Some(preferred.to_string_lossy().to_string());
             }
-            
+
             // Otherwise return first .db file
             if let Some(first) = db_files.first() {
                 return Some(first.to_string_lossy().to_string());
             }
         }
     }
-    
+
     // Check for specific filenames in current directory
-    let candidates = [".magellan/magellan.db", "codegraph.db", "mirage.db", "magellan.db", "graph.db"];
+    let candidates = [
+        ".magellan/magellan.db",
+        "codegraph.db",
+        "mirage.db",
+        "magellan.db",
+        "graph.db",
+    ];
     for name in &candidates {
         if Path::new(name).exists() {
             return Some(name.to_string());
         }
     }
-    
+
     None
 }
 
@@ -649,7 +660,8 @@ impl From<crate::cfg::Path> for PathSummary {
         let length = path.len();
         // Convert Vec<usize> block IDs to Vec<PathBlock> with placeholder terminator
         // Full terminator info will be added in plan 07-02 when source locations are integrated
-        let blocks: Vec<PathBlock> = path.blocks
+        let blocks: Vec<PathBlock> = path
+            .blocks
             .into_iter()
             .map(|block_id| PathBlock {
                 block_id,
@@ -662,8 +674,8 @@ impl From<crate::cfg::Path> for PathSummary {
             kind: format!("{:?}", path.kind),
             length,
             blocks,
-            summary: None,  // To be populated in plan 07-04
-            source_range: None,  // To be populated in plan 07-02
+            summary: None,      // To be populated in plan 07-04
+            source_range: None, // To be populated in plan 07-02
         }
     }
 }
@@ -678,21 +690,24 @@ impl PathSummary {
         let summary = Some(summarize_path(cfg, &path));
 
         // Build PathBlock list with actual terminator types from CFG
-        let blocks: Vec<PathBlock> = path.blocks.iter().map(|&block_id| {
-            // Find the node in the CFG
-            let node_idx = cfg.node_indices()
-                .find(|&n| cfg[n].id == block_id);
+        let blocks: Vec<PathBlock> = path
+            .blocks
+            .iter()
+            .map(|&block_id| {
+                // Find the node in the CFG
+                let node_idx = cfg.node_indices().find(|&n| cfg[n].id == block_id);
 
-            let terminator = match node_idx {
-                Some(idx) => format!("{:?}", cfg[idx].terminator),
-                None => "Unknown".to_string(),
-            };
+                let terminator = match node_idx {
+                    Some(idx) => format!("{:?}", cfg[idx].terminator),
+                    None => "Unknown".to_string(),
+                };
 
-            PathBlock {
-                block_id,
-                terminator,
-            }
-        }).collect();
+                PathBlock {
+                    block_id,
+                    terminator,
+                }
+            })
+            .collect();
 
         // Calculate source range from first and last blocks
         let source_range = Self::calculate_source_range(&path, cfg);
@@ -710,12 +725,19 @@ impl PathSummary {
     }
 
     /// Calculate overall source range for a path
-    fn calculate_source_range(path: &crate::cfg::Path, cfg: &crate::cfg::Cfg) -> Option<SourceRange> {
-        let first_loc = path.blocks.first()
+    fn calculate_source_range(
+        path: &crate::cfg::Path,
+        cfg: &crate::cfg::Cfg,
+    ) -> Option<SourceRange> {
+        let first_loc = path
+            .blocks
+            .first()
             .and_then(|&bid| cfg.node_indices().find(|&n| cfg[n].id == bid))
             .and_then(|idx| cfg[idx].source_location.clone());
 
-        let last_loc = path.blocks.last()
+        let last_loc = path
+            .blocks
+            .last()
             .and_then(|&bid| cfg.node_indices().find(|&n| cfg[n].id == bid))
             .and_then(|idx| cfg[idx].source_location.clone());
 
@@ -737,7 +759,7 @@ impl PathSummary {
 #[derive(serde::Serialize)]
 struct DominanceResponse {
     function: String,
-    kind: String,  // "dominators" or "post-dominators"
+    kind: String, // "dominators" or "post-dominators"
     root: Option<usize>,
     dominance_tree: Vec<DominatorEntry>,
     must_pass_through: Option<MustPassThroughResult>,
@@ -931,7 +953,7 @@ struct HotspotsResponse {
     /// Hotspots found
     hotspots: Vec<HotspotEntry>,
     /// Analysis mode used
-    mode: String,  // "intra-procedural" or "inter-procedural"
+    mode: String, // "intra-procedural" or "inter-procedural"
 }
 
 /// Single hotspot entry
@@ -959,7 +981,6 @@ pub mod cmds {
     use super::*;
     use crate::output;
     use anyhow::Result;
-
 
     pub fn status(_args: &StatusArgs, cli: &Cli) -> Result<()> {
         use crate::storage::MirageDb;
@@ -996,11 +1017,17 @@ pub mod cmds {
             OutputFormat::Human => {
                 // Human-readable text format
                 println!("Mirage Database Status:");
-                println!("  Schema version: {} (Magellan: {})", status.mirage_schema_version, status.magellan_schema_version);
+                println!(
+                    "  Schema version: {} (Magellan: {})",
+                    status.mirage_schema_version, status.magellan_schema_version
+                );
                 println!("  cfg_blocks: {}", status.cfg_blocks);
                 // cfg_edges are computed in memory from terminators, not stored
                 // cfg_paths requires explicit enumeration via 'mirage paths --function <name>'
-                println!("  cfg_paths: {} (use 'mirage paths --function <name>' to enumerate)", status.cfg_paths);
+                println!(
+                    "  cfg_paths: {} (use 'mirage paths --function <name>' to enumerate)",
+                    status.cfg_paths
+                );
                 println!("  cfg_dominators: {}", status.cfg_dominators);
             }
             OutputFormat::Json => {
@@ -1019,9 +1046,11 @@ pub mod cmds {
     }
 
     pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
-        use crate::cfg::{PathKind, PathLimits, get_or_enumerate_paths, enumerate_paths_incremental};
-        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
-        use crate::storage::{MirageDb, get_function_hash_db};
+        use crate::cfg::{
+            enumerate_paths_incremental, get_or_enumerate_paths, PathKind, PathLimits,
+        };
+        use crate::cfg::{load_cfg_from_db, resolve_function_name_with_file};
+        use crate::storage::{get_function_hash_db, MirageDb};
 
         // Resolve database path
         let db_path = super::resolve_db_path(cli.db.clone())?;
@@ -1031,7 +1060,9 @@ pub mod cmds {
 
         // Handle incremental mode
         if args.incremental {
-            let since = args.since.as_ref()
+            let since = args
+                .since
+                .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("--since required with --incremental"))?;
 
             // Open database for incremental mode
@@ -1085,7 +1116,9 @@ pub mod cmds {
                     println!("  Total paths: {}", result.paths.len());
 
                     if args.show_errors {
-                        let error_count = result.paths.iter()
+                        let error_count = result
+                            .paths
+                            .iter()
                             .filter(|p| matches!(p.kind, PathKind::Error))
                             .count();
                         println!("  Error paths: {}", error_count);
@@ -1147,21 +1180,25 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id (with optional file filter)
-        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
-            Ok(id) => id,
-            Err(_e) => {
-                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::function_not_found(&args.function);
-                    let wrapper = output::JsonResponse::new(error);
-                    println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_DATABASE);
-                } else {
-                    output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
-                    std::process::exit(output::EXIT_DATABASE);
+        let function_id =
+            match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
+                Ok(id) => id,
+                Err(_e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::function_not_found(&args.function);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!(
+                            "Function '{}' not found in database",
+                            args.function
+                        ));
+                        output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
                 }
-            }
-        };
+            };
 
         // Load CFG from database
         let cfg = match load_cfg_from_db(&db, function_id) {
@@ -1177,7 +1214,10 @@ pub mod cmds {
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
-                    output::error(&format!("Failed to load CFG for function '{}'", args.function));
+                    output::error(&format!(
+                        "Failed to load CFG for function '{}'",
+                        args.function
+                    ));
                     output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
@@ -1209,19 +1249,16 @@ pub mod cmds {
                         std::process::exit(output::EXIT_DATABASE);
                     } else {
                         output::error(&format!("Function hash not found for '{}'", args.function));
-                        output::info("The function data may be incomplete. Try re-running 'magellan watch'");
+                        output::info(
+                            "The function data may be incomplete. Try re-running 'magellan watch'",
+                        );
                         std::process::exit(output::EXIT_DATABASE);
                     }
                 }
             };
 
-            get_or_enumerate_paths(
-                &cfg,
-                function_id,
-                &function_hash,
-                &limits,
-                db.conn_mut()?,
-            ).map_err(|e| anyhow::anyhow!("Path enumeration failed: {}", e))?
+            get_or_enumerate_paths(&cfg, function_id, &function_hash, &limits, db.conn_mut()?)
+                .map_err(|e| anyhow::anyhow!("Path enumeration failed: {}", e))?
         } else {
             // Native-v3 backend: enumerate directly without caching
             // Magellan manages its own caching
@@ -1259,10 +1296,14 @@ pub mod cmds {
                     println!("  Kind: {:?}", path.kind);
                     println!("  Length: {} blocks", path.len());
                     if args.with_blocks {
-                        println!("  Blocks: {}", path.blocks.iter()
-                            .map(|id| id.to_string())
-                            .collect::<Vec<_>>()
-                            .join(" -> "));
+                        println!(
+                            "  Blocks: {}",
+                            path.blocks
+                                .iter()
+                                .map(|id| id.to_string())
+                                .collect::<Vec<_>>()
+                                .join(" -> ")
+                        );
                     }
                     println!();
                 }
@@ -1273,7 +1314,10 @@ pub mod cmds {
                     function: args.function.clone(),
                     total_paths: paths.len(),
                     error_paths: error_count,
-                    paths: paths.iter().map(|p| PathSummary::from_with_cfg(p.clone(), &cfg)).collect(),
+                    paths: paths
+                        .iter()
+                        .map(|p| PathSummary::from_with_cfg(p.clone(), &cfg))
+                        .collect(),
                 };
                 let wrapper = output::JsonResponse::new(response);
                 println!("{}", wrapper.to_json());
@@ -1284,7 +1328,10 @@ pub mod cmds {
                     function: args.function.clone(),
                     total_paths: paths.len(),
                     error_paths: error_count,
-                    paths: paths.iter().map(|p| PathSummary::from_with_cfg(p.clone(), &cfg)).collect(),
+                    paths: paths
+                        .iter()
+                        .map(|p| PathSummary::from_with_cfg(p.clone(), &cfg))
+                        .collect(),
                 };
                 let wrapper = output::JsonResponse::new(response);
                 println!("{}", wrapper.to_pretty_json());
@@ -1296,7 +1343,7 @@ pub mod cmds {
 
     pub fn cfg(args: &CfgArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{export_dot, export_json, CFGExport};
-        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
+        use crate::cfg::{load_cfg_from_db, resolve_function_name_with_file};
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -1321,21 +1368,25 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id (with optional file filter)
-        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
-            Ok(id) => id,
-            Err(_e) => {
-                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::function_not_found(&args.function);
-                    let wrapper = output::JsonResponse::new(error);
-                    println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_DATABASE);
-                } else {
-                    output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
-                    std::process::exit(output::EXIT_DATABASE);
+        let function_id =
+            match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
+                Ok(id) => id,
+                Err(_e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::function_not_found(&args.function);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!(
+                            "Function '{}' not found in database",
+                            args.function
+                        ));
+                        output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
                 }
-            }
-        };
+            };
 
         // Load CFG from database
         let cfg = match load_cfg_from_db(&db, function_id) {
@@ -1351,7 +1402,10 @@ pub mod cmds {
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
-                    output::error(&format!("Failed to load CFG for function '{}'", args.function));
+                    output::error(&format!(
+                        "Failed to load CFG for function '{}'",
+                        args.function
+                    ));
                     output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
@@ -1439,8 +1493,8 @@ pub mod cmds {
     }
 
     pub fn dominators(args: &DominatorsArgs, cli: &Cli) -> Result<()> {
+        use crate::cfg::{load_cfg_from_db, resolve_function_name_with_file};
         use crate::cfg::{DominatorTree, PostDominatorTree};
-        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -1470,21 +1524,25 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id (with optional file filter)
-        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
-            Ok(id) => id,
-            Err(_e) => {
-                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::function_not_found(&args.function);
-                    let wrapper = output::JsonResponse::new(error);
-                    println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_DATABASE);
-                } else {
-                    output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
-                    std::process::exit(output::EXIT_DATABASE);
+        let function_id =
+            match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
+                Ok(id) => id,
+                Err(_e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::function_not_found(&args.function);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!(
+                            "Function '{}' not found in database",
+                            args.function
+                        ));
+                        output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
                 }
-            }
-        };
+            };
 
         // Load CFG from database
         let cfg = match load_cfg_from_db(&db, function_id) {
@@ -1500,7 +1558,10 @@ pub mod cmds {
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
-                    output::error(&format!("Failed to load CFG for function '{}'", args.function));
+                    output::error(&format!(
+                        "Failed to load CFG for function '{}'",
+                        args.function
+                    ));
                     output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
@@ -1513,7 +1574,9 @@ pub mod cmds {
             let post_dom_tree = match PostDominatorTree::new(&cfg) {
                 Some(tree) => tree,
                 None => {
-                    output::error("Could not compute post-dominator tree (CFG may have no exit blocks)");
+                    output::error(
+                        "Could not compute post-dominator tree (CFG may have no exit blocks)",
+                    );
                     std::process::exit(1);
                 }
             };
@@ -1523,8 +1586,7 @@ pub mod cmds {
                 match block_id_str.parse::<usize>() {
                     Ok(block_id) => {
                         // Find NodeIndex for this block
-                        let target_node = cfg.node_indices()
-                            .find(|&n| cfg[n].id == block_id);
+                        let target_node = cfg.node_indices().find(|&n| cfg[n].id == block_id);
 
                         let target_node = match target_node {
                             Some(node) => node,
@@ -1542,7 +1604,8 @@ pub mod cmds {
                         };
 
                         // Find all nodes post-dominated by this block
-                        let must_pass: Vec<usize> = cfg.node_indices()
+                        let must_pass: Vec<usize> = cfg
+                            .node_indices()
                             .filter(|&n| post_dom_tree.post_dominates(target_node, n))
                             .map(|n| cfg[n].id)
                             .collect();
@@ -1551,7 +1614,10 @@ pub mod cmds {
                         match cli.output {
                             OutputFormat::Human => {
                                 println!("Function: {}", args.function);
-                                println!("Post-Dominator Query: Blocks post-dominated by {}", block_id);
+                                println!(
+                                    "Post-Dominator Query: Blocks post-dominated by {}",
+                                    block_id
+                                );
                                 println!("Count: {}", must_pass.len());
                                 println!();
                                 if must_pass.is_empty() {
@@ -1577,7 +1643,9 @@ pub mod cmds {
                                 let wrapper = output::JsonResponse::new(response);
                                 match cli.output {
                                     OutputFormat::Json => println!("{}", wrapper.to_json()),
-                                    OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                                    OutputFormat::Pretty => {
+                                        println!("{}", wrapper.to_pretty_json())
+                                    }
                                     _ => unreachable!(),
                                 }
                             }
@@ -1592,12 +1660,15 @@ pub mod cmds {
             }
 
             // Build dominance tree for output
-            let dominance_tree: Vec<DominatorEntry> = cfg.node_indices()
+            let dominance_tree: Vec<DominatorEntry> = cfg
+                .node_indices()
                 .map(|node| {
                     let block = cfg[node].id;
-                    let immediate_dominator = post_dom_tree.immediate_post_dominator(node)
+                    let immediate_dominator = post_dom_tree
+                        .immediate_post_dominator(node)
                         .map(|n| cfg[n].id);
-                    let dominated: Vec<usize> = post_dom_tree.children(node)
+                    let dominated: Vec<usize> = post_dom_tree
+                        .children(node)
                         .iter()
                         .map(|&n| cfg[n].id)
                         .collect();
@@ -1613,11 +1684,20 @@ pub mod cmds {
             match cli.output {
                 OutputFormat::Human => {
                     println!("Function: {}", args.function);
-                    println!("Post-Dominator Tree (root: {})", cfg[post_dom_tree.root()].id);
+                    println!(
+                        "Post-Dominator Tree (root: {})",
+                        cfg[post_dom_tree.root()].id
+                    );
                     println!();
 
                     // Print tree structure
-                    print_dominator_tree_human(&cfg, post_dom_tree.as_dominator_tree(), post_dom_tree.root(), 0, true);
+                    print_dominator_tree_human(
+                        &cfg,
+                        post_dom_tree.as_dominator_tree(),
+                        post_dom_tree.root(),
+                        0,
+                        true,
+                    );
                 }
                 OutputFormat::Json | OutputFormat::Pretty => {
                     let response = DominanceResponse {
@@ -1650,8 +1730,7 @@ pub mod cmds {
                 match block_id_str.parse::<usize>() {
                     Ok(block_id) => {
                         // Find NodeIndex for this block
-                        let target_node = cfg.node_indices()
-                            .find(|&n| cfg[n].id == block_id);
+                        let target_node = cfg.node_indices().find(|&n| cfg[n].id == block_id);
 
                         let target_node = match target_node {
                             Some(node) => node,
@@ -1669,7 +1748,8 @@ pub mod cmds {
                         };
 
                         // Find all nodes dominated by this block
-                        let must_pass: Vec<usize> = cfg.node_indices()
+                        let must_pass: Vec<usize> = cfg
+                            .node_indices()
                             .filter(|&n| dom_tree.dominates(target_node, n))
                             .map(|n| cfg[n].id)
                             .collect();
@@ -1704,7 +1784,9 @@ pub mod cmds {
                                 let wrapper = output::JsonResponse::new(response);
                                 match cli.output {
                                     OutputFormat::Json => println!("{}", wrapper.to_json()),
-                                    OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                                    OutputFormat::Pretty => {
+                                        println!("{}", wrapper.to_pretty_json())
+                                    }
                                     _ => unreachable!(),
                                 }
                             }
@@ -1719,15 +1801,13 @@ pub mod cmds {
             }
 
             // Build dominance tree for output
-            let dominance_tree: Vec<DominatorEntry> = cfg.node_indices()
+            let dominance_tree: Vec<DominatorEntry> = cfg
+                .node_indices()
                 .map(|node| {
                     let block = cfg[node].id;
-                    let immediate_dominator = dom_tree.immediate_dominator(node)
-                        .map(|n| cfg[n].id);
-                    let dominated: Vec<usize> = dom_tree.children(node)
-                        .iter()
-                        .map(|&n| cfg[n].id)
-                        .collect();
+                    let immediate_dominator = dom_tree.immediate_dominator(node).map(|n| cfg[n].id);
+                    let dominated: Vec<usize> =
+                        dom_tree.children(node).iter().map(|&n| cfg[n].id).collect();
                     DominatorEntry {
                         block,
                         immediate_dominator,
@@ -1777,7 +1857,11 @@ pub mod cmds {
     ) {
         let indent = "  ".repeat(depth);
         let block_id = cfg[node].id;
-        let kind_label = if is_post { "post-dominator" } else { "dominator" };
+        let kind_label = if is_post {
+            "post-dominator"
+        } else {
+            "dominator"
+        };
 
         println!("{}Block {} ({})", indent, block_id, kind_label);
 
@@ -1903,9 +1987,14 @@ pub mod cmds {
                 println!();
 
                 if dominating_functions.is_empty() {
-                    println!("No dominators found (this may be an entry point or not in call graph)");
+                    println!(
+                        "No dominators found (this may be an entry point or not in call graph)"
+                    );
                 } else {
-                    println!("Found {} dominating function(s):", dominating_functions.len());
+                    println!(
+                        "Found {} dominating function(s):",
+                        dominating_functions.len()
+                    );
                     println!();
                     for (i, dominator) in dominating_functions.iter().enumerate() {
                         println!("{}. {}", i + 1, dominator);
@@ -1966,7 +2055,7 @@ pub mod cmds {
 
     pub fn loops(args: &LoopsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::detect_natural_loops;
-        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
+        use crate::cfg::{load_cfg_from_db, resolve_function_name_with_file};
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -1991,21 +2080,25 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id (with optional file filter)
-        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
-            Ok(id) => id,
-            Err(_e) => {
-                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::function_not_found(&args.function);
-                    let wrapper = output::JsonResponse::new(error);
-                    println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_DATABASE);
-                } else {
-                    output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
-                    std::process::exit(output::EXIT_DATABASE);
+        let function_id =
+            match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
+                Ok(id) => id,
+                Err(_e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::function_not_found(&args.function);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!(
+                            "Function '{}' not found in database",
+                            args.function
+                        ));
+                        output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
                 }
-            }
-        };
+            };
 
         // Load CFG from database
         let cfg = match load_cfg_from_db(&db, function_id) {
@@ -2021,7 +2114,10 @@ pub mod cmds {
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
-                    output::error(&format!("Failed to load CFG for function '{}'", args.function));
+                    output::error(&format!(
+                        "Failed to load CFG for function '{}'",
+                        args.function
+                    ));
                     output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
@@ -2032,19 +2128,20 @@ pub mod cmds {
         let natural_loops = detect_natural_loops(&cfg);
 
         // Compute nesting levels for each loop
-        let loop_infos: Vec<LoopInfo> = natural_loops.iter().map(|loop_| {
-            let nesting_level = loop_.nesting_level(&natural_loops);
-            let body_blocks: Vec<usize> = loop_.body.iter()
-                .map(|&node| cfg[node].id)
-                .collect();
-            LoopInfo {
-                header: cfg[loop_.header].id,
-                back_edge_from: cfg[loop_.back_edge.0].id,
-                body_size: loop_.size(),
-                nesting_level,
-                body_blocks,
-            }
-        }).collect();
+        let loop_infos: Vec<LoopInfo> = natural_loops
+            .iter()
+            .map(|loop_| {
+                let nesting_level = loop_.nesting_level(&natural_loops);
+                let body_blocks: Vec<usize> = loop_.body.iter().map(|&node| cfg[node].id).collect();
+                LoopInfo {
+                    header: cfg[loop_.header].id,
+                    back_edge_from: cfg[loop_.back_edge.0].id,
+                    body_size: loop_.size(),
+                    nesting_level,
+                    body_blocks,
+                }
+            })
+            .collect();
 
         // Output based on format
         match cli.output {
@@ -2089,10 +2186,10 @@ pub mod cmds {
     }
 
     pub fn unreachable(args: &UnreachableArgs, cli: &Cli) -> Result<()> {
-        use crate::analysis::MagellanBridge;
         use crate::analysis::DeadSymbolJson;
-        use crate::cfg::reachability::find_unreachable;
+        use crate::analysis::MagellanBridge;
         use crate::cfg::load_cfg_from_db;
+        use crate::cfg::reachability::find_unreachable;
         use crate::storage::MirageDb;
         use petgraph::visit::EdgeRef;
 
@@ -2105,7 +2202,8 @@ pub mod cmds {
                 Ok(bridge) => {
                     match bridge.dead_symbols("main") {
                         Ok(dead) => {
-                            let json_symbols: Vec<DeadSymbolJson> = dead.iter().map(|d| d.into()).collect();
+                            let json_symbols: Vec<DeadSymbolJson> =
+                                dead.iter().map(|d| d.into()).collect();
                             Some(json_symbols)
                         }
                         Err(e) => {
@@ -2117,7 +2215,10 @@ pub mod cmds {
                 }
                 Err(e) => {
                     // Magellan database not available - warn but continue
-                    eprintln!("Warning: Could not open Magellan database for --include-uncalled: {}", e);
+                    eprintln!(
+                        "Warning: Could not open Magellan database for --include-uncalled: {}",
+                        e
+                    );
                     eprintln!("Note: --include-uncalled requires a Magellan code graph database");
                     None
                 }
@@ -2154,7 +2255,9 @@ pub mod cmds {
         // Query all functions from the database
         // Note: Requires SQLite backend for full table scan
         if !db.is_sqlite() {
-            output::info("Note: Native-V3 backend detected. Using entity iteration instead of SQL query.");
+            output::info(
+                "Note: Native-V3 backend detected. Using entity iteration instead of SQL query.",
+            );
             // TODO: Implement entity iteration for native-v3
             output::error("The 'unreachable' command currently requires SQLite backend.");
             output::info("Use SQLite backend or run with --help for alternatives.");
@@ -2285,7 +2388,8 @@ pub mod cmds {
 
         // Calculate totals
         let total_functions = all_results.len();
-        let functions_with_unreachable = all_results.iter().filter(|r| !r.blocks.is_empty()).count();
+        let functions_with_unreachable =
+            all_results.iter().filter(|r| !r.blocks.is_empty()).count();
         let total_blocks: usize = all_results.iter().map(|r| r.blocks.len()).sum();
 
         // Format output based on cli.output
@@ -2305,7 +2409,12 @@ pub mod cmds {
 
                 // Show unreachable blocks
                 if total_blocks == 0 {
-                    if uncalled_functions.is_none() || uncalled_functions.as_ref().map(|v| v.is_empty()).unwrap_or(false) {
+                    if uncalled_functions.is_none()
+                        || uncalled_functions
+                            .as_ref()
+                            .map(|v| v.is_empty())
+                            .unwrap_or(false)
+                    {
                         output::info("No unreachable code found");
                     }
                     return Ok(());
@@ -2313,7 +2422,10 @@ pub mod cmds {
 
                 println!("Unreachable Code Blocks:");
                 println!("  Total blocks: {}", total_blocks);
-                println!("  Functions with unreachable: {}/{}", functions_with_unreachable, total_functions);
+                println!(
+                    "  Functions with unreachable: {}/{}",
+                    functions_with_unreachable, total_functions
+                );
                 println!();
 
                 for result in &all_results {
@@ -2338,11 +2450,17 @@ pub mod cmds {
                         println!("  Incoming Edges:");
                         for block in &result.blocks {
                             if block.incoming_edges.is_empty() {
-                                println!("    Block {} has no incoming edges (entry or isolated)", block.block_id);
+                                println!(
+                                    "    Block {} has no incoming edges (entry or isolated)",
+                                    block.block_id
+                                );
                             } else {
                                 println!("    Block {} incoming edges:", block.block_id);
                                 for edge in &block.incoming_edges {
-                                    println!("      from block {} ({})", edge.from_block, edge.edge_type);
+                                    println!(
+                                        "      from block {} ({})",
+                                        edge.from_block, edge.edge_type
+                                    );
                                 }
                             }
                         }
@@ -2352,7 +2470,8 @@ pub mod cmds {
             }
             OutputFormat::Json | OutputFormat::Pretty => {
                 // For multi-function mode, flatten blocks across all functions
-                let all_blocks: Vec<UnreachableBlock> = all_results.iter().flat_map(|r| r.blocks.clone()).collect();
+                let all_blocks: Vec<UnreachableBlock> =
+                    all_results.iter().flat_map(|r| r.blocks.clone()).collect();
 
                 let response = UnreachableResponse {
                     function: "all".to_string(),
@@ -2376,7 +2495,7 @@ pub mod cmds {
     }
 
     pub fn verify(args: &VerifyArgs, cli: &Cli) -> Result<()> {
-        use crate::cfg::{PathLimits, enumerate_paths, load_cfg_from_db};
+        use crate::cfg::{enumerate_paths, load_cfg_from_db, PathLimits};
         use crate::storage::MirageDb;
         use rusqlite::OptionalExtension;
 
@@ -2407,7 +2526,8 @@ pub mod cmds {
         if !db.is_sqlite() {
             let msg = "Path verification requires SQLite backend with path caching.";
             if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::new("UnsupportedBackend", msg, output::E_INVALID_INPUT);
+                let error =
+                    output::JsonError::new("UnsupportedBackend", msg, output::E_INVALID_INPUT);
                 let wrapper = output::JsonResponse::new(error);
                 println!("{}", wrapper.to_json());
                 std::process::exit(output::EXIT_USAGE);
@@ -2419,7 +2539,8 @@ pub mod cmds {
         }
 
         // Check if path exists in cache by querying cfg_paths table
-        let cached_path_info: Option<(String, i64, String)> = db.conn()?
+        let cached_path_info: Option<(String, i64, String)> = db
+            .conn()?
             .query_row(
                 "SELECT path_id, function_id, path_kind FROM cfg_paths WHERE path_id = ?1",
                 rusqlite::params![path_id],
@@ -2429,7 +2550,7 @@ pub mod cmds {
                         row.get::<_, i64>(1)?,
                         row.get::<_, String>(2)?,
                     ))
-                }
+                },
             )
             .optional()
             .unwrap_or(None);
@@ -2480,8 +2601,13 @@ pub mod cmds {
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
-                    output::error(&format!("Failed to load CFG for function_id {}", function_id));
-                    output::info("The function data may be corrupted. Try re-running 'magellan watch'");
+                    output::error(&format!(
+                        "Failed to load CFG for function_id {}",
+                        function_id
+                    ));
+                    output::info(
+                        "The function data may be corrupted. Try re-running 'magellan watch'",
+                    );
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
@@ -2493,8 +2619,7 @@ pub mod cmds {
         let current_path_count = current_paths.len();
 
         // Check if any enumerated path has the same path_id
-        let path_still_valid = current_paths.iter()
-            .any(|p| &p.path_id == path_id);
+        let path_still_valid = current_paths.iter().any(|p| &p.path_id == path_id);
 
         let reason = if path_still_valid {
             "Path found in current enumeration".to_string()
@@ -2513,8 +2638,15 @@ pub mod cmds {
 
         match cli.output {
             OutputFormat::Human => {
-                println!("Path ID {}: {}", path_id, if result.valid { "valid" } else { "invalid" });
-                println!("  Found in cache: {}", if found_in_cache { "yes" } else { "no" });
+                println!(
+                    "Path ID {}: {}",
+                    path_id,
+                    if result.valid { "valid" } else { "invalid" }
+                );
+                println!(
+                    "  Found in cache: {}",
+                    if found_in_cache { "yes" } else { "no" }
+                );
                 println!("  Status: {}", result.reason);
                 println!("  Current total paths: {}", current_path_count);
                 if !path_still_valid {
@@ -2567,7 +2699,8 @@ pub mod cmds {
             if !db.is_sqlite() {
                 let msg = "Path-based blast-zone requires SQLite backend. Use block-based analysis with --function and --block-id instead.";
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::new("UnsupportedBackend", msg, output::E_INVALID_INPUT);
+                    let error =
+                        output::JsonError::new("UnsupportedBackend", msg, output::E_INVALID_INPUT);
                     let wrapper = output::JsonResponse::new(error);
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_USAGE);
@@ -2585,7 +2718,8 @@ pub mod cmds {
             if path_id_trimmed.len() < 10 {
                 let msg = format!("Invalid path_id format: '{}'", path_id_trimmed);
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::new("InvalidInput", &msg, output::E_INVALID_INPUT);
+                    let error =
+                        output::JsonError::new("InvalidInput", &msg, output::E_INVALID_INPUT);
                     let wrapper = output::JsonResponse::new(error);
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_USAGE);
@@ -2597,16 +2731,21 @@ pub mod cmds {
             }
 
             // Get path metadata to find function_id
-            let (function_id, path_kind): (i64, String) = match db.conn()?.query_row(
-                "SELECT function_id, path_kind FROM cfg_paths WHERE path_id = ?1",
-                rusqlite::params![path_id_trimmed],
-                |row| Ok((row.get(0)?, row.get(1)?))
-            ).optional() {
+            let (function_id, path_kind): (i64, String) = match db
+                .conn()?
+                .query_row(
+                    "SELECT function_id, path_kind FROM cfg_paths WHERE path_id = ?1",
+                    rusqlite::params![path_id_trimmed],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+            {
                 Ok(Some(data)) => data,
                 Ok(None) => {
                     let msg = format!("Path '{}' not found in cache", path_id_trimmed);
                     if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                        let error = output::JsonError::new("PathNotFound", &msg, output::E_PATH_NOT_FOUND);
+                        let error =
+                            output::JsonError::new("PathNotFound", &msg, output::E_PATH_NOT_FOUND);
                         let wrapper = output::JsonResponse::new(error);
                         println!("{}", wrapper.to_json());
                         std::process::exit(output::EXIT_FILE_NOT_FOUND);
@@ -2619,7 +2758,11 @@ pub mod cmds {
                 Err(e) => {
                     let msg = format!("Failed to query path: {}", e);
                     if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                        let error = output::JsonError::new("DatabaseError", &msg, output::E_DATABASE_NOT_FOUND);
+                        let error = output::JsonError::new(
+                            "DatabaseError",
+                            &msg,
+                            output::E_DATABASE_NOT_FOUND,
+                        );
                         let wrapper = output::JsonResponse::new(error);
                         println!("{}", wrapper.to_json());
                         std::process::exit(output::EXIT_DATABASE);
@@ -2632,9 +2775,13 @@ pub mod cmds {
 
             // Filter by path_kind if include_errors is false
             if !args.include_errors && path_kind == "error" {
-                let msg = format!("Path '{}' is an error path (use --include-errors to analyze)", path_id_trimmed);
+                let msg = format!(
+                    "Path '{}' is an error path (use --include-errors to analyze)",
+                    path_id_trimmed
+                );
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::new("ErrorPathExcluded", &msg, output::E_INVALID_INPUT);
+                    let error =
+                        output::JsonError::new("ErrorPathExcluded", &msg, output::E_INVALID_INPUT);
                     let wrapper = output::JsonResponse::new(error);
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_USAGE);
@@ -2651,13 +2798,16 @@ pub mod cmds {
                 Err(_e) => {
                     let msg = format!("Failed to load CFG for function_id {}", function_id);
                     if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                        let error = output::JsonError::new("CgfLoadError", &msg, output::E_CFG_ERROR);
+                        let error =
+                            output::JsonError::new("CgfLoadError", &msg, output::E_CFG_ERROR);
                         let wrapper = output::JsonResponse::new(error);
                         println!("{}", wrapper.to_json());
                         std::process::exit(output::EXIT_DATABASE);
                     } else {
                         output::error(&msg);
-                        output::info("The function may be corrupted. Try re-running 'magellan watch'");
+                        output::info(
+                            "The function may be corrupted. Try re-running 'magellan watch'",
+                        );
                         std::process::exit(output::EXIT_DATABASE);
                     }
                 }
@@ -2668,50 +2818,74 @@ pub mod cmds {
                 .unwrap_or_else(|| format!("<function_{}>", function_id));
 
             // Compute path impact
-            let max_depth = if args.max_depth == 100 { None } else { Some(args.max_depth) };
-            let impact = match compute_path_impact_from_db(db.conn()?, path_id_trimmed, &cfg, max_depth) {
-                Ok(impact) => impact,
-                Err(e) => {
-                    let msg = format!("Failed to compute path impact: {}", e);
-                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                        let error = output::JsonError::new("ImpactError", &msg, output::E_CFG_ERROR);
-                        let wrapper = output::JsonResponse::new(error);
-                        println!("{}", wrapper.to_json());
-                        std::process::exit(output::EXIT_ERROR);
-                    } else {
-                        output::error(&msg);
-                        std::process::exit(output::EXIT_ERROR);
-                    }
-                }
+            let max_depth = if args.max_depth == 100 {
+                None
+            } else {
+                Some(args.max_depth)
             };
+            let impact =
+                match compute_path_impact_from_db(db.conn()?, path_id_trimmed, &cfg, max_depth) {
+                    Ok(impact) => impact,
+                    Err(e) => {
+                        let msg = format!("Failed to compute path impact: {}", e);
+                        if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                            let error =
+                                output::JsonError::new("ImpactError", &msg, output::E_CFG_ERROR);
+                            let wrapper = output::JsonResponse::new(error);
+                            println!("{}", wrapper.to_json());
+                            std::process::exit(output::EXIT_ERROR);
+                        } else {
+                            output::error(&msg);
+                            std::process::exit(output::EXIT_ERROR);
+                        }
+                    }
+                };
 
             // Compute call graph impact if requested
-            let (forward_impact, backward_impact): (Option<Vec<CallGraphSymbol>>, Option<Vec<CallGraphSymbol>>) = if args.use_call_graph {
+            let (forward_impact, backward_impact): (
+                Option<Vec<CallGraphSymbol>>,
+                Option<Vec<CallGraphSymbol>>,
+            ) = if args.use_call_graph {
                 use crate::analysis::MagellanBridge;
                 match MagellanBridge::open(&db_path) {
                     Ok(bridge) => {
                         // Use function name as symbol identifier
                         let symbol_id = function_name.as_str();
-                        let forward: Option<Vec<CallGraphSymbol>> = bridge.reachable_symbols(symbol_id)
-                            .map(|symbols| symbols.into_iter().map(|s| CallGraphSymbol {
-                                symbol_id: s.symbol_id,
-                                fqn: s.fqn,
-                                file_path: s.file_path,
-                                kind: s.kind,
-                            }).collect())
+                        let forward: Option<Vec<CallGraphSymbol>> = bridge
+                            .reachable_symbols(symbol_id)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|s| CallGraphSymbol {
+                                        symbol_id: s.symbol_id,
+                                        fqn: s.fqn,
+                                        file_path: s.file_path,
+                                        kind: s.kind,
+                                    })
+                                    .collect()
+                            })
                             .ok();
-                        let backward: Option<Vec<CallGraphSymbol>> = bridge.reverse_reachable_symbols(symbol_id)
-                            .map(|symbols| symbols.into_iter().map(|s| CallGraphSymbol {
-                                symbol_id: s.symbol_id,
-                                fqn: s.fqn,
-                                file_path: s.file_path,
-                                kind: s.kind,
-                            }).collect())
+                        let backward: Option<Vec<CallGraphSymbol>> = bridge
+                            .reverse_reachable_symbols(symbol_id)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|s| CallGraphSymbol {
+                                        symbol_id: s.symbol_id,
+                                        fqn: s.fqn,
+                                        file_path: s.file_path,
+                                        kind: s.kind,
+                                    })
+                                    .collect()
+                            })
                             .ok();
                         (forward, backward)
                     }
                     Err(e) => {
-                        eprintln!("Warning: Could not open Magellan database for call graph analysis: {}", e);
+                        eprintln!(
+                            "Warning: Could not open Magellan database for call graph analysis: {}",
+                            e
+                        );
                         eprintln!("Note: --use-call-graph requires a Magellan code graph database");
                         (None, None)
                     }
@@ -2741,7 +2915,10 @@ pub mod cmds {
                     }
                     if let Some(ref backward) = backward_impact {
                         if !backward.is_empty() {
-                            println!("  Backward Impact: {} functions can reach this", backward.len());
+                            println!(
+                                "  Backward Impact: {} functions can reach this",
+                                backward.len()
+                            );
                             for sym in backward {
                                 println!("    - {}", sym.fqn.as_deref().unwrap_or(&sym.file_path));
                             }
@@ -2779,11 +2956,13 @@ pub mod cmds {
                     }
                 }
             }
-
         } else {
             // Block-based impact analysis
             // Get function from args
-            let function_ref = args.function.as_ref().expect("--function is required for block-based analysis");
+            let function_ref = args
+                .function
+                .as_ref()
+                .expect("--function is required for block-based analysis");
 
             // Resolve function name/ID to function_id
             let function_id = match resolve_function_name(&db, function_ref) {
@@ -2795,7 +2974,10 @@ pub mod cmds {
                         println!("{}", wrapper.to_json());
                         std::process::exit(output::EXIT_DATABASE);
                     } else {
-                        output::error(&format!("Function '{}' not found in database", function_ref));
+                        output::error(&format!(
+                            "Function '{}' not found in database",
+                            function_ref
+                        ));
                         output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                         std::process::exit(output::EXIT_DATABASE);
                     }
@@ -2820,8 +3002,13 @@ pub mod cmds {
                         println!("{}", wrapper.to_json());
                         std::process::exit(output::EXIT_DATABASE);
                     } else {
-                        output::error(&format!("Failed to load CFG for function '{}'", function_ref));
-                        output::info("The function may be corrupted. Try re-running 'magellan watch'");
+                        output::error(&format!(
+                            "Failed to load CFG for function '{}'",
+                            function_ref
+                        ));
+                        output::info(
+                            "The function may be corrupted. Try re-running 'magellan watch'",
+                        );
                         std::process::exit(output::EXIT_DATABASE);
                     }
                 }
@@ -2833,12 +3020,14 @@ pub mod cmds {
             // Validate block_id exists in CFG
             let block_exists = cfg.node_indices().any(|n| cfg[n].id == block_id);
             if !block_exists {
-                let valid_blocks: Vec<usize> = cfg.node_indices()
-                    .map(|n| cfg[n].id)
-                    .collect();
-                let msg = format!("Block {} not found in function '{}'. Valid blocks: {:?}", block_id, function_ref, valid_blocks);
+                let valid_blocks: Vec<usize> = cfg.node_indices().map(|n| cfg[n].id).collect();
+                let msg = format!(
+                    "Block {} not found in function '{}'. Valid blocks: {:?}",
+                    block_id, function_ref, valid_blocks
+                );
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::new("BlockNotFound", &msg, output::E_BLOCK_NOT_FOUND);
+                    let error =
+                        output::JsonError::new("BlockNotFound", &msg, output::E_BLOCK_NOT_FOUND);
                     let wrapper = output::JsonResponse::new(error);
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_VALIDATION);
@@ -2849,36 +3038,58 @@ pub mod cmds {
             }
 
             // Compute block impact
-            let max_depth = if args.max_depth == 100 { None } else { Some(args.max_depth) };
+            let max_depth = if args.max_depth == 100 {
+                None
+            } else {
+                Some(args.max_depth)
+            };
             let impact = find_reachable_from_block(&cfg, block_id, max_depth);
 
             // Compute call graph impact if requested
-            let (forward_impact, backward_impact): (Option<Vec<CallGraphSymbol>>, Option<Vec<CallGraphSymbol>>) = if args.use_call_graph {
+            let (forward_impact, backward_impact): (
+                Option<Vec<CallGraphSymbol>>,
+                Option<Vec<CallGraphSymbol>>,
+            ) = if args.use_call_graph {
                 use crate::analysis::MagellanBridge;
                 match MagellanBridge::open(&db_path) {
                     Ok(bridge) => {
                         // Use function name as symbol identifier
                         let symbol_id = function_name.as_str();
-                        let forward: Option<Vec<CallGraphSymbol>> = bridge.reachable_symbols(symbol_id)
-                            .map(|symbols| symbols.into_iter().map(|s| CallGraphSymbol {
-                                symbol_id: s.symbol_id,
-                                fqn: s.fqn,
-                                file_path: s.file_path,
-                                kind: s.kind,
-                            }).collect())
+                        let forward: Option<Vec<CallGraphSymbol>> = bridge
+                            .reachable_symbols(symbol_id)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|s| CallGraphSymbol {
+                                        symbol_id: s.symbol_id,
+                                        fqn: s.fqn,
+                                        file_path: s.file_path,
+                                        kind: s.kind,
+                                    })
+                                    .collect()
+                            })
                             .ok();
-                        let backward: Option<Vec<CallGraphSymbol>> = bridge.reverse_reachable_symbols(symbol_id)
-                            .map(|symbols| symbols.into_iter().map(|s| CallGraphSymbol {
-                                symbol_id: s.symbol_id,
-                                fqn: s.fqn,
-                                file_path: s.file_path,
-                                kind: s.kind,
-                            }).collect())
+                        let backward: Option<Vec<CallGraphSymbol>> = bridge
+                            .reverse_reachable_symbols(symbol_id)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|s| CallGraphSymbol {
+                                        symbol_id: s.symbol_id,
+                                        fqn: s.fqn,
+                                        file_path: s.file_path,
+                                        kind: s.kind,
+                                    })
+                                    .collect()
+                            })
                             .ok();
                         (forward, backward)
                     }
                     Err(e) => {
-                        eprintln!("Warning: Could not open Magellan database for call graph analysis: {}", e);
+                        eprintln!(
+                            "Warning: Could not open Magellan database for call graph analysis: {}",
+                            e
+                        );
                         eprintln!("Note: --use-call-graph requires a Magellan code graph database");
                         (None, None)
                     }
@@ -2906,7 +3117,10 @@ pub mod cmds {
                     }
                     if let Some(ref backward) = backward_impact {
                         if !backward.is_empty() {
-                            println!("  Backward Impact: {} functions can reach this", backward.len());
+                            println!(
+                                "  Backward Impact: {} functions can reach this",
+                                backward.len()
+                            );
                             for sym in backward {
                                 println!("    - {}", sym.fqn.as_deref().unwrap_or(&sym.file_path));
                             }
@@ -2922,7 +3136,14 @@ pub mod cmds {
                         println!("  Affected blocks: (none - block has no downstream impact)");
                     }
                     println!("  Max depth reached: {}", impact.max_depth_reached);
-                    println!("  Contains cycles: {}", if impact.has_cycles { "yes (loop detected)" } else { "no" });
+                    println!(
+                        "  Contains cycles: {}",
+                        if impact.has_cycles {
+                            "yes (loop detected)"
+                        } else {
+                            "no"
+                        }
+                    );
                     if let Some(depth) = max_depth {
                         println!("  Depth limit: {}", depth);
                     } else {
@@ -2954,7 +3175,7 @@ pub mod cmds {
     }
 
     pub fn cycles(args: &CyclesArgs, cli: &Cli) -> Result<()> {
-        use crate::analysis::{MagellanBridge, CycleInfo, EnhancedCycles, LoopInfo};
+        use crate::analysis::{CycleInfo, EnhancedCycles, LoopInfo, MagellanBridge};
         use crate::cfg::detect_natural_loops;
         use crate::cfg::load_cfg_from_db;
         use crate::storage::MirageDb;
@@ -2963,25 +3184,28 @@ pub mod cmds {
         let db_path = super::resolve_db_path(cli.db.clone())?;
 
         // Default: show both types if no flag specified
-        let show_call_graph = args.call_graph || args.both || (!args.call_graph && !args.function_loops && !args.both);
-        let show_function_loops = args.function_loops || args.both || (!args.call_graph && !args.function_loops && !args.both);
+        let show_call_graph = args.call_graph
+            || args.both
+            || (!args.call_graph && !args.function_loops && !args.both);
+        let show_function_loops = args.function_loops
+            || args.both
+            || (!args.call_graph && !args.function_loops && !args.both);
 
         // Detect call graph cycles if requested
         let call_graph_cycles: Vec<CycleInfo> = if show_call_graph {
             match MagellanBridge::open(&db_path) {
-                Ok(bridge) => {
-                    match bridge.detect_cycles() {
-                        Ok(report) => {
-                            report.cycles.iter().map(|c| c.into()).collect()
-                        }
-                        Err(e) => {
-                            eprintln!("Warning: Failed to detect call graph cycles: {}", e);
-                            vec![]
-                        }
+                Ok(bridge) => match bridge.detect_cycles() {
+                    Ok(report) => report.cycles.iter().map(|c| c.into()).collect(),
+                    Err(e) => {
+                        eprintln!("Warning: Failed to detect call graph cycles: {}", e);
+                        vec![]
                     }
-                }
+                },
                 Err(e) => {
-                    eprintln!("Warning: Could not open Magellan database for call graph cycles: {}", e);
+                    eprintln!(
+                        "Warning: Could not open Magellan database for call graph cycles: {}",
+                        e
+                    );
                     eprintln!("Note: Call graph cycles require a Magellan code graph database");
                     vec![]
                 }
@@ -2991,7 +3215,8 @@ pub mod cmds {
         };
 
         // Detect function loops if requested
-        let mut function_loops_map: std::collections::HashMap<String, Vec<LoopInfo>> = std::collections::HashMap::new();
+        let mut function_loops_map: std::collections::HashMap<String, Vec<LoopInfo>> =
+            std::collections::HashMap::new();
 
         if show_function_loops {
             // Open Mirage database
@@ -3014,7 +3239,9 @@ pub mod cmds {
             // Query all functions from the database
             // Note: Requires SQLite backend for SQL queries
             if !db.is_sqlite() {
-                output::error("The 'cycles' command with --function-loops requires SQLite backend.");
+                output::error(
+                    "The 'cycles' command with --function-loops requires SQLite backend.",
+                );
                 output::info("Native-V3 backend is not yet supported for this feature.");
                 std::process::exit(output::EXIT_USAGE);
             }
@@ -3054,19 +3281,24 @@ pub mod cmds {
                                 let natural_loops = detect_natural_loops(&cfg);
 
                                 if !natural_loops.is_empty() {
-                                    let loop_infos: Vec<LoopInfo> = natural_loops.iter().map(|loop_| {
-                                        let nesting_level = loop_.nesting_level(&natural_loops);
-                                        let body_blocks: Vec<usize> = loop_.body.iter()
-                                            .map(|&node| cfg[node].id)
-                                            .collect();
-                                        LoopInfo {
-                                            header: cfg[loop_.header].id,
-                                            back_edge_from: cfg[loop_.back_edge.0].id,
-                                            body_size: loop_.size(),
-                                            nesting_level,
-                                            body_blocks,
-                                        }
-                                    }).collect();
+                                    let loop_infos: Vec<LoopInfo> = natural_loops
+                                        .iter()
+                                        .map(|loop_| {
+                                            let nesting_level = loop_.nesting_level(&natural_loops);
+                                            let body_blocks: Vec<usize> = loop_
+                                                .body
+                                                .iter()
+                                                .map(|&node| cfg[node].id)
+                                                .collect();
+                                            LoopInfo {
+                                                header: cfg[loop_.header].id,
+                                                back_edge_from: cfg[loop_.back_edge.0].id,
+                                                body_size: loop_.size(),
+                                                nesting_level,
+                                                body_blocks,
+                                            }
+                                        })
+                                        .collect();
 
                                     function_loops_map.insert(function_name, loop_infos);
                                 }
@@ -3081,7 +3313,8 @@ pub mod cmds {
         }
 
         // Combine results
-        let total_cycles = call_graph_cycles.len() + function_loops_map.values().map(|v| v.len()).sum::<usize>();
+        let total_cycles =
+            call_graph_cycles.len() + function_loops_map.values().map(|v| v.len()).sum::<usize>();
 
         let enhanced_cycles = EnhancedCycles {
             call_graph_cycles,
@@ -3096,7 +3329,10 @@ pub mod cmds {
                 println!();
 
                 if show_call_graph {
-                    println!("Call Graph Cycles (Inter-procedural): {}", enhanced_cycles.call_graph_cycles.len());
+                    println!(
+                        "Call Graph Cycles (Inter-procedural): {}",
+                        enhanced_cycles.call_graph_cycles.len()
+                    );
                     if enhanced_cycles.call_graph_cycles.is_empty() {
                         println!("  No call graph cycles detected");
                     } else {
@@ -3116,8 +3352,10 @@ pub mod cmds {
                 }
 
                 if show_function_loops {
-                    println!("Function Loops (Intra-procedural): {} functions with loops",
-                        enhanced_cycles.function_loops.len());
+                    println!(
+                        "Function Loops (Intra-procedural): {} functions with loops",
+                        enhanced_cycles.function_loops.len()
+                    );
                     if enhanced_cycles.function_loops.is_empty() {
                         println!("  No natural loops detected in any function");
                     } else {
@@ -3127,7 +3365,10 @@ pub mod cmds {
                                 for (i, loop_info) in loops.iter().enumerate() {
                                     println!("    Loop {}:", i + 1);
                                     println!("      Header: Block {}", loop_info.header);
-                                    println!("      Back edge from: Block {}", loop_info.back_edge_from);
+                                    println!(
+                                        "      Back edge from: Block {}",
+                                        loop_info.back_edge_from
+                                    );
                                     println!("      Body size: {} blocks", loop_info.body_size);
                                     println!("      Nesting level: {}", loop_info.nesting_level);
                                     println!("      Body blocks: {:?}", loop_info.body_blocks);
@@ -3182,12 +3423,8 @@ pub mod cmds {
 
         // Perform the slice based on direction
         let slice_result: SliceWrapper = match args.direction {
-            SliceDirectionArg::Backward => {
-                bridge.backward_slice(&args.symbol)?
-            }
-            SliceDirectionArg::Forward => {
-                bridge.forward_slice(&args.symbol)?
-            }
+            SliceDirectionArg::Backward => bridge.backward_slice(&args.symbol)?,
+            SliceDirectionArg::Forward => bridge.forward_slice(&args.symbol)?,
         };
 
         // Output based on format
@@ -3198,7 +3435,10 @@ pub mod cmds {
 
                 // Target symbol
                 println!("Target:");
-                println!("  Symbol: {}", slice_result.target.fqn.as_deref().unwrap_or(&args.symbol));
+                println!(
+                    "  Symbol: {}",
+                    slice_result.target.fqn.as_deref().unwrap_or(&args.symbol)
+                );
                 println!("  Kind: {}", slice_result.target.kind);
                 println!("  File: {}", slice_result.target.file_path);
                 println!();
@@ -3206,18 +3446,29 @@ pub mod cmds {
                 // Statistics
                 println!("Statistics:");
                 println!("  Total symbols in slice: {}", slice_result.symbol_count);
-                println!("  Data dependencies: {}", slice_result.statistics.data_dependencies);
-                println!("  Control dependencies: {}", slice_result.statistics.control_dependencies);
+                println!(
+                    "  Data dependencies: {}",
+                    slice_result.statistics.data_dependencies
+                );
+                println!(
+                    "  Control dependencies: {}",
+                    slice_result.statistics.control_dependencies
+                );
                 println!();
 
                 // Included symbols (verbose only)
                 if args.verbose {
-                    println!("Included symbols ({}):", slice_result.included_symbols.len());
+                    println!(
+                        "Included symbols ({}):",
+                        slice_result.included_symbols.len()
+                    );
                     for (i, symbol) in slice_result.included_symbols.iter().enumerate() {
-                        println!("  {}. {}", i + 1, symbol.fqn.as_deref().unwrap_or("<unknown>"));
-                        println!("     Kind: {}, File: {}",
-                            symbol.kind,
-                            symbol.file_path);
+                        println!(
+                            "  {}. {}",
+                            i + 1,
+                            symbol.fqn.as_deref().unwrap_or("<unknown>")
+                        );
+                        println!("     Kind: {}, File: {}", symbol.kind, symbol.file_path);
                     }
                 } else {
                     println!("Use --verbose to see all included symbols");
@@ -3239,9 +3490,12 @@ pub mod cmds {
     pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
         use crate::analysis::MagellanBridge;
         #[cfg(feature = "sqlite")]
-        use crate::cfg::{enumerate_paths_with_context, EnumerationContext, PathLimits, load_cfg_from_db_with_conn};
-        use std::collections::HashMap;
+        use crate::cfg::{
+            enumerate_paths_with_context, load_cfg_from_db_with_conn, EnumerationContext,
+            PathLimits,
+        };
         use crate::storage::MirageDb;
+        use std::collections::HashMap;
 
         let db_path = super::resolve_db_path(cli.db.clone())?;
 
@@ -3254,7 +3508,7 @@ pub mod cmds {
                     let error = output::JsonError::new(
                         "DatabaseError",
                         &format!("Failed to open database: {}", e),
-                        output::E_DATABASE_NOT_FOUND
+                        output::E_DATABASE_NOT_FOUND,
                     );
                     let wrapper = output::JsonResponse::new(error);
                     println!("{}", wrapper.to_json());
@@ -3315,7 +3569,7 @@ pub mod cmds {
                                         risk_score,
                                         path_count: *path_count,
                                         dominance_factor: dominance,
-                                        complexity: 0,  // Would need CFG for this
+                                        complexity: 0, // Would need CFG for this
                                         file_path: "".to_string(),
                                     });
                                 }
@@ -3324,7 +3578,9 @@ pub mod cmds {
                     }
                 }
                 Err(_) => {
-                    output::warn("Magellan database not available, using intra-procedural analysis");
+                    output::warn(
+                        "Magellan database not available, using intra-procedural analysis",
+                    );
                 }
             }
         }
@@ -3365,7 +3621,7 @@ pub mod cmds {
 
                         // Complexity = block count
                         let complexity = cfg.node_count();
-                        let dominance = 1.0;  // Intra-procedural doesn't have call dominance
+                        let dominance = 1.0; // Intra-procedural doesn't have call dominance
                         let risk_score = path_count as f64 * 0.5 + complexity as f64 * 0.1;
 
                         hotspots.push(HotspotEntry {
@@ -3396,17 +3652,34 @@ pub mod cmds {
             entry_point: args.entry.clone(),
             total_functions: function_count,
             hotspots: hotspots.clone(),
-            mode: if args.inter_procedural { "inter-procedural" } else { "intra-procedural" }.to_string(),
+            mode: if args.inter_procedural {
+                "inter-procedural"
+            } else {
+                "intra-procedural"
+            }
+            .to_string(),
         };
 
         match cli.output {
             OutputFormat::Human => {
-                output::header(&format!("Hotspots Analysis (entry: {})", response.entry_point));
-                output::info(&format!("Found {} hotspots out of {} functions", hotspots.len(), response.total_functions));
+                output::header(&format!(
+                    "Hotspots Analysis (entry: {})",
+                    response.entry_point
+                ));
+                output::info(&format!(
+                    "Found {} hotspots out of {} functions",
+                    hotspots.len(),
+                    response.total_functions
+                ));
                 println!();
 
                 for (i, hotspot) in hotspots.iter().enumerate() {
-                    println!("{}. {} (risk: {:.1})", i + 1, hotspot.function, hotspot.risk_score);
+                    println!(
+                        "{}. {} (risk: {:.1})",
+                        i + 1,
+                        hotspot.function,
+                        hotspot.risk_score
+                    );
                     if args.verbose {
                         println!("   Paths: {}", hotspot.path_count);
                         println!("   Dominance: {:.1}", hotspot.dominance_factor);
@@ -3429,8 +3702,9 @@ pub mod cmds {
 
     pub fn hotpaths(args: &HotpathsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{
+            detect_natural_loops, enumerate_paths, find_entry,
             hotpaths::{compute_hot_paths, HotpathsOptions},
-            detect_natural_loops, enumerate_paths, find_entry, PathLimits,
+            PathLimits,
         };
         use crate::storage::MirageDb;
 
@@ -3464,7 +3738,10 @@ pub mod cmds {
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
-                    output::error(&format!("Function '{}' not found in database", args.function));
+                    output::error(&format!(
+                        "Function '{}' not found in database",
+                        args.function
+                    ));
                     output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                     std::process::exit(output::EXIT_DATABASE);
                 }
@@ -3485,7 +3762,10 @@ pub mod cmds {
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
-                    output::error(&format!("Failed to load CFG for function '{}'", args.function));
+                    output::error(&format!(
+                        "Failed to load CFG for function '{}'",
+                        args.function
+                    ));
                     output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
@@ -3496,7 +3776,10 @@ pub mod cmds {
         let entry = match find_entry(&cfg) {
             Some(entry) => entry,
             None => {
-                output::error(&format!("No entry block found for function '{}'", args.function));
+                output::error(&format!(
+                    "No entry block found for function '{}'",
+                    args.function
+                ));
                 std::process::exit(output::EXIT_DATABASE);
             }
         };
@@ -3551,7 +3834,7 @@ pub mod cmds {
 
     pub fn patterns(args: &PatternsArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{detect_if_else_patterns, detect_match_patterns};
-        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
+        use crate::cfg::{load_cfg_from_db, resolve_function_name_with_file};
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -3576,21 +3859,25 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id (with optional file filter)
-        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
-            Ok(id) => id,
-            Err(_e) => {
-                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::function_not_found(&args.function);
-                    let wrapper = output::JsonResponse::new(error);
-                    println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_DATABASE);
-                } else {
-                    output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
-                    std::process::exit(output::EXIT_DATABASE);
+        let function_id =
+            match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
+                Ok(id) => id,
+                Err(_e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::function_not_found(&args.function);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!(
+                            "Function '{}' not found in database",
+                            args.function
+                        ));
+                        output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
                 }
-            }
-        };
+            };
 
         // Load CFG from database
         let cfg = match load_cfg_from_db(&db, function_id) {
@@ -3606,7 +3893,10 @@ pub mod cmds {
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
-                    output::error(&format!("Failed to load CFG for function '{}'", args.function));
+                    output::error(&format!(
+                        "Failed to load CFG for function '{}'",
+                        args.function
+                    ));
                     output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
@@ -3614,8 +3904,8 @@ pub mod cmds {
         };
 
         // Detect patterns based on filter flags
-        let show_if_else = !args.r#match;  // Show if/else unless --match only
-        let show_match = !args.if_else;    // Show match unless --if-else only
+        let show_if_else = !args.r#match; // Show if/else unless --match only
+        let show_match = !args.if_else; // Show match unless --if-else only
 
         let if_else_patterns = if show_if_else {
             detect_if_else_patterns(&cfg)
@@ -3630,24 +3920,26 @@ pub mod cmds {
         };
 
         // Convert to response format
-        let if_else_infos: Vec<IfElseInfo> = if_else_patterns.iter().map(|p| {
-            IfElseInfo {
+        let if_else_infos: Vec<IfElseInfo> = if_else_patterns
+            .iter()
+            .map(|p| IfElseInfo {
                 condition_block: cfg[p.condition].id,
                 true_branch: cfg[p.true_branch].id,
                 false_branch: cfg[p.false_branch].id,
                 merge_point: p.merge_point.map(|n| cfg[n].id),
                 has_else: p.has_else(),
-            }
-        }).collect();
+            })
+            .collect();
 
-        let match_infos: Vec<MatchInfo> = match_patterns.iter().map(|p| {
-            MatchInfo {
+        let match_infos: Vec<MatchInfo> = match_patterns
+            .iter()
+            .map(|p| MatchInfo {
                 switch_block: cfg[p.switch_node].id,
                 branch_count: p.branch_count(),
                 targets: p.targets.iter().map(|n| cfg[*n].id).collect(),
                 otherwise: cfg[p.otherwise].id,
-            }
-        }).collect();
+            })
+            .collect();
 
         // Output based on format
         match cli.output {
@@ -3715,7 +4007,7 @@ pub mod cmds {
 
     pub fn frontiers(args: &FrontiersArgs, cli: &Cli) -> Result<()> {
         use crate::cfg::{compute_dominance_frontiers, DominatorTree};
-        use crate::cfg::{resolve_function_name_with_file, load_cfg_from_db};
+        use crate::cfg::{load_cfg_from_db, resolve_function_name_with_file};
         use crate::storage::MirageDb;
 
         // Resolve database path
@@ -3740,21 +4032,25 @@ pub mod cmds {
         };
 
         // Resolve function name/ID to function_id (with optional file filter)
-        let function_id = match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
-            Ok(id) => id,
-            Err(_e) => {
-                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::function_not_found(&args.function);
-                    let wrapper = output::JsonResponse::new(error);
-                    println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_DATABASE);
-                } else {
-                    output::error(&format!("Function '{}' not found in database", args.function));
-                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
-                    std::process::exit(output::EXIT_DATABASE);
+        let function_id =
+            match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
+                Ok(id) => id,
+                Err(_e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::function_not_found(&args.function);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!(
+                            "Function '{}' not found in database",
+                            args.function
+                        ));
+                        output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
                 }
-            }
-        };
+            };
 
         // Load CFG from database
         let cfg = match load_cfg_from_db(&db, function_id) {
@@ -3770,7 +4066,10 @@ pub mod cmds {
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
-                    output::error(&format!("Failed to load CFG for function '{}'", args.function));
+                    output::error(&format!(
+                        "Failed to load CFG for function '{}'",
+                        args.function
+                    ));
                     output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
@@ -3794,9 +4093,8 @@ pub mod cmds {
             // Show iterated dominance frontier
             let all_nodes: Vec<petgraph::graph::NodeIndex> = cfg.node_indices().collect();
             let iterated_frontier = frontiers.iterated_frontier(&all_nodes);
-            let iterated_blocks: Vec<usize> = iterated_frontier.iter()
-                .map(|&n| cfg[n].id)
-                .collect();
+            let iterated_blocks: Vec<usize> =
+                iterated_frontier.iter().map(|&n| cfg[n].id).collect();
 
             match cli.output {
                 OutputFormat::Human => {
@@ -3828,8 +4126,7 @@ pub mod cmds {
             }
         } else if let Some(node_id) = args.node {
             // Show frontier for specific node only
-            let target_node = cfg.node_indices()
-                .find(|&n| cfg[n].id == node_id);
+            let target_node = cfg.node_indices().find(|&n| cfg[n].id == node_id);
 
             let target_node = match target_node {
                 Some(node) => node,
@@ -3847,9 +4144,7 @@ pub mod cmds {
             };
 
             let frontier = frontiers.frontier(target_node);
-            let frontier_blocks: Vec<usize> = frontier.iter()
-                .map(|&n| cfg[n].id)
-                .collect();
+            let frontier_blocks: Vec<usize> = frontier.iter().map(|&n| cfg[n].id).collect();
 
             match cli.output {
                 OutputFormat::Human => {
@@ -3885,7 +4180,8 @@ pub mod cmds {
             }
         } else {
             // Show all nodes with non-empty frontiers
-            let nodes_with_frontiers: Vec<NodeFrontier> = frontiers.nodes_with_frontiers()
+            let nodes_with_frontiers: Vec<NodeFrontier> = frontiers
+                .nodes_with_frontiers()
                 .map(|n| {
                     let frontier = frontiers.frontier(n);
                     NodeFrontier {
@@ -3898,7 +4194,10 @@ pub mod cmds {
             match cli.output {
                 OutputFormat::Human => {
                     println!("Function: {}", args.function);
-                    println!("Nodes with non-empty dominance frontiers: {}", nodes_with_frontiers.len());
+                    println!(
+                        "Nodes with non-empty dominance frontiers: {}",
+                        nodes_with_frontiers.len()
+                    );
                     println!();
 
                     if nodes_with_frontiers.is_empty() {
@@ -4002,7 +4301,7 @@ pub mod cmds {
     }
 
     fn print_diff_human(diff: &crate::cfg::diff::CfgDiff, show_edges: bool, verbose: bool) {
-        use crate::output::{info, warn, success};
+        use crate::output::{info, success, warn};
 
         info(&format!("CFG Diff: {}", diff.function_name));
         println!("  Before: {}", diff.before_snapshot);
@@ -4022,7 +4321,10 @@ pub mod cmds {
             println!();
             info(&format!("Added blocks ({}):", diff.added_blocks.len()));
             for block in &diff.added_blocks {
-                println!("  + Block {}: {} @ {}", block.block_id, block.kind, block.source_location);
+                println!(
+                    "  + Block {}: {} @ {}",
+                    block.block_id, block.kind, block.source_location
+                );
             }
         }
 
@@ -4030,27 +4332,32 @@ pub mod cmds {
             println!();
             info(&format!("Deleted blocks ({}):", diff.deleted_blocks.len()));
             for block in &diff.deleted_blocks {
-                println!("  - Block {}: {} @ {}", block.block_id, block.kind, block.source_location);
+                println!(
+                    "  - Block {}: {} @ {}",
+                    block.block_id, block.kind, block.source_location
+                );
             }
         }
 
         if !diff.modified_blocks.is_empty() && verbose {
             println!();
-            info(&format!("Modified blocks ({}):", diff.modified_blocks.len()));
+            info(&format!(
+                "Modified blocks ({}):",
+                diff.modified_blocks.len()
+            ));
             for change in &diff.modified_blocks {
                 match &change.change_type {
                     crate::cfg::diff::ChangeType::TerminatorChanged { before, after } => {
-                        println!("  ~ Block {}: {} -> {}",
-                            change.block_id,
-                            before,
-                            after
-                        );
+                        println!("  ~ Block {}: {} -> {}", change.block_id, before, after);
                     }
                     crate::cfg::diff::ChangeType::SourceLocationChanged => {
                         println!("  ~ Block {}: location changed", change.block_id);
                     }
                     crate::cfg::diff::ChangeType::BothChanged => {
-                        println!("  ~ Block {}: terminator and location changed", change.block_id);
+                        println!(
+                            "  ~ Block {}: terminator and location changed",
+                            change.block_id
+                        );
                     }
                     crate::cfg::diff::ChangeType::EdgesChanged => {
                         println!("  ~ Block {}: edges changed", change.block_id);
@@ -4064,14 +4371,20 @@ pub mod cmds {
                 println!();
                 info(&format!("Added edges ({}):", diff.added_edges.len()));
                 for edge in &diff.added_edges {
-                    println!("  + {} -> {} ({})", edge.from_block, edge.to_block, edge.edge_type);
+                    println!(
+                        "  + {} -> {} ({})",
+                        edge.from_block, edge.to_block, edge.edge_type
+                    );
                 }
             }
             if !diff.deleted_edges.is_empty() {
                 println!();
                 info(&format!("Deleted edges ({}):", diff.deleted_edges.len()));
                 for edge in &diff.deleted_edges {
-                    println!("  - {} -> {} ({})", edge.from_block, edge.to_block, edge.edge_type);
+                    println!(
+                        "  - {} -> {} ({})",
+                        edge.from_block, edge.to_block, edge.edge_type
+                    );
                 }
             }
         }
@@ -4121,12 +4434,7 @@ pub mod cmds {
         };
 
         // Build ICFG
-        let icfg = match build_icfg(
-            db.storage(),
-            db.backend(),
-            function_id,
-            options,
-        ) {
+        let icfg = match build_icfg(db.storage(), db.backend(), function_id, options) {
             Ok(icfg) => icfg,
             Err(e) => {
                 error(&format!("Failed to build ICFG: {}", e));
@@ -4209,7 +4517,9 @@ pub mod cmds {
             StorageBackendFormat::NativeV3 => BackendFormat::NativeV3,
             StorageBackendFormat::Geometric => BackendFormat::Geometric,
             StorageBackendFormat::Unknown => {
-                return Err(anyhow::anyhow!("Cannot detect backend format: unknown format"));
+                return Err(anyhow::anyhow!(
+                    "Cannot detect backend format: unknown format"
+                ));
             }
         };
 
@@ -4217,13 +4527,16 @@ pub mod cmds {
         if args.from != actual_format_cli {
             return Err(anyhow::anyhow!(
                 "Source backend mismatch: expected {}, found {:?}",
-                args.from, actual_format
+                args.from,
+                actual_format
             ));
         }
 
         // Validate source and target are different
         if args.from == args.to {
-            return Err(anyhow::anyhow!("Source and target backends must be different"));
+            return Err(anyhow::anyhow!(
+                "Source and target backends must be different"
+            ));
         }
 
         // Dry run: just report what would happen
@@ -4242,7 +4555,9 @@ pub mod cmds {
                     });
                     match cli.output {
                         OutputFormat::Json => println!("{}", serde_json::to_string(&output)?),
-                        OutputFormat::Pretty => println!("{}", serde_json::to_string_pretty(&output)?),
+                        OutputFormat::Pretty => {
+                            println!("{}", serde_json::to_string_pretty(&output)?)
+                        }
                         _ => unreachable!(),
                     }
                 }
@@ -4298,8 +4613,12 @@ pub mod cmds {
                                 "side_tables_migrated": result.side_tables_migrated,
                             });
                             match cli.output {
-                                OutputFormat::Json => println!("{}", serde_json::to_string(&output)?),
-                                OutputFormat::Pretty => println!("{}", serde_json::to_string_pretty(&output)?),
+                                OutputFormat::Json => {
+                                    println!("{}", serde_json::to_string(&output)?)
+                                }
+                                OutputFormat::Pretty => {
+                                    println!("{}", serde_json::to_string_pretty(&output)?)
+                                }
                                 _ => unreachable!(),
                             }
                         }
@@ -4319,12 +4638,10 @@ pub mod cmds {
                     ))
                 }
             }
-            (BackendFormat::NativeV3, BackendFormat::Sqlite) => {
-                Err(anyhow::anyhow!(
-                    "Migration from native-v3 to sqlite is not yet supported. \
+            (BackendFormat::NativeV3, BackendFormat::Sqlite) => Err(anyhow::anyhow!(
+                "Migration from native-v3 to sqlite is not yet supported. \
                      SQLite backend is the default and recommended format."
-                ))
-            }
+            )),
             _ => unreachable!(),
         }
     }
@@ -4346,8 +4663,11 @@ fn print_hotpaths_human(hot_paths: &[crate::cfg::hotpaths::HotPath], show_ration
     }
 
     for (i, hp) in hot_paths.iter().enumerate() {
-        println!("\n{}. Path {} - Score: {:.2}",
-            i + 1, hp.path_id, hp.hotness_score
+        println!(
+            "\n{}. Path {} - Score: {:.2}",
+            i + 1,
+            hp.path_id,
+            hp.hotness_score
         );
 
         if show_rationale && !hp.rationale.is_empty() {
@@ -4452,10 +4772,22 @@ mod cfg_tests {
         let dot = export_dot(&cfg);
 
         // Verify basic Graphviz DOT structure
-        assert!(dot.contains("digraph CFG"), "DOT output should contain 'digraph CFG'");
-        assert!(dot.contains("rankdir=TB"), "DOT output should contain rankdir attribute");
-        assert!(dot.contains("node [shape=box"), "DOT output should contain node shape attribute");
-        assert!(dot.contains("}"), "DOT output should end with closing brace");
+        assert!(
+            dot.contains("digraph CFG"),
+            "DOT output should contain 'digraph CFG'"
+        );
+        assert!(
+            dot.contains("rankdir=TB"),
+            "DOT output should contain rankdir attribute"
+        );
+        assert!(
+            dot.contains("node [shape=box"),
+            "DOT output should contain node shape attribute"
+        );
+        assert!(
+            dot.contains("}"),
+            "DOT output should end with closing brace"
+        );
 
         // Verify edge syntax
         assert!(dot.contains("->"), "DOT output should contain edge arrows");
@@ -4469,25 +4801,52 @@ mod cfg_tests {
         let export = export_json(&cfg, function_name);
 
         // Verify function name is included
-        assert_eq!(export.function_name, function_name, "JSON export should include function name");
+        assert_eq!(
+            export.function_name, function_name,
+            "JSON export should include function name"
+        );
 
         // Verify structure
-        assert!(export.entry.is_some(), "JSON export should have an entry block");
-        assert!(!export.exits.is_empty(), "JSON export should have exit blocks");
+        assert!(
+            export.entry.is_some(),
+            "JSON export should have an entry block"
+        );
+        assert!(
+            !export.exits.is_empty(),
+            "JSON export should have exit blocks"
+        );
         assert!(!export.blocks.is_empty(), "JSON export should have blocks");
         assert!(!export.edges.is_empty(), "JSON export should have edges");
 
         // Verify JSON can be serialized
         let json_str = serde_json::to_string(&export);
-        assert!(json_str.is_ok(), "JSON export should be serializable to JSON");
+        assert!(
+            json_str.is_ok(),
+            "JSON export should be serializable to JSON"
+        );
 
         // Verify JSON contains function name
         let json = json_str.unwrap();
-        assert!(json.contains(function_name), "JSON output should contain function name");
-        assert!(json.contains("\"entry\""), "JSON output should contain entry field");
-        assert!(json.contains("\"exits\""), "JSON output should contain exits field");
-        assert!(json.contains("\"blocks\""), "JSON output should contain blocks field");
-        assert!(json.contains("\"edges\""), "JSON output should contain edges field");
+        assert!(
+            json.contains(function_name),
+            "JSON output should contain function name"
+        );
+        assert!(
+            json.contains("\"entry\""),
+            "JSON output should contain entry field"
+        );
+        assert!(
+            json.contains("\"exits\""),
+            "JSON output should contain exits field"
+        );
+        assert!(
+            json.contains("\"blocks\""),
+            "JSON output should contain blocks field"
+        );
+        assert!(
+            json.contains("\"edges\""),
+            "JSON output should contain edges field"
+        );
     }
 
     /// Test that function name is correctly passed to export_json()
@@ -4496,15 +4855,14 @@ mod cfg_tests {
         let cfg = cmds::create_test_cfg();
 
         // Test with different function names
-        let test_names = vec![
-            "my_function",
-            "TestFunc",
-            "module::submodule::function",
-        ];
+        let test_names = vec!["my_function", "TestFunc", "module::submodule::function"];
 
         for name in test_names {
             let export = export_json(&cfg, name);
-            assert_eq!(export.function_name, name, "Function name should be preserved in export");
+            assert_eq!(
+                export.function_name, name,
+                "Function name should be preserved in export"
+            );
         }
     }
 
@@ -4535,7 +4893,11 @@ mod cfg_tests {
             OutputFormat::Pretty => CfgFormat::Json,
         });
 
-        assert_eq!(resolved_format, CfgFormat::Human, "Should fall back to Human format");
+        assert_eq!(
+            resolved_format,
+            CfgFormat::Human,
+            "Should fall back to Human format"
+        );
 
         // Test that CfgFormat::Json is used when cli.output is Json
         let cli_json = Cli {
@@ -4560,7 +4922,11 @@ mod cfg_tests {
             OutputFormat::Pretty => CfgFormat::Json,
         });
 
-        assert_eq!(resolved_format_json, CfgFormat::Json, "Should fall back to Json format");
+        assert_eq!(
+            resolved_format_json,
+            CfgFormat::Json,
+            "Should fall back to Json format"
+        );
     }
 
     /// Test that JsonResponse wrapper wraps CFGExport correctly
@@ -4594,10 +4960,16 @@ mod cfg_tests {
         let dot = export_dot(&cfg);
 
         // Check for ENTRY block marker (green fill)
-        assert!(dot.contains("lightgreen"), "DOT should mark entry block with green");
+        assert!(
+            dot.contains("lightgreen"),
+            "DOT should mark entry block with green"
+        );
 
         // Check for EXIT block marker (coral fill)
-        assert!(dot.contains("lightcoral"), "DOT should mark exit blocks with coral");
+        assert!(
+            dot.contains("lightcoral"),
+            "DOT should mark exit blocks with coral"
+        );
 
         // Check for block labels
         assert!(dot.contains("Block"), "DOT should contain block labels");
@@ -4610,8 +4982,14 @@ mod cfg_tests {
         let dot = export_dot(&cfg);
 
         // Check for edge colors (TrueBranch=green, FalseBranch=red)
-        assert!(dot.contains("color=green"), "DOT should show true branch edges in green");
-        assert!(dot.contains("color=red"), "DOT should show false branch edges in red");
+        assert!(
+            dot.contains("color=green"),
+            "DOT should show true branch edges in green"
+        );
+        assert!(
+            dot.contains("color=red"),
+            "DOT should show false branch edges in red"
+        );
     }
 }
 
@@ -4622,11 +5000,13 @@ mod cfg_tests {
 #[cfg(test)]
 mod status_tests {
     use crate::storage::{create_schema, MirageDb};
-    use rusqlite::{Connection, params};
+    use rusqlite::{params, Connection};
 
     /// Create a test database with sample data
     fn create_test_db() -> anyhow::Result<(tempfile::NamedTempFile, MirageDb)> {
-        use crate::storage::{REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION};
+        use crate::storage::{
+            REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION,
+        };
 
         let file = tempfile::NamedTempFile::new()?;
         let mut conn = Connection::open(file.path())?;
@@ -4681,11 +5061,8 @@ mod status_tests {
             params!(function_id, "return", "return", 10, 20, 2, 0, 2, 10),
         )?;
 
-        // Add test edges
-        conn.execute(
-            "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
-            params!(1, 2, "fallthrough"),
-        )?;
+        // cfg_edges table is managed by Magellan v11+; Mirage does not create it.
+        // Edges are reconstructed in memory from terminator data.
 
         // Add test paths
         conn.execute(
@@ -4712,11 +5089,18 @@ mod status_tests {
         let status = db.status().unwrap();
 
         assert_eq!(status.cfg_blocks, 2, "Should have 2 cfg_blocks");
-        assert_eq!(status.cfg_edges, 1, "Should have 1 cfg_edge");
+        // cfg_edges is managed by Magellan v11+; count may be 0 if table absent
+        assert_eq!(status.cfg_edges, 0, "cfg_edges count should be 0 (managed by Magellan)");
         assert_eq!(status.cfg_paths, 1, "Should have 1 cfg_path");
         assert_eq!(status.cfg_dominators, 1, "Should have 1 cfg_dominator");
-        assert_eq!(status.mirage_schema_version, 1, "Schema version should be 1");
-        assert_eq!(status.magellan_schema_version, 7, "Magellan version should be 7");
+        assert_eq!(
+            status.mirage_schema_version, 1,
+            "Schema version should be 1"
+        );
+        assert_eq!(
+            status.magellan_schema_version, 7,
+            "Magellan version should be 7"
+        );
     }
 
     /// Test that human output format contains expected fields
@@ -4730,9 +5114,18 @@ mod status_tests {
         assert!(status.cfg_blocks >= 0, "cfg_blocks should be non-negative");
         assert!(status.cfg_edges >= 0, "cfg_edges should be non-negative");
         assert!(status.cfg_paths >= 0, "cfg_paths should be non-negative");
-        assert!(status.cfg_dominators >= 0, "cfg_dominators should be non-negative");
-        assert!(status.mirage_schema_version > 0, "mirage_schema_version should be positive");
-        assert!(status.magellan_schema_version > 0, "magellan_schema_version should be positive");
+        assert!(
+            status.cfg_dominators >= 0,
+            "cfg_dominators should be non-negative"
+        );
+        assert!(
+            status.mirage_schema_version > 0,
+            "mirage_schema_version should be positive"
+        );
+        assert!(
+            status.magellan_schema_version > 0,
+            "magellan_schema_version should be positive"
+        );
     }
 
     /// Test that JSON output format is valid and contains expected structure
@@ -4779,12 +5172,18 @@ mod status_tests {
         let pretty_json = response.to_pretty_json();
 
         // Pretty JSON should contain newlines and indentation
-        assert!(pretty_json.contains("\n"), "Pretty JSON should contain newlines");
-        assert!(pretty_json.contains("  "), "Pretty JSON should contain indentation");
+        assert!(
+            pretty_json.contains("\n"),
+            "Pretty JSON should contain newlines"
+        );
+        assert!(
+            pretty_json.contains("  "),
+            "Pretty JSON should contain indentation"
+        );
 
         // Should still be valid JSON
-        let parsed: serde_json::Value = serde_json::from_str(&pretty_json)
-            .expect("Pretty JSON should be valid");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&pretty_json).expect("Pretty JSON should be valid");
         assert!(parsed.is_object(), "Parsed JSON should be an object");
         assert_eq!(parsed["schema_version"], "1.0.1");
         assert_eq!(parsed["tool"], "mirage");
@@ -4804,8 +5203,11 @@ mod status_tests {
             Ok(_) => panic!("Should fail to open non-existent database"),
             Err(e) => {
                 let err_msg = e.to_string();
-                assert!(err_msg.contains("Database not found") || err_msg.contains("not found"),
-                    "Error message should mention database not found: {}", err_msg);
+                assert!(
+                    err_msg.contains("Database not found") || err_msg.contains("not found"),
+                    "Error message should mention database not found: {}",
+                    err_msg
+                );
             }
         }
     }
@@ -4814,7 +5216,9 @@ mod status_tests {
     #[test]
     #[cfg(feature = "backend-sqlite")]
     fn test_status_empty_database_returns_zeros() {
-        use crate::storage::{REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION};
+        use crate::storage::{
+            REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION,
+        };
 
         let file = tempfile::NamedTempFile::new().unwrap();
         let mut conn = Connection::open(file.path()).unwrap();
@@ -4828,7 +5232,8 @@ mod status_tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -4839,7 +5244,8 @@ mod status_tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -4852,10 +5258,23 @@ mod status_tests {
         let db = MirageDb::open(file.path()).unwrap();
         let status = db.status().unwrap();
 
-        assert_eq!(status.cfg_blocks, 0, "Empty database should have 0 cfg_blocks");
-        assert_eq!(status.cfg_edges, 0, "Empty database should have 0 cfg_edges");
-        assert_eq!(status.cfg_paths, 0, "Empty database should have 0 cfg_paths");
-        assert_eq!(status.cfg_dominators, 0, "Empty database should have 0 cfg_dominators");
+        assert_eq!(
+            status.cfg_blocks, 0,
+            "Empty database should have 0 cfg_blocks"
+        );
+        // cfg_edges table is managed by Magellan v11+; Mirage does not create it
+        assert_eq!(
+            status.cfg_edges, 0,
+            "cfg_edges count should be 0 (table managed by Magellan)"
+        );
+        assert_eq!(
+            status.cfg_paths, 0,
+            "Empty database should have 0 cfg_paths"
+        );
+        assert_eq!(
+            status.cfg_dominators, 0,
+            "Empty database should have 0 cfg_dominators"
+        );
     }
 }
 
@@ -4866,7 +5285,7 @@ mod status_tests {
 #[cfg(test)]
 mod paths_tests {
     use super::*;
-    use crate::cfg::{PathKind, PathLimits, enumerate_paths};
+    use crate::cfg::{enumerate_paths, PathKind, PathLimits};
 
     /// Test that paths() command enumerates paths from a test CFG
     #[test]
@@ -4899,7 +5318,11 @@ mod paths_tests {
 
         // Verify filter worked by checking all remaining paths would be errors
         for path in &paths {
-            assert_eq!(path.kind, PathKind::Error, "Filtered paths should all be Error kind");
+            assert_eq!(
+                path.kind,
+                PathKind::Error,
+                "Filtered paths should all be Error kind"
+            );
         }
     }
 
@@ -4919,8 +5342,10 @@ mod paths_tests {
 
         // With max_length=1, we should get fewer paths than unrestricted
         let unlimited_paths = enumerate_paths(&cfg, &PathLimits::default());
-        assert!(paths.len() <= unlimited_paths.len(),
-            "Limited enumeration should produce <= paths than unlimited");
+        assert!(
+            paths.len() <= unlimited_paths.len(),
+            "Limited enumeration should produce <= paths than unlimited"
+        );
     }
 
     /// Test that PathsArgs.function is extracted correctly
@@ -4978,11 +5403,17 @@ mod paths_tests {
         assert_eq!(summary.blocks[0].block_id, 0, "first block_id should be 0");
         assert_eq!(summary.blocks[1].block_id, 1, "second block_id should be 1");
         assert_eq!(summary.blocks[2].block_id, 2, "third block_id should be 2");
-        assert_eq!(summary.blocks[0].terminator, "Unknown", "terminator should be Unknown placeholder");
+        assert_eq!(
+            summary.blocks[0].terminator, "Unknown",
+            "terminator should be Unknown placeholder"
+        );
 
         // Optional fields should be None until populated in future plans
         assert!(summary.summary.is_none(), "summary should be None");
-        assert!(summary.source_range.is_none(), "source_range should be None");
+        assert!(
+            summary.source_range.is_none(),
+            "source_range should be None"
+        );
     }
 
     /// Test PathSummary conversion for different PathKinds
@@ -5000,8 +5431,11 @@ mod paths_tests {
         for (kind, expected_str) in kinds {
             let path = Path::new(vec![0, 1], kind);
             let summary = PathSummary::from(path);
-            assert_eq!(summary.kind, expected_str,
-                "PathKind::{:?} should serialize to {}", kind, expected_str);
+            assert_eq!(
+                summary.kind, expected_str,
+                "PathKind::{:?} should serialize to {}",
+                kind, expected_str
+            );
         }
     }
 
@@ -5059,8 +5493,10 @@ mod paths_tests {
 
         // Each path should end at an exit block
         for path in &paths {
-            assert!(path.exit == 2 || path.exit == 3,
-                "Path exit should be either block 2 or 3 (the return blocks)");
+            assert!(
+                path.exit == 2 || path.exit == 3,
+                "Path exit should be either block 2 or 3 (the return blocks)"
+            );
         }
     }
 
@@ -5094,7 +5530,9 @@ mod paths_tests {
     /// Test PathSummary::from_with_cfg with source locations
     #[test]
     fn test_path_summary_from_with_cfg() {
-        use crate::cfg::{BasicBlock, BlockKind, EdgeType, Path, PathKind, SourceLocation, Terminator};
+        use crate::cfg::{
+            BasicBlock, BlockKind, EdgeType, Path, PathKind, SourceLocation, Terminator,
+        };
         use petgraph::graph::DiGraph;
         use std::path::PathBuf;
 
@@ -5171,7 +5609,10 @@ mod paths_tests {
         assert_eq!(summary.blocks[2].terminator, "Return");
 
         // Check source_range is populated
-        assert!(summary.source_range.is_some(), "source_range should be Some");
+        assert!(
+            summary.source_range.is_some(),
+            "source_range should be Some"
+        );
         let sr = summary.source_range.as_ref().unwrap();
         assert_eq!(sr.file_path, "test.rs");
         assert_eq!(sr.start_line, 1);
@@ -5194,7 +5635,10 @@ mod paths_tests {
         assert_eq!(summary.blocks[2].terminator, "Return");
 
         // source_range should be None when no source locations exist
-        assert!(summary.source_range.is_none(), "source_range should be None when CFG has no locations");
+        assert!(
+            summary.source_range.is_none(),
+            "source_range should be None when CFG has no locations"
+        );
     }
 
     // ------------------------------------------------------------------------
@@ -5220,7 +5664,8 @@ mod paths_tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -5231,7 +5676,8 @@ mod paths_tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -5245,12 +5691,13 @@ mod paths_tests {
         // Get test CFG and limits
         let cfg = cmds::create_test_cfg();
         let limits = PathLimits::default();
-        let test_function_id: i64 = 1;  // First auto-increment ID;
-        // Insert a test function entity (required for foreign key constraint)
+        let test_function_id: i64 = 1; // First auto-increment ID;
+                                       // Insert a test function entity (required for foreign key constraint)
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Enable foreign key enforcement
         conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
@@ -5263,20 +5710,29 @@ mod paths_tests {
             test_function_hash,
             &limits,
             &mut conn,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify we got paths
-        assert!(!paths1.is_empty(), "First call should enumerate and return paths");
+        assert!(
+            !paths1.is_empty(),
+            "First call should enumerate and return paths"
+        );
         assert_eq!(paths1.len(), 2, "Test CFG should have 2 paths");
 
         // Verify paths were stored in database
-        let path_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            rusqlite::params![test_function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let path_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                rusqlite::params![test_function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
-        assert_eq!(path_count, 2, "Paths should be stored in database after first call");
+        assert_eq!(
+            path_count, 2,
+            "Paths should be stored in database after first call"
+        );
 
         // Note: function_hash verification removed - not available in Magellan schema
     }
@@ -5300,7 +5756,8 @@ mod paths_tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -5311,7 +5768,8 @@ mod paths_tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -5325,7 +5783,8 @@ mod paths_tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Enable foreign key enforcement
         conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
@@ -5333,7 +5792,7 @@ mod paths_tests {
         // Get test CFG and limits
         let cfg = cmds::create_test_cfg();
         let limits = PathLimits::default();
-        let test_function_id: i64 = 1;  // First auto-increment ID;
+        let test_function_id: i64 = 1; // First auto-increment ID;
         let test_function_hash: &str = "test_cfg";
 
         // First call - cache miss, enumerates and stores
@@ -5343,14 +5802,17 @@ mod paths_tests {
             test_function_hash,
             &limits,
             &mut conn,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify paths were stored
-        let path_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            rusqlite::params![test_function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let path_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                rusqlite::params![test_function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(path_count, 2, "Should have 2 paths stored after first call");
 
         // Second call - cache hit, should return same paths
@@ -5360,10 +5822,15 @@ mod paths_tests {
             test_function_hash,
             &limits,
             &mut conn,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Should return same number of paths
-        assert_eq!(paths2.len(), paths1.len(), "Cache hit should return same number of paths");
+        assert_eq!(
+            paths2.len(),
+            paths1.len(),
+            "Cache hit should return same number of paths"
+        );
 
         // Paths should have identical path_ids (cache hit returns same data)
         let mut path_ids1: Vec<_> = paths1.iter().map(|p| &p.path_id).collect();
@@ -5371,13 +5838,19 @@ mod paths_tests {
         path_ids1.sort();
         path_ids2.sort();
 
-        assert_eq!(path_ids1, path_ids2, "Cache hit should return paths with same IDs");
+        assert_eq!(
+            path_ids1, path_ids2,
+            "Cache hit should return paths with same IDs"
+        );
 
         // Verify path entries match
         for (p1, p2) in paths1.iter().zip(paths2.iter()) {
             assert_eq!(p1.path_id, p2.path_id, "Path IDs should match on cache hit");
             assert_eq!(p1.kind, p2.kind, "Path kinds should match on cache hit");
-            assert_eq!(p1.blocks, p2.blocks, "Path blocks should match on cache hit");
+            assert_eq!(
+                p1.blocks, p2.blocks,
+                "Path blocks should match on cache hit"
+            );
         }
     }
 
@@ -5400,7 +5873,8 @@ mod paths_tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -5411,7 +5885,8 @@ mod paths_tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -5425,7 +5900,8 @@ mod paths_tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Enable foreign key enforcement
         conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
@@ -5433,7 +5909,7 @@ mod paths_tests {
         // Get test CFG and limits
         let cfg = cmds::create_test_cfg();
         let limits = PathLimits::default();
-        let test_function_id: i64 = 1;  // First auto-increment ID;
+        let test_function_id: i64 = 1; // First auto-increment ID;
         let test_function_hash_v1: &str = "test_cfg_v1";
         let test_function_hash_v3: &str = "test_cfg_v3";
 
@@ -5444,14 +5920,17 @@ mod paths_tests {
             test_function_hash_v1,
             &limits,
             &mut conn,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify paths were stored
-        let path_count_v1: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            rusqlite::params![test_function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let path_count_v1: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                rusqlite::params![test_function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(path_count_v1, 2, "Should have 2 paths after first call");
 
@@ -5464,18 +5943,25 @@ mod paths_tests {
             test_function_hash_v3,
             &limits,
             &mut conn,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Should still return paths (re-enumerated)
         assert!(!paths2.is_empty(), "Should re-enumerate");
-        assert_eq!(paths2.len(), paths1.len(), "Re-enumeration should produce same paths");
+        assert_eq!(
+            paths2.len(),
+            paths1.len(),
+            "Re-enumeration should produce same paths"
+        );
 
         // Verify paths were updated (old invalidated, new stored)
-        let path_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            rusqlite::params![test_function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let path_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                rusqlite::params![test_function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(path_count, 2, "Should have 2 paths after re-enumeration");
     }
@@ -5488,8 +5974,8 @@ mod paths_tests {
 #[cfg(test)]
 mod unreachable_tests {
     use super::*;
-    use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
     use crate::cfg::reachability::find_unreachable;
+    use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
     use petgraph::graph::DiGraph;
 
     /// Helper to create a test CFG with an unreachable block
@@ -5558,7 +6044,11 @@ mod unreachable_tests {
         let unreachable_indices = find_unreachable(&cfg);
 
         // Should find exactly 1 unreachable block (block 4)
-        assert_eq!(unreachable_indices.len(), 1, "Should find exactly 1 unreachable block");
+        assert_eq!(
+            unreachable_indices.len(),
+            1,
+            "Should find exactly 1 unreachable block"
+        );
 
         // Verify it's block 4
         let block_id = cfg.node_weight(unreachable_indices[0]).unwrap().id;
@@ -5576,15 +6066,13 @@ mod unreachable_tests {
             total_functions: 1,
             functions_with_unreachable: 1,
             unreachable_count: 1,
-            blocks: vec![
-                UnreachableBlock {
-                    block_id: 4,
-                    kind: "Exit".to_string(),
-                    statements: vec!["unreachable code".to_string()],
-                    terminator: "Unreachable".to_string(),
-                    incoming_edges: vec![],
-                }
-            ],
+            blocks: vec![UnreachableBlock {
+                block_id: 4,
+                kind: "Exit".to_string(),
+                statements: vec!["unreachable code".to_string()],
+                terminator: "Unreachable".to_string(),
+                incoming_edges: vec![],
+            }],
         };
 
         let wrapper = JsonResponse::new(response);
@@ -5662,7 +6150,11 @@ mod unreachable_tests {
         let unreachable_indices = find_unreachable(&cfg);
 
         // Test CFG should have no unreachable blocks
-        assert_eq!(unreachable_indices.len(), 0, "Test CFG should have no unreachable blocks");
+        assert_eq!(
+            unreachable_indices.len(),
+            0,
+            "Test CFG should have no unreachable blocks"
+        );
     }
 
     /// Test that --show-branches includes incoming edge details
@@ -5901,7 +6393,9 @@ mod dominators_tests {
 
     /// Create a minimal test database
     fn create_minimal_db() -> anyhow::Result<NamedTempFile> {
-        use crate::storage::{REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION};
+        use crate::storage::{
+            REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION,
+        };
         let file = NamedTempFile::new()?;
         let conn = rusqlite::Connection::open(file.path())?;
 
@@ -5957,15 +6451,7 @@ mod dominators_tests {
             [],
         )?;
 
-        conn.execute(
-            "CREATE TABLE cfg_edges (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                from_id INTEGER NOT NULL,
-                to_id INTEGER NOT NULL,
-                edge_type TEXT NOT NULL
-            )",
-            [],
-        )?;
+        // cfg_edges table is managed by Magellan v11+; Mirage does not create it.
 
         conn.execute(
             "CREATE TABLE cfg_paths (
@@ -6011,7 +6497,10 @@ mod dominators_tests {
         let cfg = cmds::create_test_cfg();
         let dom_tree = DominatorTree::new(&cfg);
 
-        assert!(dom_tree.is_some(), "DominatorTree should be computed successfully");
+        assert!(
+            dom_tree.is_some(),
+            "DominatorTree should be computed successfully"
+        );
 
         let dom_tree = dom_tree.unwrap();
         // Entry block (0) should be the root
@@ -6024,7 +6513,10 @@ mod dominators_tests {
         let cfg = cmds::create_test_cfg();
         let post_dom_tree = PostDominatorTree::new(&cfg);
 
-        assert!(post_dom_tree.is_some(), "PostDominatorTree should be computed successfully");
+        assert!(
+            post_dom_tree.is_some(),
+            "PostDominatorTree should be computed successfully"
+        );
 
         let post_dom_tree = post_dom_tree.unwrap();
         // Root of post-dominator tree should be an exit block
@@ -6045,16 +6537,32 @@ mod dominators_tests {
         let node_3 = cfg.node_indices().find(|&n| cfg[n].id == 3).unwrap();
 
         // Entry (0) has no immediate dominator
-        assert_eq!(dom_tree.immediate_dominator(node_0), None, "Entry should have no dominator");
+        assert_eq!(
+            dom_tree.immediate_dominator(node_0),
+            None,
+            "Entry should have no dominator"
+        );
 
         // Node 1 is dominated by entry (0)
-        assert_eq!(dom_tree.immediate_dominator(node_1), Some(node_0), "Node 1 should be dominated by entry");
+        assert_eq!(
+            dom_tree.immediate_dominator(node_1),
+            Some(node_0),
+            "Node 1 should be dominated by entry"
+        );
 
         // Node 2 is dominated by node 1 (through true branch)
-        assert_eq!(dom_tree.immediate_dominator(node_2), Some(node_1), "Node 2 should be dominated by node 1");
+        assert_eq!(
+            dom_tree.immediate_dominator(node_2),
+            Some(node_1),
+            "Node 2 should be dominated by node 1"
+        );
 
         // Node 3 is dominated by node 1 (through false branch)
-        assert_eq!(dom_tree.immediate_dominator(node_3), Some(node_1), "Node 3 should be dominated by node 1");
+        assert_eq!(
+            dom_tree.immediate_dominator(node_3),
+            Some(node_1),
+            "Node 3 should be dominated by node 1"
+        );
     }
 
     /// Test dominates() method
@@ -6073,7 +6581,10 @@ mod dominators_tests {
         assert!(dom_tree.dominates(node_0, node_2), "Entry dominates node 2");
 
         // Non-entry doesn't dominate entry
-        assert!(!dom_tree.dominates(node_1, node_0), "Node 1 does not dominate entry");
+        assert!(
+            !dom_tree.dominates(node_1, node_0),
+            "Node 1 does not dominate entry"
+        );
     }
 
     /// Test children() method returns dominated nodes
@@ -6123,7 +6634,10 @@ mod dominators_tests {
 
         assert_eq!(args.function, "my_function");
         assert!(args.post, "post flag should be true");
-        assert!(args.must_pass_through.is_none(), "must_pass_through should be None");
+        assert!(
+            args.must_pass_through.is_none(),
+            "must_pass_through should be None"
+        );
         assert!(!args.inter_procedural);
     }
 
@@ -6134,13 +6648,11 @@ mod dominators_tests {
             function: "test".to_string(),
             kind: "dominators".to_string(),
             root: Some(0),
-            dominance_tree: vec![
-                DominatorEntry {
-                    block: 0,
-                    immediate_dominator: None,
-                    dominated: vec![1],
-                },
-            ],
+            dominance_tree: vec![DominatorEntry {
+                block: 0,
+                immediate_dominator: None,
+                dominated: vec![1],
+            }],
             must_pass_through: None,
         };
 
@@ -6197,8 +6709,14 @@ mod dominators_tests {
         let node_2 = cfg.node_indices().find(|&n| cfg[n].id == 2).unwrap();
 
         // Exit post-dominates nodes that can reach it
-        assert!(post_dom_tree.post_dominates(node_2, node_2), "Node post-dominates itself");
-        assert!(post_dom_tree.post_dominates(node_2, node_1), "Exit post-dominates node 1");
+        assert!(
+            post_dom_tree.post_dominates(node_2, node_2),
+            "Node post-dominates itself"
+        );
+        assert!(
+            post_dom_tree.post_dominates(node_2, node_1),
+            "Exit post-dominates node 1"
+        );
     }
 
     /// Test immediate post-dominator relationships
@@ -6212,11 +6730,18 @@ mod dominators_tests {
 
         // Node 1 should be immediately post-dominated by an exit (2 or 3)
         let ipdom_1 = post_dom_tree.immediate_post_dominator(node_1);
-        assert!(ipdom_1.is_some(), "Node 1 should have an immediate post-dominator");
+        assert!(
+            ipdom_1.is_some(),
+            "Node 1 should have an immediate post-dominator"
+        );
 
         // Node 0 should be immediately post-dominated by node 1
         let ipdom_0 = post_dom_tree.immediate_post_dominator(node_0);
-        assert_eq!(ipdom_0, Some(node_1), "Node 0 should be immediately post-dominated by node 1");
+        assert_eq!(
+            ipdom_0,
+            Some(node_1),
+            "Node 0 should be immediately post-dominated by node 1"
+        );
     }
 
     /// Test that empty CFG returns None for DominatorTree
@@ -6226,7 +6751,10 @@ mod dominators_tests {
         let empty_cfg: crate::cfg::Cfg = DiGraph::new();
         let dom_tree = DominatorTree::new(&empty_cfg);
 
-        assert!(dom_tree.is_none(), "Empty CFG should produce None for DominatorTree");
+        assert!(
+            dom_tree.is_none(),
+            "Empty CFG should produce None for DominatorTree"
+        );
     }
 
     /// Test that empty CFG returns None for PostDominatorTree
@@ -6236,7 +6764,10 @@ mod dominators_tests {
         let empty_cfg: crate::cfg::Cfg = DiGraph::new();
         let post_dom_tree = PostDominatorTree::new(&empty_cfg);
 
-        assert!(post_dom_tree.is_none(), "Empty CFG should produce None for PostDominatorTree");
+        assert!(
+            post_dom_tree.is_none(),
+            "Empty CFG should produce None for PostDominatorTree"
+        );
     }
 
     /// Test JsonResponse wrapper for DominanceResponse
@@ -6275,7 +6806,8 @@ mod dominators_tests {
         let node_1 = cfg.node_indices().find(|&n| cfg[n].id == 1).unwrap();
 
         // All nodes dominated by node 1 should include 1, 2, and 3
-        let must_pass: Vec<usize> = cfg.node_indices()
+        let must_pass: Vec<usize> = cfg
+            .node_indices()
             .filter(|&n| dom_tree.dominates(node_1, n))
             .map(|n| cfg[n].id)
             .collect();
@@ -6305,13 +6837,11 @@ mod dominators_tests {
             function: "json_test".to_string(),
             kind: "post-dominators".to_string(),
             root: Some(3),
-            dominance_tree: vec![
-                DominatorEntry {
-                    block: 3,
-                    immediate_dominator: None,
-                    dominated: vec![0, 2],
-                },
-            ],
+            dominance_tree: vec![DominatorEntry {
+                block: 3,
+                immediate_dominator: None,
+                dominated: vec![0, 2],
+            }],
             must_pass_through: Some(MustPassThroughResult {
                 block: 0,
                 must_pass: vec![0, 1],
@@ -6335,13 +6865,16 @@ mod dominators_tests {
 #[cfg(test)]
 mod verify_tests {
     use super::*;
-    use crate::cfg::{PathLimits, enumerate_paths};
-    use crate::storage::MirageDb;
+    use crate::cfg::{enumerate_paths, PathLimits};
     use crate::output::JsonResponse;
+    use crate::storage::MirageDb;
 
     /// Create a test database with a cached path
-    fn create_test_db_with_cached_path() -> anyhow::Result<(tempfile::NamedTempFile, MirageDb, String)> {
-        use crate::storage::{REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION};
+    fn create_test_db_with_cached_path(
+    ) -> anyhow::Result<(tempfile::NamedTempFile, MirageDb, String)> {
+        use crate::storage::{
+            REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION,
+        };
         let file = tempfile::NamedTempFile::new()?;
         let mut conn = rusqlite::Connection::open(file.path())?;
 
@@ -6548,7 +7081,11 @@ mod verify_tests {
         // Check that all path IDs are unique
         let mut path_ids = std::collections::HashSet::new();
         for path in &paths {
-            assert!(path_ids.insert(&path.path_id), "Path ID should be unique: {}", path.path_id);
+            assert!(
+                path_ids.insert(&path.path_id),
+                "Path ID should be unique: {}",
+                path.path_id
+            );
         }
     }
 
@@ -6732,8 +7269,14 @@ mod output_format_tests {
         let compact = wrapper.to_json();
 
         // Compact JSON should not have unnecessary whitespace
-        assert!(!compact.contains("\n"), "Compact JSON should not have newlines");
-        assert!(compact.contains("\"item1\""), "Compact JSON should contain data");
+        assert!(
+            !compact.contains("\n"),
+            "Compact JSON should not have newlines"
+        );
+        assert!(
+            compact.contains("\"item1\""),
+            "Compact JSON should contain data"
+        );
     }
 
     /// Test that to_pretty_json() produces formatted JSON
@@ -6751,7 +7294,10 @@ mod output_format_tests {
         let compact = wrapper.to_json();
         let compact_val: serde_json::Value = serde_json::from_str(&compact).unwrap();
         let pretty_val: serde_json::Value = serde_json::from_str(&pretty).unwrap();
-        assert_eq!(compact_val, pretty_val, "Both formats should produce same data");
+        assert_eq!(
+            compact_val, pretty_val,
+            "Both formats should produce same data"
+        );
     }
 
     /// Test that JsonResponse contains required fields
@@ -6767,7 +7313,10 @@ mod output_format_tests {
         assert!(!wrapper.timestamp.is_empty());
 
         // Verify execution_id format (should be timestamp-processid)
-        assert!(wrapper.execution_id.contains("-"), "execution_id should contain hyphen");
+        assert!(
+            wrapper.execution_id.contains("-"),
+            "execution_id should contain hyphen"
+        );
 
         // Verify timestamp is valid RFC3339 format
         let parsed_time = chrono::DateTime::parse_from_rfc3339(&wrapper.timestamp);
@@ -6803,10 +7352,22 @@ mod output_format_tests {
         output.push_str(&format!("Total paths: {}\n", path_count));
 
         // Human output should not contain JSON artifacts
-        assert!(!output.contains("{"), "Human output should not contain JSON objects");
-        assert!(!output.contains("}"), "Human output should not contain JSON objects");
-        assert!(!output.contains("\""), "Human output should not contain JSON quotes");
-        assert!(!output.contains("schema_version"), "Human output should not contain JSON metadata");
+        assert!(
+            !output.contains("{"),
+            "Human output should not contain JSON objects"
+        );
+        assert!(
+            !output.contains("}"),
+            "Human output should not contain JSON objects"
+        );
+        assert!(
+            !output.contains("\""),
+            "Human output should not contain JSON quotes"
+        );
+        assert!(
+            !output.contains("schema_version"),
+            "Human output should not contain JSON metadata"
+        );
     }
 
     /// Test that JSON output contains all expected metadata
@@ -6836,7 +7397,10 @@ mod output_format_tests {
         assert!(error.remediation.is_none());
 
         let error_with_remediation = error.with_remediation("Try X instead");
-        assert_eq!(error_with_remediation.remediation, Some("Try X instead".to_string()));
+        assert_eq!(
+            error_with_remediation.remediation,
+            Some("Try X instead".to_string())
+        );
 
         // Error response should serialize
         let json = serde_json::to_string(&error_with_remediation);
@@ -6932,7 +7496,10 @@ mod output_format_tests {
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 3 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 3,
+            },
             source_location: None,
         });
 
@@ -7147,7 +7714,10 @@ mod output_format_tests {
 
         // Test CFG has a simple if/else (block 1 -> blocks 2 and 3)
         // This is a diamond pattern, so it should be detected
-        assert!(!if_else_patterns.is_empty(), "Should detect if/else pattern");
+        assert!(
+            !if_else_patterns.is_empty(),
+            "Should detect if/else pattern"
+        );
 
         // Check pattern structure
         let pattern = &if_else_patterns[0];
@@ -7156,7 +7726,10 @@ mod output_format_tests {
         assert_eq!(cfg[pattern.false_branch].id, 3);
 
         // Our test CFG doesn't have a match statement
-        assert!(match_patterns.is_empty(), "Should not detect match patterns in simple if/else");
+        assert!(
+            match_patterns.is_empty(),
+            "Should not detect match patterns in simple if/else"
+        );
     }
 
     /// Test patterns command with --if-else filter
@@ -7257,7 +7830,9 @@ mod frontiers_tests {
 
     /// Create a minimal test database
     fn create_minimal_db() -> anyhow::Result<NamedTempFile> {
-        use crate::storage::{REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION};
+        use crate::storage::{
+            REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION,
+        };
         let file = NamedTempFile::new()?;
         let conn = rusqlite::Connection::open(file.path())?;
 
@@ -7341,7 +7916,7 @@ mod frontiers_tests {
     /// Test basic frontier computation (diamond CFG)
     #[test]
     fn test_frontiers_basic() {
-        use crate::cfg::{BasicBlock, BlockKind, Terminator, EdgeType};
+        use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
         use petgraph::graph::DiGraph;
 
         // Create diamond CFG: 0 -> 1,2 -> 3
@@ -7351,7 +7926,10 @@ mod frontiers_tests {
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![1],
+                otherwise: 2,
+            },
             source_location: None,
         });
 
@@ -7435,7 +8013,7 @@ mod frontiers_tests {
     /// Test frontiers with linear CFG (empty frontiers)
     #[test]
     fn test_frontiers_linear_cfg() {
-        use crate::cfg::{BasicBlock, BlockKind, Terminator, EdgeType};
+        use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
         use petgraph::graph::DiGraph;
 
         // Linear CFG: 0 -> 1 -> 2 -> 3
@@ -7489,7 +8067,7 @@ mod frontiers_tests {
     /// Test frontiers with loop CFG (self-frontier)
     #[test]
     fn test_frontiers_loop_cfg() {
-        use crate::cfg::{BasicBlock, BlockKind, Terminator, EdgeType};
+        use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
         use petgraph::graph::DiGraph;
 
         // Loop CFG: 0 -> 1 <-> 2 (back edge), 1 -> 3 (exit)
@@ -7507,7 +8085,10 @@ mod frontiers_tests {
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 3 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 3,
+            },
             source_location: None,
         });
 
@@ -7617,7 +8198,7 @@ mod frontiers_tests {
     #[test]
     fn test_hotspots_args_default_entry() {
         let args = HotspotsArgs {
-            entry: "main".to_string(),  // default value
+            entry: "main".to_string(), // default value
             top: 20,
             min_paths: None,
             verbose: false,
@@ -7625,7 +8206,7 @@ mod frontiers_tests {
         };
 
         assert_eq!(args.entry, "main");
-        assert_eq!(args.top, 20);  // default value
+        assert_eq!(args.top, 20); // default value
     }
 
     /// Test hotspot entry serialization
@@ -7737,13 +8318,13 @@ mod frontiers_tests {
     fn test_hotpaths_args_defaults() {
         let args = HotpathsArgs {
             function: "main".to_string(),
-            top: 10,  // default value
+            top: 10, // default value
             rationale: false,
             min_score: None,
         };
 
         assert_eq!(args.function, "main");
-        assert_eq!(args.top, 10);  // default value
+        assert_eq!(args.top, 10); // default value
         assert!(!args.rationale);
         assert!(args.min_score.is_none());
     }
@@ -7777,7 +8358,7 @@ mod frontiers_tests {
             file: None,
             must_pass_through: None,
             post: false,
-            inter_procedural: false,  // default
+            inter_procedural: false, // default
         };
 
         assert!(!args.inter_procedural);

@@ -1,12 +1,14 @@
 // Database storage layer extending Magellan's schema
 //
 // Mirage uses the same Magellan database and extends it with:
-// - cfg_blocks: Basic blocks within functions
-// - cfg_edges: Control flow between blocks
+// - cfg_blocks: Basic blocks within functions (managed by Magellan v7+)
 // - cfg_paths: Enumerated execution paths
 // - cfg_path_elements: Blocks in each path
 // - cfg_dominators: Dominance relationships
 // - cfg_post_dominators: Reverse dominance
+//
+// Note: cfg_edges table is managed by Magellan v11+; Mirage computes
+// edges in memory from terminator data and does not create/query this table.
 
 pub mod paths;
 
@@ -2286,19 +2288,19 @@ pub fn load_cfg_from_db_with_conn(conn: &Connection, function_id: i64) -> Result
 /// # Algorithm
 ///
 /// 1. Begin IMMEDIATE transaction for atomicity
-/// 2. Clear existing cfg_blocks and cfg_edges for this function_id (incremental update)
+/// 2. Clear existing cfg_blocks for this function_id (incremental update)
 /// 3. Insert each BasicBlock as a row in cfg_blocks:
 ///    - Serialize terminator as JSON string
 ///    - Store source location byte ranges if available
-/// 4. Insert each edge as a row in cfg_edges (for backward compatibility)
-/// 5. Commit transaction
+/// 4. Commit transaction
 ///
 /// # Notes
 ///
-/// - DEPRECATED: Magellan handles CFG storage via cfg_blocks. Edges are now computed in memory.
+/// - DEPRECATED: Magellan handles CFG storage via cfg_blocks. Edges are computed in memory.
 /// - This function is kept for backward compatibility with existing tests.
+/// - cfg_edges table is managed by Magellan v11+; Mirage does not create or query it.
 /// - Uses BEGIN IMMEDIATE to acquire write lock early (prevents write conflicts)
-/// - Existing blocks/edges are cleared for incremental updates
+/// - Existing blocks are cleared for incremental updates
 /// - Block IDs are AUTOINCREMENT in the database
 #[deprecated(note = "Magellan handles CFG storage via cfg_blocks. Edges are computed in memory.")]
 pub fn store_cfg(
@@ -2307,20 +2309,13 @@ pub fn store_cfg(
     _function_hash: &str,  // Unused: Magellan manages its own caching
     cfg: &crate::cfg::Cfg,
 ) -> Result<()> {
-    use crate::cfg::{BlockKind, EdgeType, Terminator};
-    use petgraph::visit::EdgeRef;
+    use crate::cfg::{BlockKind, Terminator};
 
     conn.execute("BEGIN IMMEDIATE TRANSACTION", [])
         .context("Failed to begin transaction")?;
 
-    // Clear existing blocks and edges for this function (incremental update)
-    conn.execute(
-        "DELETE FROM cfg_edges WHERE from_id IN (
-            SELECT id FROM cfg_blocks WHERE function_id = ?
-         )",
-        params![function_id],
-    ).context("Failed to clear existing cfg_edges")?;
-
+    // Clear existing blocks for this function (incremental update)
+    // Note: cfg_edges is managed by Magellan v11+; Mirage does not maintain it.
     conn.execute(
         "DELETE FROM cfg_blocks WHERE function_id = ?",
         params![function_id],
@@ -2389,31 +2384,8 @@ pub fn store_cfg(
         block_id_map.insert(node_idx, db_id);
     }
 
-    // Insert each edge (for backward compatibility, though edges are now computed in memory)
-    let mut insert_edge = conn.prepare_cached(
-        "INSERT INTO cfg_edges (from_id, to_id, edge_type) VALUES (?, ?, ?)",
-    ).context("Failed to prepare edge insert statement")?;
-
-    for edge in cfg.edge_references() {
-        let from_db_id = block_id_map.get(&edge.source())
-            .context("Edge source has no database ID")?;
-        let to_db_id = block_id_map.get(&edge.target())
-            .context("Edge target has no database ID")?;
-
-        let edge_type_str = match edge.weight() {
-            EdgeType::Fallthrough => "Fallthrough",
-            EdgeType::TrueBranch => "TrueBranch",
-            EdgeType::FalseBranch => "FalseBranch",
-            EdgeType::LoopBack => "LoopBack",
-            EdgeType::LoopExit => "LoopExit",
-            EdgeType::Call => "Call",
-            EdgeType::Exception => "Exception",
-            EdgeType::Return => "Return",
-        };
-
-        insert_edge.execute(params![from_db_id, to_db_id, edge_type_str])
-            .context("Failed to insert cfg_edge")?;
-    }
+    // Note: cfg_edges table is managed by Magellan v11+.
+    // Mirage computes edges in memory from terminator data and does not insert into this table.
 
     conn.execute("COMMIT", [])
         .context("Failed to commit transaction")?;
@@ -2826,7 +2798,7 @@ mod tests {
             |row| row.get(0),
         ).unwrap();
 
-        assert!(table_count >= 5); // cfg_blocks, cfg_edges, cfg_paths, cfg_path_elements, cfg_dominators
+        assert!(table_count >= 4); // cfg_blocks, cfg_paths, cfg_path_elements, cfg_dominators (cfg_edges is managed by Magellan v11+)
     }
 
     #[test]
@@ -3077,14 +3049,8 @@ mod tests {
 
         assert_eq!(block_count, 2, "Should have 2 blocks");
 
-        // Verify edges were stored
-        let edge_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_edges",
-            [],
-            |row| row.get(0),
-        ).unwrap();
-
-        assert_eq!(edge_count, 1, "Should have 1 edge");
+        // Note: cfg_edges table is managed by Magellan v11+; Mirage does not create or query it.
+        // Edges are computed in memory from terminator data via build_edges_from_terminators().
 
         // Note: function_hash is not stored in Magellan's schema, so we skip that check
         // The hash functionality is only available with Mirage's legacy schema

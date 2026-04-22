@@ -22,7 +22,7 @@
 //! ```
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use std::path::Path as StdPath;
 
 use super::{CfgBlockData, StorageTrait};
@@ -103,30 +103,39 @@ impl StorageTrait for SqliteStorage {
     /// - Uses prepare_cached for performance on repeated calls
     /// - Returns empty Vec if function has no CFG blocks (not an error)
     fn get_cfg_blocks(&self, function_id: i64) -> Result<Vec<CfgBlockData>> {
-        let mut stmt = self.conn.prepare_cached(
-            "SELECT id, kind, terminator, byte_start, byte_end,
-                    start_line, start_col, end_line, end_col
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id, kind, terminator, byte_start, byte_end,
+                    start_line, start_col, end_line, end_col,
+                    coord_x, coord_y, coord_z
              FROM cfg_blocks
              WHERE function_id = ?
-             ORDER BY id ASC"
-        ).map_err(|e| anyhow::anyhow!("Failed to prepare cfg_blocks query: {}", e))?;
+             ORDER BY id ASC",
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to prepare cfg_blocks query: {}", e))?;
 
-        let blocks = stmt.query_map(params![function_id], |row| {
-            Ok(CfgBlockData {
-                id: row.get(0)?,
-                kind: row.get(1)?,
-                terminator: row.get(2)?,
-                byte_start: row.get::<_, Option<i64>>(3)?.unwrap_or(0) as u64,
-                byte_end: row.get::<_, Option<i64>>(4)?.unwrap_or(0) as u64,
-                start_line: row.get::<_, Option<i64>>(5)?.unwrap_or(0) as u64,
-                start_col: row.get::<_, Option<i64>>(6)?.unwrap_or(0) as u64,
-                end_line: row.get::<_, Option<i64>>(7)?.unwrap_or(0) as u64,
-                end_col: row.get::<_, Option<i64>>(8)?.unwrap_or(0) as u64,
+        let blocks = stmt
+            .query_map(params![function_id], |row| {
+                Ok(CfgBlockData {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    terminator: row.get(2)?,
+                    byte_start: row.get::<_, Option<i64>>(3)?.unwrap_or(0) as u64,
+                    byte_end: row.get::<_, Option<i64>>(4)?.unwrap_or(0) as u64,
+                    start_line: row.get::<_, Option<i64>>(5)?.unwrap_or(0) as u64,
+                    start_col: row.get::<_, Option<i64>>(6)?.unwrap_or(0) as u64,
+                    end_line: row.get::<_, Option<i64>>(7)?.unwrap_or(0) as u64,
+                    end_col: row.get::<_, Option<i64>>(8)?.unwrap_or(0) as u64,
+                    // 4D spatial coordinates from Magellan's cfg_blocks table
+                    coord_x: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
+                    coord_y: row.get::<_, Option<i64>>(10)?.unwrap_or(0),
+                    coord_z: row.get::<_, Option<i64>>(11)?.unwrap_or(0),
+                })
             })
-        })
-        .map_err(|e| anyhow::anyhow!("Failed to execute cfg_blocks query: {}", e))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| anyhow::anyhow!("Failed to collect cfg_blocks rows: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute cfg_blocks query: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("Failed to collect cfg_blocks rows: {}", e))?;
 
         Ok(blocks)
     }
@@ -179,20 +188,25 @@ impl StorageTrait for SqliteStorage {
     /// * `Err(...)` - Error if query fails
     fn get_cached_paths(&self, function_id: i64) -> Result<Option<Vec<Path>>> {
         // Query cfg_paths table for all paths of this function
-        let mut stmt = self.conn.prepare(
-            "SELECT path_id, path_kind, entry_block, exit_block
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT path_id, path_kind, entry_block, exit_block
              FROM cfg_paths
-             WHERE function_id = ?1"
-        ).context("Failed to prepare cfg_paths query")?;
+             WHERE function_id = ?1",
+            )
+            .context("Failed to prepare cfg_paths query")?;
 
-        let path_rows = stmt.query_map(params![function_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, i64>(3)?,
-            ))
-        }).context("Failed to execute cfg_paths query")?;
+        let path_rows = stmt
+            .query_map(params![function_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .context("Failed to execute cfg_paths query")?;
 
         let mut paths = Vec::new();
 
@@ -202,16 +216,19 @@ impl StorageTrait for SqliteStorage {
                 .with_context(|| format!("Invalid path kind: {}", kind_str))?;
 
             // Query cfg_path_elements for blocks in this path
-            let mut elem_stmt = self.conn.prepare(
-                "SELECT block_id
+            let mut elem_stmt = self
+                .conn
+                .prepare(
+                    "SELECT block_id
                  FROM cfg_path_elements
                  WHERE path_id = ?1
-                 ORDER BY sequence_order ASC"
-            ).context("Failed to prepare cfg_path_elements query")?;
+                 ORDER BY sequence_order ASC",
+                )
+                .context("Failed to prepare cfg_path_elements query")?;
 
-            let block_rows = elem_stmt.query_map(params![&path_id], |row| {
-                row.get::<_, i64>(0)
-            }).context("Failed to execute cfg_path_elements query")?;
+            let block_rows = elem_stmt
+                .query_map(params![&path_id], |row| row.get::<_, i64>(0))
+                .context("Failed to execute cfg_path_elements query")?;
 
             let mut blocks = Vec::new();
             for block_row in block_rows {
@@ -256,7 +273,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -274,7 +292,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create cfg_blocks table
         conn.execute(
@@ -289,15 +308,20 @@ mod tests {
                 start_col INTEGER,
                 end_line INTEGER,
                 end_col INTEGER,
+                coord_x INTEGER DEFAULT 0,
+                coord_y INTEGER DEFAULT 0,
+                coord_z INTEGER DEFAULT 0,
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id)
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE INDEX idx_cfg_blocks_function ON cfg_blocks(function_id)",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create cfg_paths table
         conn.execute(
@@ -312,12 +336,14 @@ mod tests {
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id)
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_cfg_paths_function ON cfg_paths(function_id)",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create cfg_path_elements table
         conn.execute(
@@ -329,14 +355,16 @@ mod tests {
                 FOREIGN KEY (path_id) REFERENCES cfg_paths(path_id)
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Insert a test function
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data)
              VALUES ('Symbol', 'test_function', '/tmp/test.rs', '{\"kind\": \"Function\"}')",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Insert test CFG blocks
         conn.execute(
@@ -346,7 +374,8 @@ mod tests {
                     (1, 'normal', 'conditional', 10, 50, 2, 4, 5, 8),
                     (1, 'return', 'return', 50, 60, 5, 0, 5, 10)",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         temp_file
     }
@@ -388,7 +417,11 @@ mod tests {
 
         // Function 999 doesn't exist
         let blocks = storage.get_cfg_blocks(999).unwrap();
-        assert_eq!(blocks.len(), 0, "Should return empty Vec for non-existent function");
+        assert_eq!(
+            blocks.len(),
+            0,
+            "Should return empty Vec for non-existent function"
+        );
     }
 
     #[test]
@@ -410,7 +443,10 @@ mod tests {
         let storage = SqliteStorage::open(temp_file.path()).unwrap();
 
         let entity = storage.get_entity(999);
-        assert!(entity.is_none(), "Should return None for non-existent entity");
+        assert!(
+            entity.is_none(),
+            "Should return None for non-existent entity"
+        );
     }
 
     #[test]
@@ -442,12 +478,16 @@ mod tests {
              ('test_path_123', 1, 101),
              ('test_path_123', 2, 102)",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         let storage = SqliteStorage::open(temp_file.path()).unwrap();
         let paths = storage.get_cached_paths(1).unwrap();
 
-        assert!(paths.is_some(), "Should return Some when cached paths exist");
+        assert!(
+            paths.is_some(),
+            "Should return Some when cached paths exist"
+        );
         let paths = paths.unwrap();
         assert_eq!(paths.len(), 1, "Should have 1 path");
 

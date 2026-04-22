@@ -6,7 +6,7 @@
 //! content changes (detected via function_hash comparison).
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use std::collections::HashMap;
 
 use crate::cfg::{BlockId, Path, PathKind};
@@ -68,10 +68,12 @@ pub fn store_paths(conn: &mut Connection, function_id: i64, paths: &[Path]) -> R
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
     ).context("Failed to prepare cfg_paths insert statement")?;
 
-    let mut insert_element_stmt = conn.prepare_cached(
-        "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id)
+    let mut insert_element_stmt = conn
+        .prepare_cached(
+            "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id)
          VALUES (?1, ?2, ?3)",
-    ).context("Failed to prepare cfg_path_elements insert statement")?;
+        )
+        .context("Failed to prepare cfg_path_elements insert statement")?;
 
     let now = chrono::Utc::now().timestamp();
 
@@ -80,26 +82,25 @@ pub fn store_paths(conn: &mut Connection, function_id: i64, paths: &[Path]) -> R
         let kind_str = path_kind_to_str(path.kind);
 
         // Insert the path metadata
-        insert_path_stmt.execute(params![
-            &path.path_id,
-            function_id,
-            kind_str,
-            path.entry as i64,
-            path.exit as i64,
-            path.len() as i64,
-            now,
-        ]).with_context(|| format!("Failed to insert path {}", path.path_id))?;
+        insert_path_stmt
+            .execute(params![
+                &path.path_id,
+                function_id,
+                kind_str,
+                path.entry as i64,
+                path.exit as i64,
+                path.len() as i64,
+                now,
+            ])
+            .with_context(|| format!("Failed to insert path {}", path.path_id))?;
 
         // Insert each block in the path
         for (idx, &block_id) in path.blocks.iter().enumerate() {
-            insert_element_stmt.execute(params![
-                &path.path_id,
-                idx as i64,
-                block_id as i64,
-            ]).with_context(|| format!(
-                "Failed to insert element {} for path {}",
-                idx, path.path_id
-            ))?;
+            insert_element_stmt
+                .execute(params![&path.path_id, idx as i64, block_id as i64,])
+                .with_context(|| {
+                    format!("Failed to insert element {} for path {}", idx, path.path_id)
+                })?;
         }
     }
 
@@ -159,9 +160,11 @@ pub fn store_paths_batch(conn: &mut Connection, function_id: i64, paths: &[Path]
         .context("Failed to begin transaction for store_paths_batch")?;
 
     // Optimize for bulk insert - get current settings
-    let _old_journal: String = conn.query_row("PRAGMA journal_mode", [], |row| row.get(0))
+    let _old_journal: String = conn
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
         .unwrap_or_else(|_| "delete".to_string());
-    let old_sync: i64 = conn.query_row("PRAGMA synchronous", [], |row| row.get(0))
+    let old_sync: i64 = conn
+        .query_row("PRAGMA synchronous", [], |row| row.get(0))
         .unwrap_or(2);
 
     // Set larger cache for better bulk insert performance
@@ -180,15 +183,17 @@ pub fn store_paths_batch(conn: &mut Connection, function_id: i64, paths: &[Path]
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             ).context("Failed to prepare cfg_paths insert statement")?;
 
-            insert_path_stmt.execute(params![
-                &path.path_id,
-                function_id,
-                kind_str,
-                path.entry as i64,
-                path.exit as i64,
-                path.len() as i64,
-                now,
-            ]).with_context(|| format!("Failed to insert path {}", path.path_id))?;
+            insert_path_stmt
+                .execute(params![
+                    &path.path_id,
+                    function_id,
+                    kind_str,
+                    path.entry as i64,
+                    path.exit as i64,
+                    path.len() as i64,
+                    now,
+                ])
+                .with_context(|| format!("Failed to insert path {}", path.path_id))?;
         }
 
         // Batch insert elements using UNION ALL
@@ -221,7 +226,7 @@ fn insert_elements_batch(conn: &mut Connection, path_id: &str, blocks: &[BlockId
     // Process in batches
     for chunk in blocks.chunks(BATCH_SIZE) {
         let mut sql = String::from(
-            "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES "
+            "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES ",
         );
 
         for (i, _) in chunk.iter().enumerate() {
@@ -240,7 +245,10 @@ fn insert_elements_batch(conn: &mut Connection, path_id: &str, blocks: &[BlockId
         }
 
         // Convert to slice of &dyn ToSql
-        let params_ref: Vec<&dyn rusqlite::ToSql> = flat_params.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
+        let params_ref: Vec<&dyn rusqlite::ToSql> = flat_params
+            .iter()
+            .map(|v| v as &dyn rusqlite::ToSql)
+            .collect();
 
         conn.execute(&sql, params_ref.as_slice())
             .with_context(|| format!("Failed to batch insert {} elements", chunk.len()))?;
@@ -293,28 +301,32 @@ fn str_to_path_kind(s: &str) -> Result<PathKind> {
 /// Returns Ok(vec![]) for cache miss (no paths stored), not an error.
 pub fn get_cached_paths(conn: &mut Connection, function_id: i64) -> Result<Vec<Path>> {
     // Query paths and their elements
-    let mut stmt = conn.prepare_cached(
-        "SELECT p.path_id, p.path_kind, p.entry_block, p.exit_block,
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT p.path_id, p.path_kind, p.entry_block, p.exit_block,
                 pe.block_id, pe.sequence_order
          FROM cfg_paths p
          JOIN cfg_path_elements pe ON p.path_id = pe.path_id
          WHERE p.function_id = ?1
          ORDER BY p.path_id, pe.sequence_order",
-    ).context("Failed to prepare get_cached_paths query")?;
+        )
+        .context("Failed to prepare get_cached_paths query")?;
 
     // Group elements by path_id
     let mut path_data: HashMap<String, PathData> = HashMap::new();
 
-    let rows = stmt.query_map(params![function_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,  // path_id
-            row.get::<_, String>(1)?,  // path_kind
-            row.get::<_, i64>(2)?,     // entry_block
-            row.get::<_, i64>(3)?,     // exit_block
-            row.get::<_, i64>(4)?,     // block_id
-            row.get::<_, i64>(5)?,     // sequence_order
-        ))
-    }).context("Failed to execute get_cached_paths query")?;
+    let rows = stmt
+        .query_map(params![function_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?, // path_id
+                row.get::<_, String>(1)?, // path_kind
+                row.get::<_, i64>(2)?,    // entry_block
+                row.get::<_, i64>(3)?,    // exit_block
+                row.get::<_, i64>(4)?,    // block_id
+                row.get::<_, i64>(5)?,    // sequence_order
+            ))
+        })
+        .context("Failed to execute get_cached_paths query")?;
 
     for row in rows {
         let (path_id, kind_str, entry_block, exit_block, block_id, _sequence_order) = row?;
@@ -323,7 +335,8 @@ pub fn get_cached_paths(conn: &mut Connection, function_id: i64) -> Result<Vec<P
         let kind = str_to_path_kind(&kind_str)
             .with_context(|| format!("Invalid path_kind '{}' in database", kind_str))?;
 
-        path_data.entry(path_id)
+        path_data
+            .entry(path_id)
             .or_insert_with(|| PathData {
                 path_id: String::new(), // Will be replaced
                 kind,
@@ -331,7 +344,8 @@ pub fn get_cached_paths(conn: &mut Connection, function_id: i64) -> Result<Vec<P
                 exit,
                 blocks: Vec::new(),
             })
-            .blocks.push(block_id as BlockId);
+            .blocks
+            .push(block_id as BlockId);
     }
 
     // Reconstruct Path objects
@@ -385,13 +399,15 @@ pub fn invalidate_function_paths(conn: &mut Connection, function_id: i64) -> Res
         "DELETE FROM cfg_path_elements
          WHERE path_id IN (SELECT path_id FROM cfg_paths WHERE function_id = ?1)",
         params![function_id],
-    ).context("Failed to delete cfg_path_elements")?;
+    )
+    .context("Failed to delete cfg_path_elements")?;
 
     // Delete paths
     conn.execute(
         "DELETE FROM cfg_paths WHERE function_id = ?1",
         params![function_id],
-    ).context("Failed to delete cfg_paths")?;
+    )
+    .context("Failed to delete cfg_paths")?;
 
     // Commit transaction
     conn.execute("COMMIT", [])
@@ -467,7 +483,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -478,7 +495,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Insert Magellan meta (use version 7 for cfg_blocks support)
         conn.execute(
@@ -488,13 +506,15 @@ mod tests {
         ).unwrap();
 
         // Create Mirage schema
-        crate::storage::create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
+        crate::storage::create_schema(&mut conn, crate::storage::TEST_MAGELLAN_SCHEMA_VERSION)
+            .unwrap();
 
         // Insert a test function
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Enable foreign key enforcement for tests
         conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
@@ -535,8 +555,14 @@ mod tests {
     fn test_str_to_path_kind() {
         assert_eq!(str_to_path_kind("Normal").unwrap(), PathKind::Normal);
         assert_eq!(str_to_path_kind("Error").unwrap(), PathKind::Error);
-        assert_eq!(str_to_path_kind("Degenerate").unwrap(), PathKind::Degenerate);
-        assert_eq!(str_to_path_kind("Unreachable").unwrap(), PathKind::Unreachable);
+        assert_eq!(
+            str_to_path_kind("Degenerate").unwrap(),
+            PathKind::Degenerate
+        );
+        assert_eq!(
+            str_to_path_kind("Unreachable").unwrap(),
+            PathKind::Unreachable
+        );
         assert!(str_to_path_kind("Invalid").is_err());
     }
 
@@ -550,20 +576,22 @@ mod tests {
         store_paths(&mut conn, function_id, &paths).unwrap();
 
         // Verify cfg_paths has correct rows
-        let path_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let path_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(path_count, 3, "Should have 3 paths");
 
         // Verify cfg_path_elements has correct rows
-        let element_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_path_elements",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let element_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cfg_path_elements", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
 
         assert_eq!(element_count, 8, "Should have 8 elements (3+3+2)");
     }
@@ -577,22 +605,28 @@ mod tests {
         store_paths(&mut conn, function_id, &paths).unwrap();
 
         // Verify path metadata
-        let mut stmt = conn.prepare(
-            "SELECT path_id, path_kind, entry_block, exit_block, length
+        let mut stmt = conn
+            .prepare(
+                "SELECT path_id, path_kind, entry_block, exit_block, length
              FROM cfg_paths
              WHERE function_id = ?
              ORDER BY entry_block, exit_block",
-        ).unwrap();
+            )
+            .unwrap();
 
-        let rows: Vec<_> = stmt.query_map(params![function_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, i64>(4)?,
-            ))
-        }).unwrap().filter_map(Result::ok).collect();
+        let rows: Vec<_> = stmt
+            .query_map(params![function_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
 
         assert_eq!(rows.len(), 3);
 
@@ -617,22 +651,28 @@ mod tests {
         store_paths(&mut conn, function_id, &paths).unwrap();
 
         // Get first path_id
-        let path_id: String = conn.query_row(
-            "SELECT path_id FROM cfg_paths WHERE function_id = ? LIMIT 1",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let path_id: String = conn
+            .query_row(
+                "SELECT path_id FROM cfg_paths WHERE function_id = ? LIMIT 1",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         // Verify elements are in correct order
-        let mut stmt = conn.prepare(
-            "SELECT block_id FROM cfg_path_elements
+        let mut stmt = conn
+            .prepare(
+                "SELECT block_id FROM cfg_path_elements
              WHERE path_id = ?
              ORDER BY sequence_order",
-        ).unwrap();
+            )
+            .unwrap();
 
-        let blocks: Vec<BlockId> = stmt.query_map(params![path_id], |row| {
-            Ok(row.get::<_, i64>(0)? as BlockId)
-        }).unwrap().filter_map(Result::ok).collect();
+        let blocks: Vec<BlockId> = stmt
+            .query_map(params![path_id], |row| Ok(row.get::<_, i64>(0)? as BlockId))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
 
         // Should match [0, 1, 2] (first path)
         assert_eq!(blocks, vec![0, 1, 2]);
@@ -648,11 +688,13 @@ mod tests {
         store_paths(&mut conn, function_id, &paths).unwrap();
 
         // Verify no rows inserted
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(count, 0);
     }
@@ -716,7 +758,9 @@ mod tests {
         // Each original path should be in retrieved paths (order not guaranteed)
         for orig in &original_paths {
             assert!(
-                retrieved_paths.iter().any(|p| p.blocks == orig.blocks && p.kind == orig.kind),
+                retrieved_paths
+                    .iter()
+                    .any(|p| p.blocks == orig.blocks && p.kind == orig.kind),
                 "Path {:?} not found in retrieved paths",
                 orig.blocks
             );
@@ -740,10 +784,16 @@ mod tests {
         assert_eq!(retrieved.len(), 2);
 
         // Find each path in retrieved paths
-        let path1 = retrieved.iter().find(|p| p.blocks == vec![0, 1, 2, 3]).unwrap();
+        let path1 = retrieved
+            .iter()
+            .find(|p| p.blocks == vec![0, 1, 2, 3])
+            .unwrap();
         assert_eq!(path1.blocks, vec![0, 1, 2, 3]);
 
-        let path2 = retrieved.iter().find(|p| p.blocks == vec![5, 4, 3, 2, 1]).unwrap();
+        let path2 = retrieved
+            .iter()
+            .find(|p| p.blocks == vec![5, 4, 3, 2, 1])
+            .unwrap();
         assert_eq!(path2.blocks, vec![5, 4, 3, 2, 1]);
     }
 
@@ -788,7 +838,8 @@ mod tests {
             "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id)
              VALUES (?, ?, ?)",
             params!("invalid_path_id", 0, 0),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Should return error due to invalid path_kind
         let result = get_cached_paths(&mut conn, function_id);
@@ -838,22 +889,26 @@ mod tests {
         store_paths(&mut conn, function_id, &paths).unwrap();
 
         // Verify paths exist
-        let count_before: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count_before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count_before, 3);
 
         // Invalidate
         invalidate_function_paths(&mut conn, function_id).unwrap();
 
         // Verify paths deleted
-        let count_after: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count_after, 0);
     }
 
@@ -867,23 +922,25 @@ mod tests {
         store_paths(&mut conn, function_id, &paths).unwrap();
 
         // Verify elements exist
-        let count_before: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_path_elements",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let count_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cfg_path_elements", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
         assert!(count_before > 0);
 
         // Invalidate
         invalidate_function_paths(&mut conn, function_id).unwrap();
 
         // Verify elements deleted (via subquery)
-        let count_after: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_path_elements
+        let count_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_path_elements
              WHERE path_id IN (SELECT path_id FROM cfg_paths WHERE function_id = ?)",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count_after, 0);
     }
 
@@ -926,11 +983,13 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "func1", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "func2", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
 
         let function_id_1: i64 = 1;
         let function_id_2: i64 = 2;
@@ -952,16 +1011,20 @@ mod tests {
         store_paths(&mut conn, function_id_2, &paths_2).unwrap();
 
         // Verify both have paths
-        let count_1_before: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id_1],
-            |row| row.get(0),
-        ).unwrap();
-        let count_2_before: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id_2],
-            |row| row.get(0),
-        ).unwrap();
+        let count_1_before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id_1],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let count_2_before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id_2],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count_1_before, 3);
         assert_eq!(count_2_before, 3);
 
@@ -969,19 +1032,23 @@ mod tests {
         invalidate_function_paths(&mut conn, function_id_1).unwrap();
 
         // Function 1 should be empty
-        let count_1_after: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id_1],
-            |row| row.get(0),
-        ).unwrap();
+        let count_1_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id_1],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count_1_after, 0);
 
         // Function 2 should still have paths
-        let count_2_after: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id_2],
-            |row| row.get(0),
-        ).unwrap();
+        let count_2_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id_2],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count_2_after, 3);
     }
 
@@ -995,17 +1062,19 @@ mod tests {
         let hash = "abc123";
 
         // First call with no existing hash - should update
-        let updated = update_function_paths_if_changed(&mut conn, function_id, hash, &paths).unwrap();
+        let updated =
+            update_function_paths_if_changed(&mut conn, function_id, hash, &paths).unwrap();
         assert!(updated, "First call should return true (updated)");
 
         // Verify paths were stored
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 3);
-
     }
 
     #[test]
@@ -1016,12 +1085,17 @@ mod tests {
         let hash = "abc123";
 
         // First call - should update
-        let updated1 = update_function_paths_if_changed(&mut conn, function_id, hash, &paths).unwrap();
+        let updated1 =
+            update_function_paths_if_changed(&mut conn, function_id, hash, &paths).unwrap();
         assert!(updated1);
 
         // Second call with same hash - should NOT update
-        let updated2 = update_function_paths_if_changed(&mut conn, function_id, hash, &paths).unwrap();
-        assert!(updated2, "Same hash should return true (hash caching not available with Magellan)");
+        let updated2 =
+            update_function_paths_if_changed(&mut conn, function_id, hash, &paths).unwrap();
+        assert!(
+            updated2,
+            "Same hash should return true (hash caching not available with Magellan)"
+        );
     }
 
     #[test]
@@ -1029,32 +1103,36 @@ mod tests {
         let mut conn = create_test_db();
         let function_id: i64 = 1;
         let paths1 = create_mock_paths();
-        let paths2 = vec![
-            Path::new(vec![0, 1], PathKind::Normal),
-        ];
+        let paths2 = vec![Path::new(vec![0, 1], PathKind::Normal)];
 
         // First call with hash1
-        let updated1 = update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths1).unwrap();
+        let updated1 =
+            update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths1).unwrap();
         assert!(updated1);
 
         // Verify 3 paths from first call
-        let count1: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count1: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count1, 3);
 
         // Second call with different hash - should update
-        let updated2 = update_function_paths_if_changed(&mut conn, function_id, "hash2", &paths2).unwrap();
+        let updated2 =
+            update_function_paths_if_changed(&mut conn, function_id, "hash2", &paths2).unwrap();
         assert!(updated2, "Different hash should return true (updated)");
 
         // Verify paths were replaced (now only 1 path)
-        let count2: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count2: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count2, 1, "Old paths should be invalidated and replaced");
 
         // Note: Hash verification removed - function_hash not in Magellan schema
@@ -1094,20 +1172,24 @@ mod tests {
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![function_id, "entry", "return", 0, 10, 1, 0, 1, 10],
-        ).unwrap();
+        )
+        .unwrap();
 
         let paths = create_mock_paths();
 
         // Update with new hash (note: hash not stored in Magellan schema)
-        let updated = update_function_paths_if_changed(&mut conn, function_id, "new_hash", &paths).unwrap();
+        let updated =
+            update_function_paths_if_changed(&mut conn, function_id, "new_hash", &paths).unwrap();
         assert!(updated);
 
         // Verify only one cfg_blocks entry exists (we didn't create a new one)
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 1, "Should still have only one cfg_blocks entry");
     }
 
@@ -1125,12 +1207,17 @@ mod tests {
         update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths).unwrap();
 
         // Verify paths were stored in cfg_paths table
-        let path_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
-        assert_eq!(path_count, 3, "Should store all paths without cfg_blocks entry");
+        let path_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            path_count, 3,
+            "Should store all paths without cfg_blocks entry"
+        );
     }
 
     #[test]
@@ -1142,9 +1229,7 @@ mod tests {
             Path::new(vec![0, 1, 2], PathKind::Normal),
             Path::new(vec![0, 1, 3], PathKind::Normal),
         ];
-        let paths2 = vec![
-            Path::new(vec![0, 2], PathKind::Error),
-        ];
+        let paths2 = vec![Path::new(vec![0, 2], PathKind::Error)];
 
         // Store first set
         update_function_paths_if_changed(&mut conn, function_id, "hash1", &paths1).unwrap();
@@ -1175,20 +1260,22 @@ mod tests {
         store_paths_batch(&mut conn, function_id, &paths).unwrap();
 
         // Verify cfg_paths has correct rows
-        let path_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let path_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(path_count, 3, "Should have 3 paths");
 
         // Verify cfg_path_elements has correct rows
-        let element_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_path_elements",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let element_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cfg_path_elements", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
 
         assert_eq!(element_count, 8, "Should have 8 elements (3+3+2)");
     }
@@ -1203,11 +1290,13 @@ mod tests {
         store_paths_batch(&mut conn, function_id, &paths).unwrap();
 
         // Verify no rows inserted
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(count, 0);
     }
@@ -1221,22 +1310,28 @@ mod tests {
         store_paths_batch(&mut conn, function_id, &paths).unwrap();
 
         // Verify path metadata
-        let mut stmt = conn.prepare(
-            "SELECT path_id, path_kind, entry_block, exit_block, length
+        let mut stmt = conn
+            .prepare(
+                "SELECT path_id, path_kind, entry_block, exit_block, length
              FROM cfg_paths
              WHERE function_id = ?
              ORDER BY entry_block, exit_block",
-        ).unwrap();
+            )
+            .unwrap();
 
-        let rows: Vec<_> = stmt.query_map(params![function_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, i64>(4)?,
-            ))
-        }).unwrap().filter_map(Result::ok).collect();
+        let rows: Vec<_> = stmt
+            .query_map(params![function_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
 
         assert_eq!(rows.len(), 3);
 
@@ -1266,19 +1361,21 @@ mod tests {
         let duration = start.elapsed();
 
         // Verify all paths were stored
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 100);
 
         // Verify all elements were stored
-        let element_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_path_elements",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let element_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cfg_path_elements", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
         assert_eq!(element_count, 500); // 100 paths * 5 elements each
 
         // Performance assertion: should be <100ms for 100 paths
@@ -1309,11 +1406,13 @@ mod tests {
         println!("store_paths_batch for 1000 paths took {:?}", duration);
 
         // Verify all paths were stored
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_paths WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 1000);
     }
 }

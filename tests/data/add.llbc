@@ -1,0 +1,53 @@
+{
+  "crate_name": "test_crate",
+  "files": [
+    {
+      "path": "src/lib.rs",
+      "contents": "fn add(a: i32, b: i32) -> i32 { a + b }"
+    }
+  ],
+  "type_decls": [],
+  "fun_decls": [
+    {
+      "def_id": 0,
+      "name": [ "test_crate", "add" ],
+      "meta": {
+        "span": {
+          "file_id": 0,
+          "beg": { "line": 1, "col": 0 },
+          "end": { "line": 1, "col": 38 }
+        }
+      },
+      "signature": {
+        "inputs": [
+          { "Adt": { "id": "Integer", "generics": { "types": ["I32"] } } },
+          { "Adt": { "id": "Integer", "generics": { "types": ["I32"] } } }
+        ],
+        "output": { "Adt": { "id": "Integer", "generics": { "types": ["I32"] } } }
+      },
+      "body": {
+        "arg_count": 2,
+        "locals": [],
+        "unstructured_body": {
+          "blocks": [
+            {
+              "id": 0,
+              "statements": [
+                {
+                  "Assign": [
+                    { "Local": 0 },
+                    { "BinaryOp": [ "Add", { "Copy": { "Local": 1 } }, { "Copy": { "Local": 2 } } ] }
+                  ]
+                }
+              ],
+              "terminator": { "Return": null }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "global_decls": [],
+  "trait_decls": [],
+  "trait_impls": []
+}

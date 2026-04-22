@@ -1,0 +1,46 @@
+{
+  "crate_name": "test_crate",
+  "files": [
+    {
+      "path": "src/lib.rs",
+      "contents": "fn is_positive(x: i32) -> bool { if x > 0 { true } else { false } }"
+    }
+  ],
+  "type_decls": [],
+  "fun_decls": [
+    {
+      "def_id": 0,
+      "name": [ "test_crate", "is_positive" ],
+      "meta": { "span": { "file_id": 0, "beg": { "line": 1, "col": 0 }, "end": { "line": 1, "col": 60 } } },
+      "signature": { "inputs": [ { "Adt": { "id": "Integer", "generics": { "types": ["I32"] } } } ], "output": { "Bool": null } },
+      "body": {
+        "arg_count": 1,
+        "locals": [],
+        "unstructured_body": {
+          "blocks": [
+            {
+              "id": 0,
+              "statements": [
+                { "Assign": [ { "Local": 1 }, { "BinaryOp": [ "Gt", { "Copy": { "Local": 0 } }, { "Constant": "0" } ] } ] }
+              ],
+              "terminator": { "SwitchInt": { "discr": { "Copy": { "Local": 1 } }, "targets": [ { "value": "1", "target": 1 } ], "otherwise": 2 } }
+            },
+            {
+              "id": 1,
+              "statements": [ { "Assign": [ { "Local": 2 }, { "Constant": "true" } ] } ],
+              "terminator": { "Return": null }
+            },
+            {
+              "id": 2,
+              "statements": [ { "Assign": [ { "Local": 2 }, { "Constant": "false" } ] } ],
+              "terminator": { "Return": null }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "global_decls": [],
+  "trait_decls": [],
+  "trait_impls": []
+}

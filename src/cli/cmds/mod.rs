@@ -19,4 +19,10 @@ pub mod patterns;
 pub mod frontiers;
 pub mod diff;
 pub mod icfg;
+// pub mod complex_blocks;
+// pub mod spatial_analysis;
 pub mod migrate;
+
+// // Re-export command handler functions
+// pub use complex_blocks::complex_blocks;
+// pub use spatial_analysis::spatial_analysis;

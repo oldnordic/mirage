@@ -62,7 +62,7 @@ impl BackendRouter for SqliteRouter {
 
         let limits = PathLimits {
             max_paths,
-            max_length: 100, // Default max path length
+            max_length: 100,      // Default max path length
             loop_unroll_limit: 3, // Default loop unrolling
         };
 

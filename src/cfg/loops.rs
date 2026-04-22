@@ -1,7 +1,7 @@
 //! Natural loop detection using dominance analysis
 
-use crate::cfg::Cfg;
 use crate::cfg::analysis::find_entry;
+use crate::cfg::Cfg;
 use petgraph::algo::dominators::simple_fast;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
@@ -97,6 +97,88 @@ pub fn detect_natural_loops(cfg: &Cfg) -> Vec<NaturalLoop> {
     }
 
     loops
+}
+
+/// Apply loop nesting depths (coord_y) to all blocks in the CFG
+///
+/// This method calculates the nesting depth for each block and modifies
+/// the CFG in place, setting the coord_y field for each BasicBlock.
+///
+/// # Arguments
+///
+/// * `cfg` - The CFG to modify (mutable reference)
+///
+/// # Example
+/// ```rust,no_run
+/// # use mirage_analyzer::cfg::loops::apply_loop_nesting_depths;
+/// # let mut graph = unimplemented!();
+/// apply_loop_nesting_depths(&mut graph);
+/// // Now all blocks have correct coord_y values
+/// ```
+pub fn apply_loop_nesting_depths(cfg: &mut Cfg) {
+    let loops = detect_natural_loops(cfg);
+
+    // Initialize all nodes with depth 0
+    for node in cfg.node_indices() {
+        if let Some(block) = cfg.node_weight_mut(node) {
+            block.coord_y = 0;
+        }
+    }
+
+    // For each loop, increment coord_y for all blocks in the loop body
+    for loop_ in &loops {
+        for node in &loop_.body {
+            if let Some(block) = cfg.node_weight_mut(*node) {
+                block.coord_y += 1;
+            }
+        }
+    }
+}
+
+/// Detect natural loops and apply loop nesting depths (coord_y) to CFG
+///
+/// Convenience method that detects loops and immediately applies the
+/// nesting depths to all blocks in the CFG.
+///
+/// # Arguments
+///
+/// * `cfg` - The CFG to analyze and modify (mutable reference)
+///
+/// # Returns
+///
+/// * `Vec<NaturalLoop>` - The detected loops
+///
+/// # Example
+/// ```rust,no_run
+/// # use mirage_analyzer::cfg::loops::detect_natural_loops_with_depths;
+/// # let mut graph = unimplemented!();
+/// let loops = detect_natural_loops_with_depths(&mut graph);
+/// // CFG blocks now have correct coord_y values
+/// // loops contains the detected NaturalLoop structures
+/// ```
+pub fn detect_natural_loops_with_depths(cfg: &mut Cfg) -> Vec<NaturalLoop> {
+    let loops = detect_natural_loops(cfg);
+    apply_loop_nesting_depths_from_loops(cfg, &loops);
+    loops
+}
+
+/// Internal function to apply loop depths from pre-detected loops
+fn apply_loop_nesting_depths_from_loops(cfg: &mut Cfg, loops: &[NaturalLoop]) {
+    // Initialize all nodes with depth 0
+    for node in cfg.node_indices() {
+        if let Some(block) = cfg.node_weight_mut(node) {
+            block.coord_y = 0;
+        }
+    }
+
+    // For each loop, increment coord_y for all blocks in the loop body
+    for loop_ in loops {
+        for node in &loop_.body {
+            if let Some(block) = cfg.node_weight_mut(*node) {
+                block.coord_y += 1;
+            }
+        }
+    }
 }
 
 /// Compute loop body from back edge (tail -> header)
@@ -210,6 +292,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 1: loop header, condition goes to 2 (continue) or 3 (exit)
@@ -217,8 +302,14 @@ mod tests {
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 3 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 3,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 2: loop body, goes back to header
@@ -228,6 +319,9 @@ mod tests {
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 3: exit
@@ -237,6 +331,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -293,6 +390,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -301,6 +401,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -309,6 +412,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -335,22 +441,37 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 4 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 4,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![3],
+                otherwise: 1,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -359,6 +480,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b4 = g.add_node(BasicBlock {
@@ -367,6 +491,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -433,22 +560,37 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 4 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 4,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![3],
+                otherwise: 1,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -457,6 +599,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b4 = g.add_node(BasicBlock {
@@ -465,6 +610,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -485,5 +633,273 @@ mod tests {
         assert_eq!(outer_loop.nesting_level(&loops), 0);
         // Inner loop has level 1 (nested inside outer)
         assert_eq!(inner_loop.nesting_level(&loops), 1);
+    }
+
+    #[test]
+    fn test_apply_loop_nesting_depths_simple_loop() {
+        // Given: A CFG with a simple loop and all coord_y set to 0
+        let mut cfg = create_simple_loop_cfg();
+
+        // When: Applying loop nesting depths
+        apply_loop_nesting_depths(&mut cfg);
+
+        // Then: coord_y should reflect loop membership
+        // Loop contains header (1) and body (2)
+        assert_eq!(
+            cfg[NodeIndex::new(0)].coord_y,
+            0,
+            "Entry should not be in loop"
+        );
+        assert_eq!(
+            cfg[NodeIndex::new(1)].coord_y,
+            1,
+            "Loop header should have depth 1"
+        );
+        assert_eq!(
+            cfg[NodeIndex::new(2)].coord_y,
+            1,
+            "Loop body should have depth 1"
+        );
+        assert_eq!(
+            cfg[NodeIndex::new(3)].coord_y,
+            0,
+            "Exit should not be in loop"
+        );
+    }
+
+    #[test]
+    fn test_apply_loop_nesting_depths_nested_loops() {
+        // Given: A CFG with nested loops
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 4,
+            },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt {
+                targets: vec![3],
+                otherwise: 1,
+            },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b4 = g.add_node(BasicBlock {
+            id: 4,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+        g.add_edge(b1, b4, EdgeType::FalseBranch);
+        g.add_edge(b2, b3, EdgeType::TrueBranch);
+        g.add_edge(b2, b1, EdgeType::Fallthrough); // Back edge (outer loop)
+        g.add_edge(b3, b2, EdgeType::Fallthrough); // Back edge (inner loop)
+
+        // When: Applying loop nesting depths
+        apply_loop_nesting_depths(&mut g);
+
+        // Then: coord_y should reflect nesting levels
+        assert_eq!(g[b0].coord_y, 0, "Entry should not be in a loop");
+        assert_eq!(g[b1].coord_y, 1, "Outer loop header should have depth 1");
+        assert_eq!(g[b2].coord_y, 2, "Inner loop header should have depth 2");
+        assert_eq!(g[b3].coord_y, 2, "Inner loop body should have depth 2");
+        assert_eq!(g[b4].coord_y, 0, "Exit should not be in a loop");
+    }
+
+    #[test]
+    fn test_detect_natural_loops_with_depths_simple_loop() {
+        // Given: A CFG with a simple loop
+        let mut cfg = create_simple_loop_cfg();
+
+        // When: Detecting loops and applying depths
+        let loops = detect_natural_loops_with_depths(&mut cfg);
+
+        // Then: Should detect one loop and coord_y should be set
+        assert_eq!(loops.len(), 1, "Should detect exactly one loop");
+        assert_eq!(
+            cfg[NodeIndex::new(0)].coord_y,
+            0,
+            "Entry should not be in loop"
+        );
+        assert_eq!(
+            cfg[NodeIndex::new(1)].coord_y,
+            1,
+            "Loop header should have depth 1"
+        );
+        assert_eq!(
+            cfg[NodeIndex::new(2)].coord_y,
+            1,
+            "Loop body should have depth 1"
+        );
+    }
+
+    #[test]
+    fn test_apply_loop_nesting_depths_no_loops() {
+        // Given: A CFG with no loops (linear)
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+
+        // When: Applying loop nesting depths
+        apply_loop_nesting_depths(&mut g);
+
+        // Then: All nodes should have coord_y = 0 (no loops)
+        assert_eq!(g[b0].coord_y, 0, "Entry should not be in a loop");
+        assert_eq!(g[b1].coord_y, 0, "Exit should not be in a loop");
+    }
+
+    #[test]
+    fn test_loop_nesting_matches_nesting_level_method() {
+        // Given: A CFG with nested loops
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 4,
+            },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt {
+                targets: vec![3],
+                otherwise: 1,
+            },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b4 = g.add_node(BasicBlock {
+            id: 4,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::TrueBranch);
+        g.add_edge(b1, b4, EdgeType::FalseBranch);
+        g.add_edge(b2, b3, EdgeType::TrueBranch);
+        g.add_edge(b2, b1, EdgeType::Fallthrough);
+        g.add_edge(b3, b2, EdgeType::Fallthrough);
+
+        // When: Detecting loops and applying depths
+        let loops = detect_natural_loops_with_depths(&mut g);
+
+        // Then: coord_y should match nesting_level() + 1
+        for loop_ in &loops {
+            let expected_coord_y = (loop_.nesting_level(&loops) + 1) as i64;
+            let actual_coord_y = g[loop_.header].coord_y;
+            assert_eq!(
+                actual_coord_y, expected_coord_y,
+                "Loop header {:?} coord_y should match nesting_level + 1",
+                loop_.header
+            );
+        }
     }
 }

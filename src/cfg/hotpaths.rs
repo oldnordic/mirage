@@ -20,14 +20,11 @@
 
 use anyhow::Result;
 use petgraph::algo::dominators;
-use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use super::{
-    BasicBlock, BlockId, Cfg, EdgeType, Path, Terminator,
-    loops::NaturalLoop,
-};
+use super::{loops::NaturalLoop, BlockId, Cfg, Path, Terminator};
 
 /// Hot path with computed hotness score
 ///
@@ -121,57 +118,68 @@ pub fn compute_hot_paths(
         .map_or_else(HashSet::new, |iter| iter.collect());
 
     // Compute hotness for each path
-    let mut hot_paths: Vec<HotPath> = paths.iter().map(|path| {
-        let mut hotness = 1.0;
-        let mut rationale = Vec::new();
+    let mut hot_paths: Vec<HotPath> = paths
+        .iter()
+        .map(|path| {
+            let mut hotness = 1.0;
+            let mut rationale = Vec::new();
 
-        // Loop nesting factor
-        let loop_depth = compute_loop_depth(natural_loops, &path.blocks);
-        if loop_depth > 0 {
-            let loop_factor = 2.0_f64.powi(loop_depth as i32);
-            hotness *= loop_factor;
-            rationale.push(format!("Loop depth {} (×{})", loop_depth, loop_factor));
-        }
+            // Loop nesting factor
+            let loop_depth = compute_loop_depth(natural_loops, &path.blocks);
+            if loop_depth > 0 {
+                let loop_factor = 2.0_f64.powi(loop_depth as i32);
+                hotness *= loop_factor;
+                rationale.push(format!("Loop depth {} (×{})", loop_depth, loop_factor));
+            }
 
-        // Dominator factor (count dominant blocks in path)
-        let dominant_count = path.blocks
-            .iter()
-            .filter(|b| dominant_blocks.contains(&NodeIndex::new(**b)))
-            .count();
-        if dominant_count > 0 {
-            let dom_factor = 1.0 + (dominant_count as f64 * 0.5);
-            hotness *= dom_factor;
-            rationale.push(format!("{} dominant blocks (×{})", dominant_count, dom_factor));
-        }
+            // Dominator factor (count dominant blocks in path)
+            let dominant_count = path
+                .blocks
+                .iter()
+                .filter(|b| dominant_blocks.contains(&NodeIndex::new(**b)))
+                .count();
+            if dominant_count > 0 {
+                let dom_factor = 1.0 + (dominant_count as f64 * 0.5);
+                hotness *= dom_factor;
+                rationale.push(format!(
+                    "{} dominant blocks (×{})",
+                    dominant_count, dom_factor
+                ));
+            }
 
-        // Early exit penalty (path ends in return block)
-        if let Some(&last_block) = path.blocks.last() {
-            let last_node = NodeIndex::new(last_block);
-            if let Some(block) = graph.node_weight(last_node) {
-                if block.terminator == Terminator::Return {
-                    // Check if this is "early" (shorter than average path length)
-                    let avg_len = paths.iter()
-                        .map(|p| p.blocks.len())
-                        .sum::<usize>() as f64 / paths.len() as f64;
-                    if path.blocks.len() < avg_len as usize && path.blocks.len() > 1 {
-                        hotness *= 0.5;
-                        rationale.push("Early exit (×0.5)".to_string());
+            // Early exit penalty (path ends in return block)
+            if let Some(&last_block) = path.blocks.last() {
+                let last_node = NodeIndex::new(last_block);
+                if let Some(block) = graph.node_weight(last_node) {
+                    if block.terminator == Terminator::Return {
+                        // Check if this is "early" (shorter than average path length)
+                        let avg_len = paths.iter().map(|p| p.blocks.len()).sum::<usize>() as f64
+                            / paths.len() as f64;
+                        if path.blocks.len() < avg_len as usize && path.blocks.len() > 1 {
+                            hotness *= 0.5;
+                            rationale.push("Early exit (×0.5)".to_string());
+                        }
                     }
                 }
             }
-        }
 
-        HotPath {
-            path_id: path.path_id.clone(),
-            blocks: path.blocks.clone(),
-            hotness_score: hotness,
-            rationale: if options.include_rationale { rationale } else { vec![] },
-        }
-    }).collect();
+            HotPath {
+                path_id: path.path_id.clone(),
+                blocks: path.blocks.clone(),
+                hotness_score: hotness,
+                rationale: if options.include_rationale {
+                    rationale
+                } else {
+                    vec![]
+                },
+            }
+        })
+        .collect();
 
     // Sort by hotness descending
     hot_paths.sort_by(|a, b| {
-        b.hotness_score.partial_cmp(&a.hotness_score)
+        b.hotness_score
+            .partial_cmp(&a.hotness_score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
@@ -210,7 +218,8 @@ fn compute_loop_depth(loops: &[NaturalLoop], path_blocks: &[BlockId]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cfg::{BlockKind, EdgeType, Terminator};
+    use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
+    use petgraph::graph::DiGraph;
 
     /// Create a simple CFG with a loop for testing
     fn create_loop_cfg() -> (Cfg, NodeIndex, Vec<NaturalLoop>) {
@@ -223,6 +232,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 1: loop header
@@ -230,8 +242,14 @@ mod tests {
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 3 },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 3,
+            },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 2: loop body
@@ -241,6 +259,9 @@ mod tests {
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 3: exit
@@ -250,6 +271,9 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         graph.add_edge(b0, b1, EdgeType::Fallthrough);

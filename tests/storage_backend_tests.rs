@@ -59,7 +59,8 @@ fn test_open_sqlite_database() {
                 kind TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
         // Create minimal cfg_blocks table for Mirage
         conn.execute(
             "CREATE TABLE cfg_blocks (
@@ -69,7 +70,8 @@ fn test_open_sqlite_database() {
                 terminator TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     let db = MirageDb::open(&db_path);
@@ -129,7 +131,8 @@ fn test_get_cfg_blocks_from_sqlite() {
                 kind TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE cfg_blocks (
@@ -139,7 +142,8 @@ fn test_get_cfg_blocks_from_sqlite() {
                 terminator TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Insert a test function
         conn.execute(

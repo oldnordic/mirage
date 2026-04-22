@@ -151,8 +151,7 @@ pub enum PathKind {
 /// Helper function to convert BlockIds from paths to NodeIndices for CFG queries.
 /// Returns None if the block ID doesn't exist in the CFG.
 fn find_node_by_block_id(cfg: &Cfg, block_id: BlockId) -> Option<NodeIndex> {
-    cfg.node_indices()
-        .find(|&idx| cfg[idx].id == block_id)
+    cfg.node_indices().find(|&idx| cfg[idx].id == block_id)
 }
 
 /// Check if a path is statically feasible
@@ -223,15 +222,21 @@ pub fn is_feasible_path(cfg: &Cfg, blocks: &[BlockId]) -> bool {
     };
 
     match &cfg[last_idx].terminator {
-        Terminator::Return => {}, // Feasible: normal exit
-        Terminator::Abort(_) => {}, // Feasible: error path but reachable
-        Terminator::Call { unwind: None, .. } => {}, // Feasible: no unwind
-        Terminator::Call { unwind: Some(_), target: Some(_) } => {}, // Feasible: has target
+        Terminator::Return => {}                    // Feasible: normal exit
+        Terminator::Abort(_) => {}                  // Feasible: error path but reachable
+        Terminator::Call { unwind: None, .. } => {} // Feasible: no unwind
+        Terminator::Call {
+            unwind: Some(_),
+            target: Some(_),
+        } => {} // Feasible: has target
         // Infeasible terminators (dead ends)
-        Terminator::Unreachable |
-        Terminator::Goto { .. } |
-        Terminator::SwitchInt { .. } |
-        Terminator::Call { unwind: Some(_), target: None } => {
+        Terminator::Unreachable
+        | Terminator::Goto { .. }
+        | Terminator::SwitchInt { .. }
+        | Terminator::Call {
+            unwind: Some(_),
+            target: None,
+        } => {
             return false;
         }
     }
@@ -326,15 +331,21 @@ pub fn is_feasible_path_precomputed(
     };
 
     match &cfg[last_idx].terminator {
-        Terminator::Return => {}, // Feasible: normal exit
-        Terminator::Abort(_) => {}, // Feasible: error path but reachable
-        Terminator::Call { unwind: None, .. } => {}, // Feasible: no unwind
-        Terminator::Call { unwind: Some(_), target: Some(_) } => {}, // Feasible: has target
+        Terminator::Return => {}                    // Feasible: normal exit
+        Terminator::Abort(_) => {}                  // Feasible: error path but reachable
+        Terminator::Call { unwind: None, .. } => {} // Feasible: no unwind
+        Terminator::Call {
+            unwind: Some(_),
+            target: Some(_),
+        } => {} // Feasible: has target
         // Infeasible terminators (dead ends)
-        Terminator::Unreachable |
-        Terminator::Goto { .. } |
-        Terminator::SwitchInt { .. } |
-        Terminator::Call { unwind: Some(_), target: None } => {
+        Terminator::Unreachable
+        | Terminator::Goto { .. }
+        | Terminator::SwitchInt { .. }
+        | Terminator::Call {
+            unwind: Some(_),
+            target: None,
+        } => {
             return false;
         }
     }
@@ -392,7 +403,9 @@ pub fn classify_path(cfg: &Cfg, blocks: &[BlockId]) -> PathKind {
         // Priority 2: Check for error terminators
         match terminator {
             Terminator::Abort(_) => return PathKind::Error,
-            Terminator::Call { unwind: Some(_), .. } => return PathKind::Error,
+            Terminator::Call {
+                unwind: Some(_), ..
+            } => return PathKind::Error,
             _ => {}
         }
 
@@ -487,7 +500,9 @@ pub fn classify_path_precomputed(
         // Check for error terminators
         match terminator {
             Terminator::Abort(_) => return PathKind::Error,
-            Terminator::Call { unwind: Some(_), .. } => return PathKind::Error,
+            Terminator::Call {
+                unwind: Some(_), ..
+            } => return PathKind::Error,
             _ => {}
         }
 
@@ -703,18 +718,14 @@ impl EnumerationContext {
     pub fn new(cfg: &Cfg) -> Self {
         // Compute reachable blocks
         let reachable_nodes = crate::cfg::reachability::find_reachable(cfg);
-        let reachable_blocks: HashSet<BlockId> = reachable_nodes
-            .iter()
-            .map(|&idx| cfg[idx].id)
-            .collect();
+        let reachable_blocks: HashSet<BlockId> =
+            reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
         // Compute loop headers
         let loop_headers = crate::cfg::loops::find_loop_headers(cfg);
 
         // Compute exit nodes
-        let exits = crate::cfg::analysis::find_exits(cfg)
-            .into_iter()
-            .collect();
+        let exits = crate::cfg::analysis::find_exits(cfg).into_iter().collect();
 
         Self {
             reachable_blocks,
@@ -887,9 +898,7 @@ fn dfs_enumerate_with_context(
     }
 
     // Explore neighbors
-    let neighbors: Vec<_> = cfg
-        .neighbors(current)
-        .collect();
+    let neighbors: Vec<_> = cfg.neighbors(current).collect();
 
     for next in neighbors {
         dfs_enumerate_with_context(
@@ -949,9 +958,7 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
     };
 
     // Get exit blocks
-    let exits: HashSet<NodeIndex> = crate::cfg::analysis::find_exits(cfg)
-        .into_iter()
-        .collect();
+    let exits: HashSet<NodeIndex> = crate::cfg::analysis::find_exits(cfg).into_iter().collect();
 
     if exits.is_empty() {
         return vec![]; // No exits means no complete paths
@@ -959,10 +966,8 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
 
     // Pre-compute reachable blocks for efficient classification
     let reachable_nodes = crate::cfg::reachability::find_reachable(cfg);
-    let reachable_blocks: HashSet<BlockId> = reachable_nodes
-        .iter()
-        .map(|&idx| cfg[idx].id)
-        .collect();
+    let reachable_blocks: HashSet<BlockId> =
+        reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
     // Initialize traversal state
     let mut paths = Vec::new();
@@ -1163,9 +1168,7 @@ pub fn enumerate_paths_iterative(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
     };
 
     // Get exit blocks
-    let exits: HashSet<NodeIndex> = crate::cfg::analysis::find_exits(cfg)
-        .into_iter()
-        .collect();
+    let exits: HashSet<NodeIndex> = crate::cfg::analysis::find_exits(cfg).into_iter().collect();
 
     if exits.is_empty() {
         return vec![]; // No exits means no complete paths
@@ -1173,10 +1176,8 @@ pub fn enumerate_paths_iterative(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
 
     // Pre-compute analysis
     let reachable_nodes = crate::cfg::reachability::find_reachable(cfg);
-    let reachable_blocks: HashSet<BlockId> = reachable_nodes
-        .iter()
-        .map(|&idx| cfg[idx].id)
-        .collect();
+    let reachable_blocks: HashSet<BlockId> =
+        reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
     let loop_headers = crate::cfg::loops::find_loop_headers(cfg);
 
     // Path deduplication: use BTreeSet keyed by block sequence
@@ -1478,11 +1479,13 @@ pub fn get_or_enumerate_paths(
     use crate::storage::paths::{get_cached_paths, invalidate_function_paths, store_paths};
 
     // Check current hash in cfg_blocks
-    let current_hash: Option<String> = db_conn.query_row(
-        "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
-        rusqlite::params![function_id],
-        |row| row.get(0),
-    ).unwrap_or(None);
+    let current_hash: Option<String> = db_conn
+        .query_row(
+            "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
+            rusqlite::params![function_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(None);
 
     // If hash matches, return cached paths
     if let Some(ref hash) = current_hash {
@@ -1581,11 +1584,13 @@ pub fn enumerate_paths_cached(
     // update_function_paths_if_changed handles hash comparison and returns:
     // - Ok(false) if hash matched (cache hit)
     // - Ok(true) if paths were updated (cache miss)
-    let current_hash: Option<String> = db_conn.query_row(
-        "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
-        rusqlite::params![function_id],
-        |row| row.get(0),
-    ).unwrap_or(None);
+    let current_hash: Option<String> = db_conn
+        .query_row(
+            "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
+            rusqlite::params![function_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(None);
 
     // Check if we have a cache hit
     if let Some(ref hash) = current_hash {
@@ -1641,11 +1646,13 @@ pub fn enumerate_paths_cached_with_context(
     use crate::storage::paths::{get_cached_paths, update_function_paths_if_changed};
 
     // Try cache first
-    let current_hash: Option<String> = db_conn.query_row(
-        "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
-        rusqlite::params![function_id],
-        |row| row.get(0),
-    ).unwrap_or(None);
+    let current_hash: Option<String> = db_conn
+        .query_row(
+            "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ?1 LIMIT 1",
+            rusqlite::params![function_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(None);
 
     if let Some(ref hash) = current_hash {
         if hash == function_hash {
@@ -1711,7 +1718,9 @@ pub fn estimate_path_count(cfg: &Cfg, loop_unroll_limit: usize) -> usize {
         if loop_headers.contains(&node) {
             continue; // Skip loop headers, counted separately
         }
-        let out_degree = cfg.neighbors_directed(node, petgraph::Direction::Outgoing).count();
+        let out_degree = cfg
+            .neighbors_directed(node, petgraph::Direction::Outgoing)
+            .count();
         if out_degree > 1 {
             branch_count += out_degree - 1; // Each extra edge adds complexity
         }
@@ -1774,30 +1783,26 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 2 
-        },
+            terminator: Terminator::Goto { target: 2 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
@@ -1808,7 +1813,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::Fallthrough);
@@ -1821,15 +1826,13 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::SwitchInt {
                 targets: vec![1],
                 otherwise: 2,
-    
-        },
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
@@ -1837,30 +1840,26 @@ mod tests {
         });
 
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 
-        },
+            terminator: Terminator::Goto { target: 3 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b2 = g.add_node(BasicBlock {
-
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 
-        },
+            terminator: Terminator::Goto { target: 3 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
@@ -1871,7 +1870,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
         g.add_edge(b0, b2, EdgeType::FalseBranch);
@@ -1886,28 +1885,24 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
                 targets: vec![2],
                 otherwise: 3,
-
-        },
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
@@ -1915,17 +1910,15 @@ mod tests {
         });
 
         let b2 = g.add_node(BasicBlock {
-
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
@@ -1936,7 +1929,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::TrueBranch);
@@ -2105,17 +2098,15 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
@@ -2126,7 +2117,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -2138,17 +2129,15 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
@@ -2159,7 +2148,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -2179,7 +2168,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // Block 1 is not reachable from entry
         let _b1 = g.add_node(BasicBlock {
@@ -2191,7 +2180,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g
     }
@@ -2201,15 +2190,13 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Call {
                 target: Some(1),
                 unwind: Some(2), // Has unwind -> Error path
-
-        },
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
@@ -2225,7 +2212,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let _b2 = g.add_node(BasicBlock {
             id: 2,
@@ -2236,7 +2223,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -2311,7 +2298,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let path = vec![0];
         let kind = classify_path(&g, &path);
@@ -2336,18 +2323,11 @@ mod tests {
         // Pre-compute reachable set
         use crate::cfg::reachability::find_reachable;
         let reachable_nodes = find_reachable(&cfg);
-        let reachable_blocks: HashSet<BlockId> = reachable_nodes
-            .iter()
-            .map(|&idx| cfg[idx].id)
-            .collect();
+        let reachable_blocks: HashSet<BlockId> =
+            reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
         // Test multiple paths
-        let test_paths = vec![
-            vec![0, 1, 3],
-            vec![0, 2, 3],
-            vec![0, 1],
-            vec![0],
-        ];
+        let test_paths = vec![vec![0, 1, 3], vec![0, 2, 3], vec![0, 1], vec![0]];
 
         for path in test_paths {
             let kind1 = classify_path(&cfg, &path);
@@ -2367,10 +2347,8 @@ mod tests {
         // Pre-compute reachable set (only block 0 is reachable)
         use crate::cfg::reachability::find_reachable;
         let reachable_nodes = find_reachable(&cfg);
-        let reachable_blocks: HashSet<BlockId> = reachable_nodes
-            .iter()
-            .map(|&idx| cfg[idx].id)
-            .collect();
+        let reachable_blocks: HashSet<BlockId> =
+            reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
         // Block 1 is unreachable
         let path = vec![1];
@@ -2387,15 +2365,11 @@ mod tests {
 
         // Pre-compute reachable set once
         let reachable_nodes = find_reachable(&cfg);
-        let reachable_blocks: HashSet<BlockId> = reachable_nodes
-            .iter()
-            .map(|&idx| cfg[idx].id)
-            .collect();
+        let reachable_blocks: HashSet<BlockId> =
+            reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
         // Create many test paths
-        let test_paths: Vec<Vec<BlockId>> = (0..1000)
-            .map(|_| vec![0, 1, 3])
-            .collect();
+        let test_paths: Vec<Vec<BlockId>> = (0..1000).map(|_| vec![0, 1, 3]).collect();
 
         // Time the precomputed version
         let start = Instant::now();
@@ -2502,7 +2476,10 @@ mod tests {
         // Should have 4 paths (0, 1, 2, 3 loop iterations)
         // Or possibly 2 paths depending on how loop iteration is counted
         // The key is that loop is bounded and doesn't cause infinite paths
-        assert!(paths.len() >= 2, "Should have at least direct exit and one loop iteration");
+        assert!(
+            paths.len() >= 2,
+            "Should have at least direct exit and one loop iteration"
+        );
         assert!(paths.len() <= 5, "Should be bounded by loop unroll limit");
 
         // All paths should be normal
@@ -2562,7 +2539,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // A single block that is both entry and exit
         let paths = enumerate_paths(&g, &PathLimits::default());
@@ -2579,17 +2556,15 @@ mod tests {
 
         // Block 0: entry
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // Block 1: return
         let b1 = g.add_node(BasicBlock {
@@ -2601,7 +2576,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // Block 2: unreachable (not connected)
         let _b2 = g.add_node(BasicBlock {
@@ -2613,7 +2588,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -2676,17 +2651,18 @@ mod tests {
 
         // Entry block with conditional
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 
-        },
+            terminator: Terminator::SwitchInt {
+                targets: vec![1],
+                otherwise: 2,
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // Normal branch
         let b1 = g.add_node(BasicBlock {
@@ -2698,7 +2674,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // Error branch (panic)
         let b2 = g.add_node(BasicBlock {
@@ -2710,7 +2686,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
         g.add_edge(b0, b2, EdgeType::FalseBranch);
@@ -2736,10 +2712,8 @@ mod tests {
         // Use the same reachable set for manual classification
         use crate::cfg::reachability::find_reachable;
         let reachable_nodes = find_reachable(&cfg);
-        let reachable_blocks: HashSet<BlockId> = reachable_nodes
-            .iter()
-            .map(|&idx| cfg[idx].id)
-            .collect();
+        let reachable_blocks: HashSet<BlockId> =
+            reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
         // Verify each path's kind matches manual classification
         for path in &paths {
@@ -2760,56 +2734,48 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 2 
-        },
+            terminator: Terminator::Goto { target: 2 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b2 = g.add_node(BasicBlock {
-
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 
-        },
+            terminator: Terminator::Goto { target: 3 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b3 = g.add_node(BasicBlock {
-
             id: 3,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 4 
-        },
+            terminator: Terminator::Goto { target: 4 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b4 = g.add_node(BasicBlock {
             id: 4,
@@ -2820,7 +2786,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::Fallthrough);
@@ -2832,7 +2798,11 @@ mod tests {
         let paths = enumerate_paths(&g, &limits);
 
         // No paths should be found because the only path has length 5 > 3
-        assert_eq!(paths.len(), 0, "Path exceeds max_length, should return 0 paths");
+        assert_eq!(
+            paths.len(),
+            0,
+            "Path exceeds max_length, should return 0 paths"
+        );
     }
 
     #[test]
@@ -2864,11 +2834,17 @@ mod tests {
         // With limit=1, we get 1 path (direct exit only, 0 loop iterations)
         // The loop iteration counter is incremented on first visit (0->1), so
         // back-edge attempts to visit again with count=1 which is >= limit
-        assert_eq!(paths.len(), 1, "Should have exactly 1 path with loop_unroll_limit=1");
+        assert_eq!(
+            paths.len(),
+            1,
+            "Should have exactly 1 path with loop_unroll_limit=1"
+        );
 
         // Verify direct exit exists
-        assert!(paths.iter().any(|p| p.blocks == vec![0, 1, 3]),
-                "Direct exit path should exist");
+        assert!(
+            paths.iter().any(|p| p.blocks == vec![0, 1, 3]),
+            "Direct exit path should exist"
+        );
     }
 
     #[test]
@@ -2884,15 +2860,23 @@ mod tests {
         let paths = enumerate_paths(&cfg, &limits);
 
         // With limit=2, we should get 2 paths (direct exit + 1 loop iteration)
-        assert_eq!(paths.len(), 2, "Should have exactly 2 paths with loop_unroll_limit=2");
+        assert_eq!(
+            paths.len(),
+            2,
+            "Should have exactly 2 paths with loop_unroll_limit=2"
+        );
 
         // Verify direct exit exists
-        assert!(paths.iter().any(|p| p.blocks == vec![0, 1, 3]),
-                "Direct exit path should exist");
+        assert!(
+            paths.iter().any(|p| p.blocks == vec![0, 1, 3]),
+            "Direct exit path should exist"
+        );
 
         // Verify one iteration path exists
-        assert!(paths.iter().any(|p| p.blocks == vec![0, 1, 2, 1, 3]),
-                "One iteration path should exist");
+        assert!(
+            paths.iter().any(|p| p.blocks == vec![0, 1, 2, 1, 3]),
+            "One iteration path should exist"
+        );
     }
 
     // Task 2: Self-loop cycle detection tests
@@ -2902,31 +2886,27 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
             // Self-loop: always goes back to itself
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
@@ -2943,8 +2923,10 @@ mod tests {
 
         // Should have a bounded number of paths (not infinite)
         // The self-loop is bounded by loop_unroll_limit
-        assert!(paths.len() <= limits.loop_unroll_limit + 1,
-                "Self-loop should be bounded by loop_unroll_limit");
+        assert!(
+            paths.len() <= limits.loop_unroll_limit + 1,
+            "Self-loop should be bounded by loop_unroll_limit"
+        );
     }
 
     #[test]
@@ -2956,7 +2938,10 @@ mod tests {
         let paths = enumerate_paths(&cfg, &limits);
 
         // Should have exactly 1 path (direct to self-loop block, then bounded)
-        assert!(paths.len() <= 2, "Self-loop with low limit should have few paths");
+        assert!(
+            paths.len() <= 2,
+            "Self-loop with low limit should have few paths"
+        );
     }
 
     // Task 3: Nested loop bounding tests
@@ -2970,56 +2955,54 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 4 
-        },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 4,
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b2 = g.add_node(BasicBlock {
-
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 
-        },
+            terminator: Terminator::SwitchInt {
+                targets: vec![3],
+                otherwise: 1,
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b3 = g.add_node(BasicBlock {
-
             id: 3,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 2 
-        },
+            terminator: Terminator::Goto { target: 2 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b4 = g.add_node(BasicBlock {
             id: 4,
@@ -3030,7 +3013,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::TrueBranch);
@@ -3053,7 +3036,11 @@ mod tests {
 
         // With 2 nested loops and limit 2, we get at most 9 paths
         // (3 outer iterations * 3 inner iterations each)
-        assert!(paths.len() <= 9, "Nested loops should be bounded: got {} paths", paths.len());
+        assert!(
+            paths.len() <= 9,
+            "Nested loops should be bounded: got {} paths",
+            paths.len()
+        );
         assert!(paths.len() > 0, "Should have at least some paths");
     }
 
@@ -3063,72 +3050,71 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // Outer loop header
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 6 
-        },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 6,
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // Middle loop header
         let b2 = g.add_node(BasicBlock {
-
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 
-        },
+            terminator: Terminator::SwitchInt {
+                targets: vec![3],
+                otherwise: 1,
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // Inner loop header
         let b3 = g.add_node(BasicBlock {
-
             id: 3,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![4], otherwise: 2 
-        },
+            terminator: Terminator::SwitchInt {
+                targets: vec![4],
+                otherwise: 2,
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b4 = g.add_node(BasicBlock {
-
             id: 4,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 
-        },
+            terminator: Terminator::Goto { target: 3 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b6 = g.add_node(BasicBlock {
             id: 6,
@@ -3139,7 +3125,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::TrueBranch);
@@ -3155,7 +3141,10 @@ mod tests {
         let limits = PathLimits::default().with_loop_unroll_limit(2);
         let paths = enumerate_paths(&g, &limits);
 
-        assert!(paths.len() <= 27, "3-level nested loops should be bounded by 27");
+        assert!(
+            paths.len() <= 27,
+            "3-level nested loops should be bounded by 27"
+        );
     }
 
     #[test]
@@ -3174,7 +3163,10 @@ mod tests {
 
         // Verify paths are bounded (not exponential explosion)
         assert!(paths.len() > 0, "Should have some paths");
-        assert!(paths.len() <= 9, "Should be bounded by (limit+1)^nesting_depth");
+        assert!(
+            paths.len() <= 9,
+            "Should be bounded by (limit+1)^nesting_depth"
+        );
     }
 
     // Task 4: PathLimits builder and preset tests
@@ -3236,8 +3228,10 @@ mod tests {
         let thorough_paths = enumerate_paths(&cfg, &PathLimits::thorough());
 
         // Thorough should find at least as many paths as quick
-        assert!(thorough_paths.len() >= quick_paths.len(),
-                "Thorough analysis should find at least as many paths as quick");
+        assert!(
+            thorough_paths.len() >= quick_paths.len(),
+            "Thorough analysis should find at least as many paths as quick"
+        );
     }
 
     // Task 1: is_feasible_path tests
@@ -3247,8 +3241,10 @@ mod tests {
         let cfg = create_linear_cfg();
         let empty_path: Vec<BlockId> = vec![];
 
-        assert!(!is_feasible_path(&cfg, &empty_path),
-                "Empty path should be infeasible");
+        assert!(
+            !is_feasible_path(&cfg, &empty_path),
+            "Empty path should be infeasible"
+        );
     }
 
     #[test]
@@ -3257,8 +3253,10 @@ mod tests {
         // Path starting from block 1 (not entry)
         let path = vec![1, 3];
 
-        assert!(!is_feasible_path(&cfg, &path),
-                "Path starting from non-entry block should be infeasible");
+        assert!(
+            !is_feasible_path(&cfg, &path),
+            "Path starting from non-entry block should be infeasible"
+        );
     }
 
     #[test]
@@ -3267,8 +3265,10 @@ mod tests {
         // Path ending in Goto (dead end)
         let path = vec![0, 1]; // Block 1 has Goto to 2
 
-        assert!(!is_feasible_path(&cfg, &path),
-                "Path ending in Goto should be infeasible (dead end)");
+        assert!(
+            !is_feasible_path(&cfg, &path),
+            "Path ending in Goto should be infeasible (dead end)"
+        );
     }
 
     #[test]
@@ -3277,8 +3277,10 @@ mod tests {
         // Complete path: entry -> goto -> return
         let path = vec![0, 1, 2];
 
-        assert!(is_feasible_path(&cfg, &path),
-                "Complete path ending in Return should be feasible");
+        assert!(
+            is_feasible_path(&cfg, &path),
+            "Complete path ending in Return should be feasible"
+        );
     }
 
     #[test]
@@ -3287,8 +3289,10 @@ mod tests {
         // Path ending in Abort (error but reachable)
         let path = vec![0, 1];
 
-        assert!(is_feasible_path(&cfg, &path),
-                "Path ending in Abort should be feasible (error path but reachable)");
+        assert!(
+            is_feasible_path(&cfg, &path),
+            "Path ending in Abort should be feasible (error path but reachable)"
+        );
     }
 
     #[test]
@@ -3297,8 +3301,10 @@ mod tests {
         // Path ending in Unreachable
         let path = vec![0, 1];
 
-        assert!(!is_feasible_path(&cfg, &path),
-                "Path ending in Unreachable should be infeasible");
+        assert!(
+            !is_feasible_path(&cfg, &path),
+            "Path ending in Unreachable should be infeasible"
+        );
     }
 
     #[test]
@@ -3307,8 +3313,10 @@ mod tests {
         // Path with nonexistent block
         let path = vec![0, 99]; // Block 99 doesn't exist
 
-        assert!(!is_feasible_path(&cfg, &path),
-                "Path with nonexistent block should be infeasible");
+        assert!(
+            !is_feasible_path(&cfg, &path),
+            "Path with nonexistent block should be infeasible"
+        );
     }
 
     #[test]
@@ -3317,8 +3325,10 @@ mod tests {
         // Path ending in SwitchInt (block 0)
         let path = vec![0]; // Block 0 has SwitchInt
 
-        assert!(!is_feasible_path(&cfg, &path),
-                "Path ending in SwitchInt should be infeasible (dead end)");
+        assert!(
+            !is_feasible_path(&cfg, &path),
+            "Path ending in SwitchInt should be infeasible (dead end)"
+        );
     }
 
     #[test]
@@ -3328,10 +3338,14 @@ mod tests {
         let path1 = vec![0, 1, 3]; // Through true branch
         let path2 = vec![0, 2, 3]; // Through false branch
 
-        assert!(is_feasible_path(&cfg, &path1),
-                "Complete diamond path 0->1->3 should be feasible");
-        assert!(is_feasible_path(&cfg, &path2),
-                "Complete diamond path 0->2->3 should be feasible");
+        assert!(
+            is_feasible_path(&cfg, &path1),
+            "Complete diamond path 0->1->3 should be feasible"
+        );
+        assert!(
+            is_feasible_path(&cfg, &path2),
+            "Complete diamond path 0->2->3 should be feasible"
+        );
     }
 
     #[test]
@@ -3339,15 +3353,13 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Call {
                 target: Some(1),
                 unwind: None,
-    
-        },
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
@@ -3363,15 +3375,17 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
         // Path ending in Call with no unwind
         let path = vec![0];
 
-        assert!(is_feasible_path(&g, &path),
-                "Path ending in Call with no unwind should be feasible");
+        assert!(
+            is_feasible_path(&g, &path),
+            "Path ending in Call with no unwind should be feasible"
+        );
     }
 
     #[test]
@@ -3380,8 +3394,10 @@ mod tests {
         // Path ending in Call with unwind and target
         let path = vec![0]; // Block 0 has Call with unwind: Some(2), target: Some(1)
 
-        assert!(is_feasible_path(&cfg, &path),
-                "Path ending in Call with both unwind and target should be feasible");
+        assert!(
+            is_feasible_path(&cfg, &path),
+            "Path ending in Call with both unwind and target should be feasible"
+        );
     }
 
     #[test]
@@ -3389,15 +3405,13 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Call {
                 target: None, // No target - always unwinds
                 unwind: Some(1),
-    
-        },
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
@@ -3413,15 +3427,17 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
         // Path ending in Call that always unwinds
         let path = vec![0];
 
-        assert!(!is_feasible_path(&g, &path),
-                "Path ending in Call with only unwind (no target) should be infeasible");
+        assert!(
+            !is_feasible_path(&g, &path),
+            "Path ending in Call with only unwind (no target) should be infeasible"
+        );
     }
 
     // Task 2: is_feasible_path_precomputed tests
@@ -3433,17 +3449,15 @@ mod tests {
         // Pre-compute reachable set
         use crate::cfg::reachability::find_reachable;
         let reachable_nodes = find_reachable(&cfg);
-        let reachable_blocks: HashSet<BlockId> = reachable_nodes
-            .iter()
-            .map(|&idx| cfg[idx].id)
-            .collect();
+        let reachable_blocks: HashSet<BlockId> =
+            reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
         // Test multiple paths - both should give same result
         let test_paths = vec![
-            vec![0, 1, 3],      // Complete path - feasible
-            vec![0, 2, 3],      // Complete path - feasible
-            vec![0, 1],         // Dead end - infeasible
-            vec![],             // Empty - infeasible
+            vec![0, 1, 3], // Complete path - feasible
+            vec![0, 2, 3], // Complete path - feasible
+            vec![0, 1],    // Dead end - infeasible
+            vec![],        // Empty - infeasible
         ];
 
         for path in test_paths {
@@ -3464,16 +3478,16 @@ mod tests {
         // Pre-compute reachable set (only block 0 is reachable)
         use crate::cfg::reachability::find_reachable;
         let reachable_nodes = find_reachable(&cfg);
-        let reachable_blocks: HashSet<BlockId> = reachable_nodes
-            .iter()
-            .map(|&idx| cfg[idx].id)
-            .collect();
+        let reachable_blocks: HashSet<BlockId> =
+            reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
         // Path with unreachable block
         let path = vec![1]; // Block 1 is not reachable from entry
 
-        assert!(!is_feasible_path_precomputed(&cfg, &path, &reachable_blocks),
-                "Path with unreachable block should be infeasible");
+        assert!(
+            !is_feasible_path_precomputed(&cfg, &path, &reachable_blocks),
+            "Path with unreachable block should be infeasible"
+        );
     }
 
     #[test]
@@ -3485,15 +3499,11 @@ mod tests {
 
         // Pre-compute reachable set once
         let reachable_nodes = find_reachable(&cfg);
-        let reachable_blocks: HashSet<BlockId> = reachable_nodes
-            .iter()
-            .map(|&idx| cfg[idx].id)
-            .collect();
+        let reachable_blocks: HashSet<BlockId> =
+            reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
         // Create many test paths
-        let test_paths: Vec<Vec<BlockId>> = (0..1000)
-            .map(|_| vec![0, 1, 3])
-            .collect();
+        let test_paths: Vec<Vec<BlockId>> = (0..1000).map(|_| vec![0, 1, 3]).collect();
 
         // Time the precomputed version
         let start = Instant::now();
@@ -3563,8 +3573,11 @@ mod tests {
         // Path ending in Goto (dead end) should be Degenerate
         let path = vec![0, 1]; // Block 1 has Goto to 2
         let kind = classify_path_precomputed(&cfg, &path, &reachable);
-        assert_eq!(kind, PathKind::Degenerate,
-                   "Path ending in Goto should be Degenerate");
+        assert_eq!(
+            kind,
+            PathKind::Degenerate,
+            "Path ending in Goto should be Degenerate"
+        );
     }
 
     #[test]
@@ -3580,8 +3593,11 @@ mod tests {
         // Complete path with Return should be Normal
         let path = vec![0, 1, 2];
         let kind = classify_path_precomputed(&cfg, &path, &reachable);
-        assert_eq!(kind, PathKind::Normal,
-                   "Complete path with Return should be Normal");
+        assert_eq!(
+            kind,
+            PathKind::Normal,
+            "Complete path with Return should be Normal"
+        );
     }
 
     #[test]
@@ -3597,8 +3613,11 @@ mod tests {
         // Path ending in Abort should be Error (feasible but error path)
         let path = vec![0, 1];
         let kind = classify_path_precomputed(&cfg, &path, &reachable);
-        assert_eq!(kind, PathKind::Error,
-                   "Path ending in Abort should be Error");
+        assert_eq!(
+            kind,
+            PathKind::Error,
+            "Path ending in Abort should be Error"
+        );
     }
 
     #[test]
@@ -3614,8 +3633,11 @@ mod tests {
         // Path ending in SwitchInt (dead end)
         let path = vec![0]; // Block 0 has SwitchInt
         let kind = classify_path_precomputed(&cfg, &path, &reachable);
-        assert_eq!(kind, PathKind::Degenerate,
-                   "Path ending in SwitchInt should be Degenerate");
+        assert_eq!(
+            kind,
+            PathKind::Degenerate,
+            "Path ending in SwitchInt should be Degenerate"
+        );
     }
 
     #[test]
@@ -3632,8 +3654,11 @@ mod tests {
         // Path with unreachable block
         let path = vec![1];
         let kind = classify_path_precomputed(&cfg, &path, &reachable);
-        assert_eq!(kind, PathKind::Unreachable,
-                   "Unreachable should be prioritized over feasibility");
+        assert_eq!(
+            kind,
+            PathKind::Unreachable,
+            "Unreachable should be prioritized over feasibility"
+        );
     }
 
     #[test]
@@ -3650,10 +3675,16 @@ mod tests {
         let path1 = vec![0, 1, 3];
         let path2 = vec![0, 2, 3];
 
-        assert_eq!(classify_path_precomputed(&cfg, &path1, &reachable), PathKind::Normal,
-                   "Complete diamond path 0->1->3 should be Normal");
-        assert_eq!(classify_path_precomputed(&cfg, &path2, &reachable), PathKind::Normal,
-                   "Complete diamond path 0->2->3 should be Normal");
+        assert_eq!(
+            classify_path_precomputed(&cfg, &path1, &reachable),
+            PathKind::Normal,
+            "Complete diamond path 0->1->3 should be Normal"
+        );
+        assert_eq!(
+            classify_path_precomputed(&cfg, &path2, &reachable),
+            PathKind::Normal,
+            "Complete diamond path 0->2->3 should be Normal"
+        );
     }
 
     #[test]
@@ -3663,15 +3694,13 @@ mod tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Call {
                 target: Some(1),
                 unwind: None,
-    
-        },
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
@@ -3687,20 +3716,20 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
 
-        let reachable = find_reachable(&g)
-            .iter()
-            .map(|&idx| g[idx].id)
-            .collect();
+        let reachable = find_reachable(&g).iter().map(|&idx| g[idx].id).collect();
 
         // Path ending in Call with target should be Normal (feasible)
         let path = vec![0];
         let kind = classify_path_precomputed(&g, &path, &reachable);
-        assert_eq!(kind, PathKind::Normal,
-                   "Path ending in Call with target should be Normal");
+        assert_eq!(
+            kind,
+            PathKind::Normal,
+            "Path ending in Call with target should be Normal"
+        );
     }
 
     // Task 4: Feasibility limitation demonstration
@@ -3716,31 +3745,33 @@ mod tests {
 
         // Entry: check x > 5
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![1], otherwise: 2 
-        },
+            terminator: Terminator::SwitchInt {
+                targets: vec![1],
+                otherwise: 2,
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // True branch: check x < 3 (conflicts with x > 5)
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 3 
-        },
+            terminator: Terminator::SwitchInt {
+                targets: vec![3],
+                otherwise: 3,
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // False branch: just return
         let b2 = g.add_node(BasicBlock {
@@ -3752,7 +3783,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         // After conflicting check: return
         let b3 = g.add_node(BasicBlock {
@@ -3764,7 +3795,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
         g.add_edge(b0, b2, EdgeType::FalseBranch);
@@ -3789,13 +3820,17 @@ mod tests {
         let path = vec![0, 1, 3];
 
         // The path is marked feasible by static check
-        assert!(is_feasible_path_precomputed(&cfg, &path, &reachable),
-                "Static analysis marks conflicting path as feasible (limitation)");
+        assert!(
+            is_feasible_path_precomputed(&cfg, &path, &reachable),
+            "Static analysis marks conflicting path as feasible (limitation)"
+        );
 
         // And classified as Normal
-        assert_eq!(classify_path_precomputed(&cfg, &path, &reachable),
-                   PathKind::Normal,
-                   "Conflicting path is classified as Normal (static limitation)");
+        assert_eq!(
+            classify_path_precomputed(&cfg, &path, &reachable),
+            PathKind::Normal,
+            "Conflicting path is classified as Normal (static limitation)"
+        );
 
         // This test documents the limitation: symbolic execution would be needed
         // to detect that x > 5 and x < 3 cannot both be true
@@ -3815,17 +3850,23 @@ mod tests {
 
         // What we check: Entry kind
         let non_entry_path = vec![1, 2];
-        assert!(!is_feasible_path_precomputed(&cfg, &non_entry_path, &reachable),
-                "Entry check works as documented");
+        assert!(
+            !is_feasible_path_precomputed(&cfg, &non_entry_path, &reachable),
+            "Entry check works as documented"
+        );
 
         // What we check: Valid exit terminator
         let dead_end_path = vec![0, 1];
-        assert!(!is_feasible_path_precomputed(&cfg, &dead_end_path, &reachable),
-                "Dead-end detection works as documented");
+        assert!(
+            !is_feasible_path_precomputed(&cfg, &dead_end_path, &reachable),
+            "Dead-end detection works as documented"
+        );
 
         // What we check: Reachable blocks
-        assert!(is_feasible_path_precomputed(&cfg, &[0, 1, 2], &reachable),
-                "Reachable path is feasible as documented");
+        assert!(
+            is_feasible_path_precomputed(&cfg, &[0, 1, 2], &reachable),
+            "Reachable path is feasible as documented"
+        );
     }
 
     // Task 7: get_or_enumerate_paths tests
@@ -3846,7 +3887,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -3857,7 +3899,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -3872,7 +3915,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = 1;
 
         // Create test CFG
@@ -3881,7 +3925,8 @@ mod tests {
         let limits = PathLimits::default();
 
         // First call should enumerate (cache miss)
-        let paths = get_or_enumerate_paths(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
+        let paths =
+            get_or_enumerate_paths(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
 
         // Linear CFG has exactly 1 path
         assert_eq!(paths.len(), 1);
@@ -3903,7 +3948,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -3914,7 +3960,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -3927,7 +3974,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = 1;
 
         let cfg = create_linear_cfg();
@@ -3935,11 +3983,13 @@ mod tests {
         let limits = PathLimits::default();
 
         // First call - cache miss, enumerates and stores
-        let paths1 = get_or_enumerate_paths(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
+        let paths1 =
+            get_or_enumerate_paths(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
         assert_eq!(paths1.len(), 1);
 
         // Second call with same hash - cache hit, retrieves without enumeration
-        let paths2 = get_or_enumerate_paths(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
+        let paths2 =
+            get_or_enumerate_paths(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
         assert_eq!(paths2.len(), 1);
         assert_eq!(paths2[0].blocks, vec![0, 1, 2]);
     }
@@ -3959,7 +4009,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -3970,7 +4021,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -3983,7 +4035,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = 1;
 
         let cfg = create_linear_cfg();
@@ -4165,8 +4218,10 @@ mod tests {
         // First call with context should be faster than basic
         // (basic recomputes everything, context reuses)
         // Note: This is a micro-benchmark and may vary
-        println!("Basic: {:?}, Context creation: {:?}, Context enum: {:?}",
-                 basic_time, ctx_creation_time, context_time);
+        println!(
+            "Basic: {:?}, Context creation: {:?}, Context enum: {:?}",
+            basic_time, ctx_creation_time, context_time
+        );
 
         // Second call with same context should be much faster
         let start = Instant::now();
@@ -4201,8 +4256,8 @@ mod tests {
 
     #[test]
     fn test_enumerate_paths_cached_cache_miss_enumerates() {
-        use crate::storage::create_schema;
         use super::super::enumerate_paths_cached;
+        use crate::storage::create_schema;
 
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
 
@@ -4215,7 +4270,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -4226,7 +4282,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -4239,7 +4296,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = 1;
 
         let cfg = create_linear_cfg();
@@ -4247,7 +4305,8 @@ mod tests {
         let limits = PathLimits::default();
 
         // First call should enumerate (cache miss)
-        let paths = enumerate_paths_cached(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
+        let paths =
+            enumerate_paths_cached(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
 
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0].blocks, vec![0, 1, 2]);
@@ -4255,8 +4314,8 @@ mod tests {
 
     #[test]
     fn test_enumerate_paths_cached_cache_hit_retrieves() {
-        use crate::storage::create_schema;
         use super::super::enumerate_paths_cached;
+        use crate::storage::create_schema;
 
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
 
@@ -4269,7 +4328,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -4280,7 +4340,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -4293,7 +4354,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = 1;
 
         let cfg = create_linear_cfg();
@@ -4301,19 +4363,21 @@ mod tests {
         let limits = PathLimits::default();
 
         // First call - cache miss, enumerates and stores
-        let paths1 = enumerate_paths_cached(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
+        let paths1 =
+            enumerate_paths_cached(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
         assert_eq!(paths1.len(), 1);
 
         // Second call with same hash - cache hit, retrieves without enumeration
-        let paths2 = enumerate_paths_cached(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
+        let paths2 =
+            enumerate_paths_cached(&cfg, function_id, function_hash, &limits, &mut conn).unwrap();
         assert_eq!(paths2.len(), 1);
         assert_eq!(paths2[0].blocks, vec![0, 1, 2]);
     }
 
     #[test]
     fn test_enumerate_paths_cached_hash_change_invalidates() {
-        use crate::storage::create_schema;
         use super::super::enumerate_paths_cached;
+        use crate::storage::create_schema;
 
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
 
@@ -4326,7 +4390,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -4337,7 +4402,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -4350,7 +4416,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = 1;
 
         let cfg = create_linear_cfg();
@@ -4372,8 +4439,8 @@ mod tests {
 
     #[test]
     fn test_enumerate_paths_cached_with_context() {
-        use crate::storage::create_schema;
         use super::super::{enumerate_paths_cached_with_context, EnumerationContext};
+        use crate::storage::create_schema;
 
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
 
@@ -4386,7 +4453,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -4397,7 +4465,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -4410,7 +4479,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = 1;
 
         let cfg = create_diamond_cfg();
@@ -4420,14 +4490,26 @@ mod tests {
 
         // First call - cache miss
         let paths1 = enumerate_paths_cached_with_context(
-            &cfg, function_id, function_hash, &limits, &ctx, &mut conn
-        ).unwrap();
+            &cfg,
+            function_id,
+            function_hash,
+            &limits,
+            &ctx,
+            &mut conn,
+        )
+        .unwrap();
         assert_eq!(paths1.len(), 2); // Diamond has 2 paths
 
         // Second call - cache hit
         let paths2 = enumerate_paths_cached_with_context(
-            &cfg, function_id, function_hash, &limits, &ctx, &mut conn
-        ).unwrap();
+            &cfg,
+            function_id,
+            function_hash,
+            &limits,
+            &ctx,
+            &mut conn,
+        )
+        .unwrap();
         assert_eq!(paths2.len(), 2);
     }
 
@@ -4573,7 +4655,7 @@ mod tests {
                 coord_x: 0,
                 coord_y: 0,
                 coord_z: 0,
-    });
+            });
         }
 
         // Add edges
@@ -4611,7 +4693,10 @@ mod tests {
                 // Branch point (even numbers after 0)
                 let target1 = i + 1;
                 let target2 = i + 2;
-                Terminator::SwitchInt { targets: vec![target1], otherwise: target2 }
+                Terminator::SwitchInt {
+                    targets: vec![target1],
+                    otherwise: target2,
+                }
             } else {
                 // Fallthrough to merge
                 let merge = i + 1;
@@ -4627,7 +4712,7 @@ mod tests {
                 coord_x: 0,
                 coord_y: 0,
                 coord_z: 0,
-    });
+            });
             nodes.push(node);
         }
 
@@ -4663,8 +4748,11 @@ mod tests {
         let duration = start.elapsed();
 
         assert_eq!(paths.len(), 1);
-        assert!(duration < Duration::from_millis(10),
-                "Linear 10-block CFG should be <10ms, took {:?}", duration);
+        assert!(
+            duration < Duration::from_millis(10),
+            "Linear 10-block CFG should be <10ms, took {:?}",
+            duration
+        );
         println!("Linear 10 blocks: {:?}", duration);
     }
 
@@ -4681,8 +4769,11 @@ mod tests {
         let duration = start.elapsed();
 
         assert_eq!(paths.len(), 1);
-        assert!(duration < Duration::from_millis(100),
-                "Linear 100-block CFG should be <100ms, took {:?}", duration);
+        assert!(
+            duration < Duration::from_millis(100),
+            "Linear 100-block CFG should be <100ms, took {:?}",
+            duration
+        );
         println!("Linear 100 blocks: {:?}", duration);
     }
 
@@ -4700,9 +4791,16 @@ mod tests {
 
         // 10 branches = 2^10 = 1024 paths
         assert!(paths.len() > 0);
-        assert!(duration < Duration::from_millis(50),
-                "Diamond CFG should be <50ms, took {:?}", duration);
-        println!("Diamond 10 branches: {} paths in {:?}", paths.len(), duration);
+        assert!(
+            duration < Duration::from_millis(50),
+            "Diamond CFG should be <50ms, took {:?}",
+            duration
+        );
+        println!(
+            "Diamond 10 branches: {} paths in {:?}",
+            paths.len(),
+            duration
+        );
     }
 
     #[test]
@@ -4718,71 +4816,76 @@ mod tests {
         let duration = start.elapsed();
 
         assert!(paths.len() > 0);
-        assert!(duration < Duration::from_millis(100),
-                "Single loop should be <100ms, took {:?}", duration);
-        println!("Single loop (unroll=3): {} paths in {:?}", paths.len(), duration);
+        assert!(
+            duration < Duration::from_millis(100),
+            "Single loop should be <100ms, took {:?}",
+            duration
+        );
+        println!(
+            "Single loop (unroll=3): {} paths in {:?}",
+            paths.len(),
+            duration
+        );
     }
 
     #[test]
     #[ignore = "benchmark test - run with cargo test -- --ignored"]
     fn test_perf_nested_loops() {
-        use std::time::Instant;
         use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
+        use std::time::Instant;
 
         let mut g = DiGraph::new();
 
         // Create 2-level nested loop
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
-            terminator: Terminator::Goto { target: 1 
-        },
+            terminator: Terminator::Goto { target: 1 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![2], otherwise: 5 
-        },
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 5,
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b2 = g.add_node(BasicBlock {
-
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::SwitchInt { targets: vec![3], otherwise: 1 
-        },
+            terminator: Terminator::SwitchInt {
+                targets: vec![3],
+                otherwise: 1,
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b3 = g.add_node(BasicBlock {
-
             id: 3,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 2 
-        },
+            terminator: Terminator::Goto { target: 2 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b5 = g.add_node(BasicBlock {
             id: 5,
@@ -4793,7 +4896,7 @@ mod tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
         g.add_edge(b1, b2, EdgeType::TrueBranch);
@@ -4809,16 +4912,23 @@ mod tests {
         let duration = start.elapsed();
 
         assert!(paths.len() > 0);
-        assert!(duration < Duration::from_millis(500),
-                "Nested loops should be <500ms, took {:?}", duration);
-        println!("Nested 2 loops (unroll=2): {} paths in {:?}", paths.len(), duration);
+        assert!(
+            duration < Duration::from_millis(500),
+            "Nested loops should be <500ms, took {:?}",
+            duration
+        );
+        println!(
+            "Nested 2 loops (unroll=2): {} paths in {:?}",
+            paths.len(),
+            duration
+        );
     }
 
     #[test]
     #[ignore = "benchmark test - run with cargo test -- --ignored"]
     fn test_perf_enumeration_context_reuse() {
-        use std::time::Instant;
         use super::super::EnumerationContext;
+        use std::time::Instant;
 
         let cfg = create_diamond_cfg();
         let ctx = EnumerationContext::new(&cfg);
@@ -4833,8 +4943,11 @@ mod tests {
         let duration = start.elapsed();
 
         println!("100 calls with context: {:?}", duration);
-        assert!(duration < Duration::from_millis(100),
-                "100 cached calls should be <100ms, took {:?}", duration);
+        assert!(
+            duration < Duration::from_millis(100),
+            "100 cached calls should be <100ms, took {:?}",
+            duration
+        );
     }
 
     #[test]
@@ -4859,10 +4972,16 @@ mod tests {
         println!("Enumeration: {} paths in {:?}", paths.len(), enum_duration);
 
         // Both should be fast for simple CFGs
-        assert!(est_duration.as_micros() < 1000,
-                "Estimation should be fast: {:?}", est_duration);
-        assert!(enum_duration.as_micros() < 1000,
-                "Enumeration should be fast: {:?}", enum_duration);
+        assert!(
+            est_duration.as_micros() < 1000,
+            "Estimation should be fast: {:?}",
+            est_duration
+        );
+        assert!(
+            enum_duration.as_micros() < 1000,
+            "Enumeration should be fast: {:?}",
+            enum_duration
+        );
     }
 }
 
@@ -4929,7 +5048,8 @@ pub fn enumerate_paths_incremental(
 
     // If specific function requested, analyze regardless of changes
     if function_id != "all" {
-        let fid = function_id.parse::<i64>()
+        let fid = function_id
+            .parse::<i64>()
             .map_err(|_| anyhow::anyhow!("Invalid function ID: {}", function_id))?;
 
         let cfg = load_cfg_from_db(backend, fid)?;
@@ -4947,16 +5067,13 @@ pub fn enumerate_paths_incremental(
     }
 
     // Project-wide: use git to detect changed functions
-    let changed_function_ids = crate::cfg::git_utils::get_changed_functions(
-        backend,
-        repo_path,
-        since_revision,
-    )?;
+    let changed_function_ids =
+        crate::cfg::git_utils::get_changed_functions(backend, repo_path, since_revision)?;
 
     if changed_function_ids.is_empty() {
         return Ok(IncrementalPathsResult {
             analyzed_functions: 0,
-            skipped_functions: 0,  // Cannot determine total without scanning all
+            skipped_functions: 0, // Cannot determine total without scanning all
             paths: vec![],
         });
     }
@@ -4985,7 +5102,7 @@ pub fn enumerate_paths_incremental(
 
     Ok(IncrementalPathsResult {
         analyzed_functions: analyzed,
-        skipped_functions: 0,  // TODO: Would require scanning all functions
+        skipped_functions: 0, // TODO: Would require scanning all functions
         paths: all_paths,
     })
 }
@@ -4995,22 +5112,20 @@ pub fn enumerate_paths_incremental(
 #[cfg(test)]
 mod iterative_tests {
     use super::*;
-    use crate::cfg::{BlockKind, BasicBlock, Cfg, EdgeType, Terminator};
+    use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
     use petgraph::graph::DiGraph;
 
     fn create_simple_diamond_cfg() -> Cfg {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::SwitchInt {
                 targets: vec![1],
                 otherwise: 2,
-    
-        },
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
@@ -5018,30 +5133,26 @@ mod iterative_tests {
         });
 
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 
-        },
+            terminator: Terminator::Goto { target: 3 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b2 = g.add_node(BasicBlock {
-
             id: 2,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 3 
-        },
+            terminator: Terminator::Goto { target: 3 },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
@@ -5052,7 +5163,7 @@ mod iterative_tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
         g.add_edge(b0, b2, EdgeType::FalseBranch);
@@ -5096,14 +5207,10 @@ mod iterative_tests {
         assert_eq!(recursive_paths.len(), iterative_paths.len());
 
         // Paths should be identical (as sets)
-        let recursive_set: std::collections::HashSet<Vec<_>> = recursive_paths
-            .iter()
-            .map(|p| p.blocks.clone())
-            .collect();
-        let iterative_set: std::collections::HashSet<Vec<_>> = iterative_paths
-            .iter()
-            .map(|p| p.blocks.clone())
-            .collect();
+        let recursive_set: std::collections::HashSet<Vec<_>> =
+            recursive_paths.iter().map(|p| p.blocks.clone()).collect();
+        let iterative_set: std::collections::HashSet<Vec<_>> =
+            iterative_paths.iter().map(|p| p.blocks.clone()).collect();
 
         assert_eq!(recursive_set, iterative_set);
     }
@@ -5152,15 +5259,13 @@ mod iterative_tests {
         let mut g = DiGraph::new();
 
         let b0 = g.add_node(BasicBlock {
-
             id: 0,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::SwitchInt {
                 targets: vec![1],
                 otherwise: 2,
-    
-        },
+            },
             source_location: None,
             coord_x: 0,
             coord_y: 0,
@@ -5168,17 +5273,15 @@ mod iterative_tests {
         });
 
         let b1 = g.add_node(BasicBlock {
-
             id: 1,
             kind: BlockKind::Normal,
             statements: vec![],
-            terminator: Terminator::Goto { target: 0 
-        }, // Back edge to entry
+            terminator: Terminator::Goto { target: 0 }, // Back edge to entry
             source_location: None,
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
@@ -5189,7 +5292,7 @@ mod iterative_tests {
             coord_x: 0,
             coord_y: 0,
             coord_z: 0,
-    });
+        });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
         g.add_edge(b0, b2, EdgeType::FalseBranch);

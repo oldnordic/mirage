@@ -8,11 +8,11 @@
 //! behavior across backends, enabling users to switch backends without
 //! changing their workflows.
 
-use tempfile::TempDir;
 use std::path::PathBuf;
+use tempfile::TempDir;
 
 // Import storage items
-use mirage_analyzer::storage::{Backend, StorageTrait, CfgBlockData};
+use mirage_analyzer::storage::{Backend, CfgBlockData, StorageTrait};
 
 /// Create a test SQLite database with CFG data
 ///
@@ -42,7 +42,8 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
             created_at INTEGER NOT NULL
         )",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     conn.execute(
         "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -60,7 +61,8 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
             data TEXT NOT NULL
         )",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Create cfg_blocks table (Magellan v7 schema)
     conn.execute(
@@ -78,14 +80,16 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
             FOREIGN KEY (function_id) REFERENCES graph_entities(id)
         )",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Insert a test function
     conn.execute(
         "INSERT INTO graph_entities (kind, name, file_path, data)
          VALUES ('Symbol', 'test_function', 'src/test.rs', '{\"kind\": \"Function\"}')",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Insert test CFG blocks for the function
     // Block 1: Entry block
@@ -94,7 +98,8 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
                                  start_line, start_col, end_line, end_col)
          VALUES (1, 'entry', 'fallthrough', 0, 10, 1, 0, 1, 10)",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Block 2: Conditional block
     conn.execute(
@@ -102,7 +107,8 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
                                  start_line, start_col, end_line, end_col)
          VALUES (1, 'normal', 'conditional', 10, 50, 2, 4, 5, 8)",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Block 3: Return block
     conn.execute(
@@ -110,7 +116,8 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
                                  start_line, start_col, end_line, end_col)
          VALUES (1, 'return', 'return', 50, 60, 5, 0, 5, 10)",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     (dir, db_path)
 }
@@ -259,7 +266,11 @@ fn test_empty_result_sqlite() {
 
     // Query non-existent function should return empty Vec, not error
     let blocks = backend.get_cfg_blocks(999).unwrap();
-    assert_eq!(blocks.len(), 0, "Non-existent function should return empty Vec");
+    assert_eq!(
+        blocks.len(),
+        0,
+        "Non-existent function should return empty Vec"
+    );
 }
 
 #[test]
@@ -271,7 +282,11 @@ fn test_empty_result_native_v2() {
 
     // Query non-existent function should return empty Vec, not error
     let blocks = backend.get_cfg_blocks(999).unwrap();
-    assert_eq!(blocks.len(), 0, "Non-existent function should return empty Vec");
+    assert_eq!(
+        blocks.len(),
+        0,
+        "Non-existent function should return empty Vec"
+    );
 }
 
 // ============================================================================

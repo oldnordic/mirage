@@ -5,8 +5,8 @@
 
 use anyhow::Result;
 use git2::Repository;
-use std::path::Path;
 use std::collections::HashSet;
+use std::path::Path;
 
 /// Get list of changed Rust files since a git revision
 ///
@@ -30,19 +30,18 @@ use std::collections::HashSet;
 ///     println!("Changed: {}", file);
 /// }
 /// ```
-pub fn get_changed_rust_files(
-    repo_path: &Path,
-    since_revision: &str,
-) -> Result<HashSet<String>> {
+pub fn get_changed_rust_files(repo_path: &Path, since_revision: &str) -> Result<HashSet<String>> {
     let repo = Repository::open(repo_path)
         .map_err(|e| anyhow::anyhow!("Failed to open git repository: {}", e))?;
 
     // Get commit object for revision
-    let rev = repo.revparse_single(since_revision)
+    let rev = repo
+        .revparse_single(since_revision)
         .map_err(|e| anyhow::anyhow!("Failed to parse revision '{}': {}", since_revision, e))?;
 
     // Get parent commit (for HEAD~1 pattern)
-    let parent = rev.as_commit()
+    let parent = rev
+        .as_commit()
         .and_then(|c| c.parent(0).ok())
         .ok_or_else(|| anyhow::anyhow!("Commit has no parent"))?;
 
@@ -50,16 +49,13 @@ pub fn get_changed_rust_files(
     let parent_tree = parent.tree()?;
 
     // Get HEAD tree
-    let head_tree = repo.head()
+    let head_tree = repo
+        .head()
         .map_err(|e| anyhow::anyhow!("Failed to get HEAD: {}", e))?
         .peel_to_tree()?;
 
     // Create diff between parent and HEAD
-    let diff = repo.diff_tree_to_tree(
-        Some(&parent_tree),
-        Some(&head_tree),
-        None,
-    )?;
+    let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&head_tree), None)?;
 
     // Collect changed Rust files
     let mut changed_files = HashSet::new();
@@ -127,7 +123,9 @@ pub fn get_changed_functions(
             // GraphEntity has kind: String and data: Map<String, Value>
             // Check if this is a function
             let is_function = entity.kind == "Symbol"
-                && entity.data.get("kind")
+                && entity
+                    .data
+                    .get("kind")
                     .and_then(|v| v.as_str())
                     .map_or(false, |k| k == "Function");
 
@@ -139,7 +137,9 @@ pub fn get_changed_functions(
                         for changed_file in &changed_files {
                             // Match if file path contains the changed file or vice versa
                             // This handles both relative and absolute path variations
-                            if entity_file_str.contains(changed_file) || changed_file.contains(entity_file_str) {
+                            if entity_file_str.contains(changed_file)
+                                || changed_file.contains(entity_file_str)
+                            {
                                 function_ids.push(entity_id);
                                 break; // Found a match, no need to check other changed files
                             }

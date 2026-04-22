@@ -26,8 +26,8 @@
 use anyhow::Result;
 use std::path::Path;
 
-use sqlitegraph::backend::native::v3::V3Backend;
 use sqlitegraph::backend::native::v3::kv_store::types::KvValue;
+use sqlitegraph::backend::native::v3::V3Backend;
 
 use super::{CfgBlockData, StorageTrait};
 
@@ -109,31 +109,33 @@ impl StorageTrait for KvStorage {
     fn get_cfg_blocks(&self, function_id: i64) -> Result<Vec<CfgBlockData>> {
         // Use kv_get_v3 to retrieve CFG blocks from KV store
         let key = cfg_key(function_id);
-        
-        match self.backend.kv_get_v3(sqlitegraph::SnapshotId::current(), key.as_bytes()) {
+
+        match self
+            .backend
+            .kv_get_v3(sqlitegraph::SnapshotId::current(), key.as_bytes())
+        {
             Some(kv_value) => {
                 // Parse JSON from KvValue
                 let json_str: String = match kv_value {
                     KvValue::Json(json) => json.to_string(),
                     KvValue::String(s) => s,
-                    KvValue::Bytes(b) => {
-                        String::from_utf8_lossy(&b).to_string()
-                    }
+                    KvValue::Bytes(b) => String::from_utf8_lossy(&b).to_string(),
                     _ => {
                         return Err(anyhow::anyhow!(
-                            "CFG data for function {} is not in JSON format", function_id
+                            "CFG data for function {} is not in JSON format",
+                            function_id
                         ));
                     }
                 };
-                
+
                 // Deserialize JSON to Vec<CfgBlockData>
                 match serde_json::from_str::<Vec<CfgBlockData>>(&json_str) {
                     Ok(blocks) => Ok(blocks),
-                    Err(e) => {
-                        Err(anyhow::anyhow!(
-                            "Failed to parse CFG data for function {}: {}", function_id, e
-                        ))
-                    }
+                    Err(e) => Err(anyhow::anyhow!(
+                        "Failed to parse CFG data for function {}: {}",
+                        function_id,
+                        e
+                    )),
                 }
             }
             None => {
@@ -158,7 +160,9 @@ impl StorageTrait for KvStorage {
     fn get_entity(&self, entity_id: i64) -> Option<sqlitegraph::GraphEntity> {
         // V3Backend implements GraphBackend, so we can use get_node with a snapshot
         use sqlitegraph::GraphBackend;
-        self.backend.get_node(sqlitegraph::SnapshotId::current(), entity_id).ok()
+        self.backend
+            .get_node(sqlitegraph::SnapshotId::current(), entity_id)
+            .ok()
     }
 
     /// Get cached paths for a function from KV backend

@@ -72,17 +72,26 @@ pub fn classify_terminator(terminator: &crate::cfg::Terminator) -> Vec<(usize, E
         }
         Return => vec![],
         Unreachable => vec![],
-        Call { target: Some(t), unwind } => {
+        Call {
+            target: Some(t),
+            unwind,
+        } => {
             let mut edges = vec![(*t, EdgeType::Call)];
             if let Some(uw) = unwind {
                 edges.push((*uw, EdgeType::Exception));
             }
             edges
         }
-        Call { target: None, unwind: Some(uw) } => {
+        Call {
+            target: None,
+            unwind: Some(uw),
+        } => {
             vec![(*uw, EdgeType::Exception)]
         }
-        Call { target: None, unwind: None } => vec![],
+        Call {
+            target: None,
+            unwind: None,
+        } => vec![],
         Abort(_) => vec![],
     }
 }

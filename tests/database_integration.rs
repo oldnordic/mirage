@@ -30,7 +30,8 @@ fn create_test_magellan_db() -> tempfile::NamedTempFile {
             created_at INTEGER NOT NULL
         )",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Insert Magellan v7 meta
     conn.execute(
@@ -49,7 +50,8 @@ fn create_test_magellan_db() -> tempfile::NamedTempFile {
             data TEXT NOT NULL
         )",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Create Magellan v7 cfg_blocks table
     // Uses lowercase "kind" and "terminator" columns (not block_kind, not JSON)
@@ -68,7 +70,8 @@ fn create_test_magellan_db() -> tempfile::NamedTempFile {
             FOREIGN KEY (function_id) REFERENCES graph_entities(id)
         )",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Create graph_edges table for edge storage
     conn.execute(
@@ -80,7 +83,8 @@ fn create_test_magellan_db() -> tempfile::NamedTempFile {
             data TEXT
         )",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 
     db
 }
@@ -88,10 +92,11 @@ fn create_test_magellan_db() -> tempfile::NamedTempFile {
 /// Helper to get a list of all index names for a given table
 fn get_index_names(conn: &Connection, table_pattern: &str) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name LIKE ? ORDER BY name"
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name LIKE ? ORDER BY name",
     )?;
 
-    let indexes = stmt.query_map([table_pattern], |row| row.get(0))?
+    let indexes = stmt
+        .query_map([table_pattern], |row| row.get(0))?
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
     Ok(indexes)
@@ -103,7 +108,9 @@ fn table_exists(conn: &Connection, table_name: &str) -> bool {
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
         [table_name],
         |row| row.get::<_, i64>(0),
-    ).unwrap_or(0) > 0
+    )
+    .unwrap_or(0)
+        > 0
 }
 
 /// Check if an index exists in the database
@@ -112,7 +119,9 @@ fn index_exists(conn: &Connection, index_name: &str) -> bool {
         "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?",
         [index_name],
         |row| row.get::<_, i64>(0),
-    ).unwrap_or(0) > 0
+    )
+    .unwrap_or(0)
+        > 0
 }
 
 /// Helper to insert a test function into graph_entities
@@ -120,14 +129,17 @@ fn insert_test_function(conn: &Connection, name: &str, file_path: &str) -> i64 {
     conn.execute(
         "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
         ("function", name, file_path, "{}"),
-    ).unwrap();
+    )
+    .unwrap();
     conn.last_insert_rowid()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mirage_analyzer::storage::{create_schema, MirageDb, MIRAGE_SCHEMA_VERSION, REQUIRED_MAGELLAN_SCHEMA_VERSION};
+    use mirage_analyzer::storage::{
+        create_schema, MirageDb, MIRAGE_SCHEMA_VERSION, REQUIRED_MAGELLAN_SCHEMA_VERSION,
+    };
 
     #[test]
     fn test_magellan_db_setup() {
@@ -147,11 +159,13 @@ mod tests {
         assert!(table_exists(&conn, "graph_edges"));
 
         // Verify Magellan schema version
-        let version: i32 = conn.query_row(
-            "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let version: i32 = conn
+            .query_row(
+                "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(version, 7, "Magellan schema version should be 7");
 
@@ -160,11 +174,13 @@ mod tests {
         assert!(function_id > 0, "Should have a valid function_id");
 
         // Verify the insert worked
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM graph_entities WHERE id = ?",
-            [function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM graph_entities WHERE id = ?",
+                [function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(count, 1);
     }
@@ -182,9 +198,9 @@ mod tests {
         create_schema(&mut conn, 7).unwrap();
 
         // Verify all Mirage tables exist
+        // Note: cfg_edges is managed by Magellan v11+; Mirage does not create it.
         let mirage_tables = vec![
             "cfg_blocks",
-            "cfg_edges",
             "cfg_paths",
             "cfg_path_elements",
             "cfg_dominators",
@@ -202,7 +218,10 @@ mod tests {
 
         // Verify indexes were created
         let cfg_indexes = get_index_names(&conn, "cfg_%").unwrap();
-        assert!(!cfg_indexes.is_empty(), "Should have indexes for cfg_* tables");
+        assert!(
+            !cfg_indexes.is_empty(),
+            "Should have indexes for cfg_* tables"
+        );
 
         // Check specific indexes exist
         assert!(
@@ -211,32 +230,28 @@ mod tests {
         );
         // Note: idx_cfg_blocks_function_hash doesn't exist in Magellan v7 (no function_hash column)
         assert!(
-            index_exists(&conn, "idx_cfg_edges_from"),
-            "Index idx_cfg_edges_from should exist"
-        );
-        assert!(
-            index_exists(&conn, "idx_cfg_edges_to"),
-            "Index idx_cfg_edges_to should exist"
-        );
-        assert!(
             index_exists(&conn, "idx_cfg_paths_function"),
             "Index idx_cfg_paths_function should exist"
         );
 
         // Verify mirage_meta has correct schema versions
-        let mirage_version: i32 = conn.query_row(
-            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let mirage_version: i32 = conn
+            .query_row(
+                "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(mirage_version, MIRAGE_SCHEMA_VERSION);
 
-        let magellan_version: i32 = conn.query_row(
-            "SELECT magellan_schema_version FROM mirage_meta WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let magellan_version: i32 = conn
+            .query_row(
+                "SELECT magellan_schema_version FROM mirage_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(magellan_version, REQUIRED_MAGELLAN_SCHEMA_VERSION);
     }
@@ -251,7 +266,9 @@ mod tests {
         conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
 
         // Verify foreign keys are enabled
-        let fk_enabled: i32 = conn.query_row("PRAGMA foreign_keys", [], |row| row.get(0)).unwrap();
+        let fk_enabled: i32 = conn
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .unwrap();
         assert_eq!(fk_enabled, 1, "Foreign keys should be enabled");
 
         // Create Mirage schema
@@ -269,7 +286,10 @@ mod tests {
             (function_id, "entry", "return", 0, 10, 1, 0, 1, 10),
         );
 
-        assert!(valid_result.is_ok(), "Insert with valid function_id should succeed");
+        assert!(
+            valid_result.is_ok(),
+            "Insert with valid function_id should succeed"
+        );
 
         // Get the block_id for edge tests
         let block_id: i64 = conn.last_insert_rowid();
@@ -287,47 +307,8 @@ mod tests {
             "Insert with non-existent function_id should fail due to FK constraint"
         );
 
-        // Insert another block for edge testing
-        conn.execute(
-            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
-                                     start_line, start_col, end_line, end_col)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (function_id, "block", "fallthrough", 11, 20, 2, 0, 2, 10),
-        ).unwrap();
-
-        let block_id_2: i64 = conn.last_insert_rowid();
-
-        // Insert cfg_edges referencing valid block IDs -> should succeed
-        let valid_edge = conn.execute(
-            "INSERT INTO cfg_edges (from_id, to_id, edge_type)
-             VALUES (?, ?, ?)",
-            (block_id, block_id_2, "fallthrough"),
-        );
-
-        assert!(valid_edge.is_ok(), "Insert with valid block IDs should succeed");
-
-        // Attempt to insert cfg_edges with invalid block IDs -> should fail
-        let invalid_edge = conn.execute(
-            "INSERT INTO cfg_edges (from_id, to_id, edge_type)
-             VALUES (?, ?, ?)",
-            (9999i64, block_id_2, "fallthrough"),
-        );
-
-        assert!(
-            invalid_edge.is_err(),
-            "Insert with invalid from_id should fail due to FK constraint"
-        );
-
-        let invalid_edge_2 = conn.execute(
-            "INSERT INTO cfg_edges (from_id, to_id, edge_type)
-             VALUES (?, ?, ?)",
-            (block_id, 8888i64, "fallthrough"),
-        );
-
-        assert!(
-            invalid_edge_2.is_err(),
-            "Insert with invalid to_id should fail due to FK constraint"
-        );
+        // cfg_edges table is managed by Magellan v11+; Mirage does not create it.
+        // Edge data is reconstructed in memory from terminator data.
     }
 
     #[test]
@@ -346,21 +327,25 @@ mod tests {
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (function_id, "entry", "fallthrough", 0, 10, 1, 0, 1, 10),
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (function_id, "block", "return", 11, 20, 2, 0, 2, 10),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Query for blocks for this function
-        let count_initial: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-            (function_id,),
-            |row| row.get(0),
-        ).unwrap();
+        let count_initial: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+                (function_id,),
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(count_initial, 2, "Should have 2 blocks initially");
 
@@ -369,21 +354,30 @@ mod tests {
         // This test now verifies basic block insertion/counting
 
         // Verify query by non-existent function returns 0
-        let count_different: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-            (9999i64,),
-            |row| row.get(0),
-        ).unwrap();
+        let count_different: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+                (9999i64,),
+                |row| row.get(0),
+            )
+            .unwrap();
 
-        assert_eq!(count_different, 0, "Should have 0 blocks for non-existent function");
+        assert_eq!(
+            count_different, 0,
+            "Should have 0 blocks for non-existent function"
+        );
 
         // Test the needs_reanalysis helper function (adapted for Magellan v7)
         // In Magellan v7, function_exists check is sufficient
-        assert!(!needs_reanalysis(&conn, function_id, "any_hash").unwrap(),
-                "Should not need reanalysis when function has blocks");
+        assert!(
+            !needs_reanalysis(&conn, function_id, "any_hash").unwrap(),
+            "Should not need reanalysis when function has blocks"
+        );
 
-        assert!(needs_reanalysis(&conn, 9999, "any_hash").unwrap(),
-               "Should need reanalysis when function has no blocks");
+        assert!(
+            needs_reanalysis(&conn, 9999, "any_hash").unwrap(),
+            "Should need reanalysis when function has no blocks"
+        );
     }
 
     /// Helper function that demonstrates the incremental workflow with Magellan v7:
@@ -393,11 +387,13 @@ mod tests {
     /// Instead, we check if the function has any CFG blocks at all.
     fn needs_reanalysis(conn: &Connection, function_id: i64, _new_hash: &str) -> Result<bool> {
         // Query for existing CFG blocks for this function
-        let block_count: Option<i64> = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-            [function_id],
-            |row| row.get(0),
-        ).optional()?;
+        let block_count: Option<i64> = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+                [function_id],
+                |row| row.get(0),
+            )
+            .optional()?;
 
         // Return true if no blocks found (needs indexing), false if blocks exist
         Ok(match block_count {
@@ -424,7 +420,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -435,7 +432,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -447,27 +445,37 @@ mod tests {
         create_schema(&mut conn, 7).unwrap();
 
         // Verify version is 1
-        let version: i32 = conn.query_row(
-            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let version: i32 = conn
+            .query_row(
+                "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
-        assert_eq!(version, MIRAGE_SCHEMA_VERSION,
-                   "Schema should be at version {} after creation", MIRAGE_SCHEMA_VERSION);
+        assert_eq!(
+            version, MIRAGE_SCHEMA_VERSION,
+            "Schema should be at version {} after creation",
+            MIRAGE_SCHEMA_VERSION
+        );
 
         // Test 2: Run create_schema() again -> should detect version 1, do nothing
         // (No error should occur)
         create_schema(&mut conn, 7).unwrap();
 
-        let version_2: i32 = conn.query_row(
-            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let version_2: i32 = conn
+            .query_row(
+                "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
-        assert_eq!(version_2, MIRAGE_SCHEMA_VERSION,
-                   "Schema version should remain {} after second call", MIRAGE_SCHEMA_VERSION);
+        assert_eq!(
+            version_2, MIRAGE_SCHEMA_VERSION,
+            "Schema version should remain {} after second call",
+            MIRAGE_SCHEMA_VERSION
+        );
 
         // Test 3: MirageDb::open() with newer schema should error
         let db_file_newer = tempfile::NamedTempFile::new().unwrap();
@@ -475,26 +483,30 @@ mod tests {
             let mut conn_newer = Connection::open(db_file_newer.path()).unwrap();
 
             // Create Magellan tables
-            conn_newer.execute(
-                "CREATE TABLE magellan_meta (
+            conn_newer
+                .execute(
+                    "CREATE TABLE magellan_meta (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     magellan_schema_version INTEGER NOT NULL,
                     sqlitegraph_schema_version INTEGER NOT NULL,
                     created_at INTEGER NOT NULL
                 )",
-                [],
-            ).unwrap();
+                    [],
+                )
+                .unwrap();
 
-            conn_newer.execute(
-                "CREATE TABLE graph_entities (
+            conn_newer
+                .execute(
+                    "CREATE TABLE graph_entities (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     kind TEXT NOT NULL,
                     name TEXT NOT NULL,
                     file_path TEXT,
                     data TEXT NOT NULL
                 )",
-                [],
-            ).unwrap();
+                    [],
+                )
+                .unwrap();
 
             conn_newer.execute(
                 "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -506,22 +518,29 @@ mod tests {
             create_schema(&mut conn_newer, 7).unwrap();
 
             // Manually bump to version 2 (simulating a newer database)
-            conn_newer.execute(
-                "UPDATE mirage_meta SET mirage_schema_version = ? WHERE id = 1",
-                [2i32],
-            ).unwrap();
+            conn_newer
+                .execute(
+                    "UPDATE mirage_meta SET mirage_schema_version = ? WHERE id = 1",
+                    [2i32],
+                )
+                .unwrap();
         }
 
         // Try to open with MirageDb (should fail with version error)
         let result = MirageDb::open(db_file_newer.path());
 
-        assert!(result.is_err(),
-                "Opening a database with schema version 2 should fail when we only support version 1");
+        assert!(
+            result.is_err(),
+            "Opening a database with schema version 2 should fail when we only support version 1"
+        );
 
         if let Err(e) = result {
             let err = e.to_string();
-            assert!(err.contains("newer than supported version"),
-                    "Error message should mention newer version: {}", err);
+            assert!(
+                err.contains("newer than supported version"),
+                "Error message should mention newer version: {}",
+                err
+            );
         }
     }
 
@@ -534,8 +553,11 @@ mod tests {
 
         if let Err(e) = result {
             let err = e.to_string();
-            assert!(err.contains("not found"),
-                    "Error should mention 'not found': {}", err);
+            assert!(
+                err.contains("not found"),
+                "Error should mention 'not found': {}",
+                err
+            );
         }
     }
 
@@ -555,7 +577,8 @@ mod tests {
                     created_at INTEGER NOT NULL
                 )",
                 [],
-            ).unwrap();
+            )
+            .unwrap();
 
             conn.execute(
                 "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -566,13 +589,18 @@ mod tests {
 
         let result = MirageDb::open(db_file.path());
 
-        assert!(result.is_err(),
-                "Should fail with incompatible Magellan schema version");
+        assert!(
+            result.is_err(),
+            "Should fail with incompatible Magellan schema version"
+        );
 
         if let Err(e) = result {
             let err = e.to_string();
-            assert!(err.contains("too old") || err.contains("incompatible"),
-                    "Error should mention 'too old' or 'incompatible': {}", err);
+            assert!(
+                err.contains("too old") || err.contains("incompatible"),
+                "Error should mention 'too old' or 'incompatible': {}",
+                err
+            );
         }
     }
 
@@ -594,14 +622,16 @@ mod tests {
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (function_id, "entry", "fallthrough", 0, 10, 1, 0, 1, 10),
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (function_id, "block", "return", 11, 20, 2, 0, 2, 10),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Note: Edges are computed in memory in Magellan v7, not stored in cfg_edges
         // The cfg_edges table exists for backward compatibility but is unused
@@ -613,7 +643,13 @@ mod tests {
 
         // Verify status reflects our test data
         assert_eq!(status.cfg_blocks, 2, "Should have 2 cfg_blocks");
-        assert_eq!(status.mirage_schema_version, 1, "Mirage schema should be v1");
-        assert_eq!(status.magellan_schema_version, 7, "Magellan schema should be v7");
+        assert_eq!(
+            status.mirage_schema_version, 1,
+            "Mirage schema should be v1"
+        );
+        assert_eq!(
+            status.magellan_schema_version, 7,
+            "Magellan schema should be v7"
+        );
     }
 }

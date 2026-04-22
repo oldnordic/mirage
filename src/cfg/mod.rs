@@ -2,6 +2,7 @@
 
 pub mod analysis;
 pub mod ast;
+pub mod coordinates;
 pub mod diff;
 pub mod dominance_frontiers;
 pub mod dominators;
@@ -18,14 +19,17 @@ pub mod reachability;
 pub mod source;
 pub mod summary;
 
+// Re-export for public API convenience
+pub use crate::storage::{
+    load_cfg_from_db, resolve_function_name, resolve_function_name_with_file,
+};
+#[allow(unused_imports)]
 pub use analysis::{find_entry, find_exits};
-pub use crate::storage::{load_cfg_from_db, resolve_function_name, resolve_function_name_with_file};
 
 #[cfg(feature = "sqlite")]
 pub use crate::storage::{load_cfg_from_db_with_conn, resolve_function_name_with_conn};
 pub use dominance_frontiers::compute_dominance_frontiers;
 pub use dominators::DominatorTree;
-pub use post_dominators::PostDominatorTree;
 pub use edge::EdgeType;
 pub use export::{export_dot, export_json, CFGExport};
 #[allow(unused_imports)] // Public API re-export, used directly by consumers
@@ -33,17 +37,16 @@ pub use hotpaths::{compute_hot_paths, HotPath, HotpathsOptions};
 pub use loops::detect_natural_loops;
 #[allow(unused_imports)] // Used in tests within the module
 pub use paths::{
-    Path, PathKind, PathLimits, enumerate_paths, enumerate_paths_iterative,
-    enumerate_paths_cached, enumerate_paths_cached_with_context,
-    enumerate_paths_with_context, enumerate_paths_with_metadata,
-    PathEnumerationResult, LimitsHit, EnumerationStats,
-    EnumerationContext, get_or_enumerate_paths,
-    enumerate_paths_incremental, IncrementalPathsResult,
+    enumerate_paths, enumerate_paths_cached, enumerate_paths_cached_with_context,
+    enumerate_paths_incremental, enumerate_paths_iterative, enumerate_paths_with_context,
+    enumerate_paths_with_metadata, get_or_enumerate_paths, EnumerationContext, EnumerationStats,
+    IncrementalPathsResult, LimitsHit, Path, PathEnumerationResult, PathKind, PathLimits,
 };
 pub use patterns::{detect_if_else_patterns, detect_match_patterns};
-pub use reachability::{find_reachable_from_block, compute_path_impact, PathImpact};
-pub use summary::summarize_path;
+pub use post_dominators::PostDominatorTree;
+pub use reachability::{compute_path_impact, find_reachable_from_block, PathImpact};
 pub use source::SourceLocation;
+pub use summary::summarize_path;
 
 use anyhow::Result;
 use petgraph::graph::DiGraph;
@@ -86,31 +89,63 @@ pub type Cfg = DiGraph<BasicBlock, EdgeType>;
 /// - Loop back-edges will be detected during loop analysis phase
 pub fn build_edges_from_terminators(
     graph: &mut Cfg,
-    blocks: &[(i64, String, Option<String>, Option<i64>, Option<i64>,
-              Option<i64>, Option<i64>, Option<i64>, Option<i64>)],
+    blocks: &[(
+        i64,
+        String,
+        Option<String>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+    )],
     db_id_to_node: &HashMap<i64, usize>,
 ) -> Result<()> {
     use petgraph::graph::NodeIndex;
 
     // Sort blocks by byte_start to get execution order
     // This is crucial because block IDs are not necessarily in control flow order
-    let mut blocks_with_idx: Vec<(usize, &(i64, String, Option<String>, Option<i64>, Option<i64>,
-              Option<i64>, Option<i64>, Option<i64>, Option<i64>))> = blocks.iter().enumerate().collect();
-    blocks_with_idx.sort_by_key(|(_, (_, _, _, byte_start, _, _, _, _, _))| *byte_start);
+    let mut blocks_with_idx: Vec<(
+        usize,
+        &(
+            i64,
+            String,
+            Option<String>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+        ),
+    )> = blocks.iter().enumerate().collect();
+    blocks_with_idx.sort_by_key(|(_, (_, _, _, byte_start, _, _, _, _, _, _, _, _))| *byte_start);
 
     // Build a map from position in sorted order to node index
     let mut sorted_pos_to_node: HashMap<usize, usize> = HashMap::new();
-    for (sorted_pos, (_original_idx, (db_id, _, _, _, _, _, _, _, _))) in blocks_with_idx.iter().enumerate() {
+    for (sorted_pos, (_original_idx, (db_id, _, _, _, _, _, _, _, _, _, _, _))) in
+        blocks_with_idx.iter().enumerate()
+    {
         if let Some(&node_idx) = db_id_to_node.get(db_id) {
             sorted_pos_to_node.insert(sorted_pos, node_idx);
         }
     }
 
     // For each block in sorted order, analyze terminator to find successors
-    for (sorted_pos, (_original_idx, (_, _kind, terminator_opt, _, _, _, _, _, _))) in blocks_with_idx.iter().enumerate() {
+    for (sorted_pos, (_original_idx, (_, _kind, terminator_opt, _, _, _, _, _, _, _, _, _))) in
+        blocks_with_idx.iter().enumerate()
+    {
         let terminator = terminator_opt.as_deref().unwrap_or("");
-        let current_node = *sorted_pos_to_node.get(&sorted_pos)
-            .ok_or_else(|| anyhow::anyhow!("Block at position {} not found in node map", sorted_pos))?;
+        let current_node = *sorted_pos_to_node.get(&sorted_pos).ok_or_else(|| {
+            anyhow::anyhow!("Block at position {} not found in node map", sorted_pos)
+        })?;
 
         match terminator {
             "fallthrough" | "goto" => {
@@ -188,6 +223,13 @@ pub struct BasicBlock {
     pub terminator: Terminator,
     /// Source location for this block (if available)
     pub source_location: Option<SourceLocation>,
+    /// 4D Spatial Coordinates
+    /// X coordinate: dominator depth (control flow hierarchy level)
+    pub coord_x: i64,
+    /// Y coordinate: loop nesting depth (how many loops surround this block)
+    pub coord_y: i64,
+    /// Z coordinate: branch distance from entry point
+    pub coord_z: i64,
 }
 
 /// Block identifier
@@ -204,10 +246,18 @@ pub enum BlockKind {
 /// Terminator instruction (simplified representation)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Terminator {
-    Goto { target: BlockId },
-    SwitchInt { targets: Vec<BlockId>, otherwise: BlockId },
+    Goto {
+        target: BlockId,
+    },
+    SwitchInt {
+        targets: Vec<BlockId>,
+        otherwise: BlockId,
+    },
     Return,
     Unreachable,
-    Call { target: Option<BlockId>, unwind: Option<BlockId> },
+    Call {
+        target: Option<BlockId>,
+        unwind: Option<BlockId>,
+    },
     Abort(String),
 }

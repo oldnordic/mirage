@@ -373,7 +373,7 @@ impl<'a> MagellanAdapter<'a> {
         // identical (name, file_path, location) data but different internal records.
         let mut unique_symbols: Vec<magellan::graph::geometric_backend::SymbolInfo> = Vec::new();
         let mut seen_ids: std::collections::HashSet<u64> = std::collections::HashSet::new();
-        
+
         for sym in all_matching {
             if seen_ids.insert(sym.id) {
                 unique_symbols.push(sym);
@@ -389,20 +389,19 @@ impl<'a> MagellanAdapter<'a> {
             n => {
                 // Check if all candidates are at the same location (duplicates) or genuinely different
                 // Normalize paths for consistent comparison
-                let normalize_path = |p: &str| -> String {
-                    p.replace("\\", "/").replace("/./", "/")
-                };
-                
+                let normalize_path =
+                    |p: &str| -> String { p.replace("\\", "/").replace("/./", "/") };
+
                 let first = &unique_symbols[0];
                 let first_path_normalized = normalize_path(&first.file_path);
                 let all_same_location = unique_symbols.iter().all(|sym| {
                     let sym_path_normalized = normalize_path(&sym.file_path);
-                    sym.name == first.name 
+                    sym.name == first.name
                         && sym_path_normalized == first_path_normalized
-                        && sym.start_line == first.start_line 
+                        && sym.start_line == first.start_line
                         && sym.start_col == first.start_col
                 });
-                
+
                 if all_same_location {
                     // All same location - they're duplicates, pick the first one
                     Ok(unique_symbols[0].id)
@@ -989,11 +988,11 @@ impl GeometricBridge {
 /// ```
 pub fn normalize_path_for_query(path: &str) -> String {
     use std::path::Path;
-    
+
     // Pre-process path to handle double slashes and backslashes
     // This ensures consistent behavior before canonicalization
     let preprocessed = path.replace("//", "/").replace('\\', "/");
-    
+
     match normalize_path(Path::new(&preprocessed)) {
         Ok(normalized) => normalized,
         Err(_) => {

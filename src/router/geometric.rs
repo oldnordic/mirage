@@ -74,9 +74,7 @@ impl BackendRouter for GeometricRouter {
             let terminator = match data.terminator.as_str() {
                 "" | "return" => crate::cfg::Terminator::Return,
                 "unreachable" => crate::cfg::Terminator::Unreachable,
-                "goto" | "fallthrough" | "jump" => {
-                    crate::cfg::Terminator::Goto { target: 0 }
-                }
+                "goto" | "fallthrough" | "jump" => crate::cfg::Terminator::Goto { target: 0 },
                 "conditional" => crate::cfg::Terminator::SwitchInt {
                     targets: vec![],
                     otherwise: 0,
@@ -212,13 +210,12 @@ impl BackendRouter for GeometricRouter {
     fn enumerate_paths(&self, function_id: i64, max_paths: usize) -> Result<Vec<ExecutionPath>> {
         // Load CFG for the function
         let cfg = self.load_cfg(function_id)?;
-        
+
         // Use Mirage's path enumeration algorithm on the loaded CFG
-        let limits = crate::cfg::PathLimits::default()
-            .with_max_paths(max_paths);
-        
+        let limits = crate::cfg::PathLimits::default().with_max_paths(max_paths);
+
         let paths = crate::cfg::enumerate_paths(&cfg, &limits);
-        
+
         // Convert to ExecutionPath format
         Ok(paths
             .into_iter()
@@ -258,24 +255,30 @@ impl BackendRouter for GeometricRouter {
     fn get_dominators(&self, function_id: i64) -> Result<DominatorTree> {
         // Load CFG and compute dominators
         let cfg = self.load_cfg(function_id)?;
-        
+
         use crate::cfg::dominators::DominatorTree as CfgDominatorTree;
-        
-        let dom_tree = CfgDominatorTree::new(&cfg)
-            .ok_or_else(|| anyhow::anyhow!("Failed to compute dominator tree - CFG may have no entry"))?;
-        
+
+        let dom_tree = CfgDominatorTree::new(&cfg).ok_or_else(|| {
+            anyhow::anyhow!("Failed to compute dominator tree - CFG may have no entry")
+        })?;
+
         // Convert to router format
         let mut dominators = std::collections::HashMap::new();
-        
+
         for node in cfg.node_indices() {
             let node_id = cfg.node_weight(node).map(|n| n.id as i64).unwrap_or(0);
-            let dominated: Vec<i64> = dom_tree.children(node)
+            let dominated: Vec<i64> = dom_tree
+                .children(node)
                 .into_iter()
-                .map(|child_idx| cfg.node_weight(*child_idx).map(|n| n.id as i64).unwrap_or(0))
+                .map(|child_idx| {
+                    cfg.node_weight(*child_idx)
+                        .map(|n| n.id as i64)
+                        .unwrap_or(0)
+                })
                 .collect();
             dominators.insert(node_id, dominated);
         }
-        
+
         Ok(DominatorTree {
             function_id,
             dominators,
@@ -285,11 +288,11 @@ impl BackendRouter for GeometricRouter {
     fn get_loops(&self, function_id: i64) -> Result<Vec<NaturalLoop>> {
         // Load CFG and detect loops
         let cfg = self.load_cfg(function_id)?;
-        
+
         use crate::cfg::loops::detect_natural_loops;
-        
+
         let loops = detect_natural_loops(&cfg);
-        
+
         // Convert to router format
         Ok(loops
             .into_iter()
@@ -308,19 +311,25 @@ impl BackendRouter for GeometricRouter {
     fn get_patterns(&self, function_id: i64) -> Result<Vec<BranchPattern>> {
         // Load CFG and detect patterns
         let cfg = self.load_cfg(function_id)?;
-        
+
         use crate::cfg::patterns::detect_all_patterns;
-        
+
         let (if_else_patterns, match_patterns) = detect_all_patterns(&cfg);
-        
+
         // Convert to router format
         let mut patterns = Vec::new();
-        
+
         for (idx, p) in if_else_patterns.iter().enumerate() {
             let mut blocks = vec![
-                cfg.node_weight(p.condition).map(|n| n.id as i64).unwrap_or(0),
-                cfg.node_weight(p.true_branch).map(|n| n.id as i64).unwrap_or(0),
-                cfg.node_weight(p.false_branch).map(|n| n.id as i64).unwrap_or(0),
+                cfg.node_weight(p.condition)
+                    .map(|n| n.id as i64)
+                    .unwrap_or(0),
+                cfg.node_weight(p.true_branch)
+                    .map(|n| n.id as i64)
+                    .unwrap_or(0),
+                cfg.node_weight(p.false_branch)
+                    .map(|n| n.id as i64)
+                    .unwrap_or(0),
             ];
             if let Some(merge) = p.merge_point {
                 blocks.push(cfg.node_weight(merge).map(|n| n.id as i64).unwrap_or(0));
@@ -331,49 +340,55 @@ impl BackendRouter for GeometricRouter {
                 blocks,
             });
         }
-        
+
         for (idx, p) in match_patterns.iter().enumerate() {
-            let mut blocks = vec![
-                cfg.node_weight(p.switch_node).map(|n| n.id as i64).unwrap_or(0),
-            ];
+            let mut blocks = vec![cfg
+                .node_weight(p.switch_node)
+                .map(|n| n.id as i64)
+                .unwrap_or(0)];
             for target in &p.targets {
                 blocks.push(cfg.node_weight(*target).map(|n| n.id as i64).unwrap_or(0));
             }
-            blocks.push(cfg.node_weight(p.otherwise).map(|n| n.id as i64).unwrap_or(0));
+            blocks.push(
+                cfg.node_weight(p.otherwise)
+                    .map(|n| n.id as i64)
+                    .unwrap_or(0),
+            );
             patterns.push(BranchPattern {
                 pattern_id: format!("match_{}", idx),
                 kind: "Match".to_string(),
                 blocks,
             });
         }
-        
+
         Ok(patterns)
     }
 
     fn get_frontiers(&self, function_id: i64) -> Result<DominanceFrontiers> {
         // Load CFG and compute dominance frontiers
         let cfg = self.load_cfg(function_id)?;
-        
+
         use crate::cfg::dominance_frontiers::DominanceFrontiers as CfgFrontiers;
         use crate::cfg::dominators::DominatorTree;
-        
+
         let dom_tree = DominatorTree::new(&cfg)
             .ok_or_else(|| anyhow::anyhow!("Failed to compute dominator tree"))?;
-        
+
         let frontiers = CfgFrontiers::new(&cfg, dom_tree);
-        
+
         // Convert to router format
         let mut frontier_map = std::collections::HashMap::new();
-        
+
         for node in cfg.node_indices() {
             let node_id = cfg[node].id as i64;
-            let node_frontier: Vec<i64> = frontiers.frontier(node)
+            let node_frontier: Vec<i64> = frontiers
+                .frontier(node)
                 .iter()
                 .map(|&n| cfg[n].id as i64)
                 .collect();
             frontier_map.insert(node_id, node_frontier);
         }
-        
+
         Ok(DominanceFrontiers {
             function_id,
             frontiers: frontier_map,
@@ -396,13 +411,13 @@ impl BackendRouter for GeometricRouter {
     fn get_blast_zone(&self, function_id: i64, block_id: Option<i64>) -> Result<BlastZone> {
         // Use geometric backend's reachability analysis
         let inner = self.storage.inner();
-        
+
         // Get forward reachable (affected by this function/block)
         let forward_reachable = inner.reachable_from(function_id as u64);
-        
+
         // Get backward reachable (can reach this function)
         let backward_reachable = inner.reverse_reachable_from(function_id as u64);
-        
+
         // Get affected blocks from CFG if block_id specified
         let affected_blocks = if let Some(bid) = block_id {
             vec![bid]
@@ -411,7 +426,7 @@ impl BackendRouter for GeometricRouter {
             let cfg = self.load_cfg(function_id)?;
             cfg.node_indices().map(|n| cfg[n].id as i64).collect()
         };
-        
+
         Ok(BlastZone {
             center_function: function_id,
             center_block: block_id,
@@ -423,11 +438,12 @@ impl BackendRouter for GeometricRouter {
     fn slice(&self, symbol: &str, direction: SliceDirection) -> Result<crate::router::SliceResult> {
         // Resolve the symbol
         let symbol_id = self.resolve_function(symbol)?;
-        
+
         let affected_symbols = match direction {
             SliceDirection::Forward => {
                 // Forward: what this symbol affects
-                self.storage.inner()
+                self.storage
+                    .inner()
                     .reachable_from(symbol_id as u64)
                     .into_iter()
                     .filter_map(|id| self.get_function_name(id as i64))
@@ -435,19 +451,24 @@ impl BackendRouter for GeometricRouter {
             }
             SliceDirection::Backward => {
                 // Backward: what affects this symbol
-                self.storage.inner()
+                self.storage
+                    .inner()
                     .reverse_reachable_from(symbol_id as u64)
                     .into_iter()
                     .filter_map(|id| self.get_function_name(id as i64))
                     .collect()
             }
             SliceDirection::Both => {
-                let mut forward: std::collections::HashSet<String> = self.storage.inner()
+                let mut forward: std::collections::HashSet<String> = self
+                    .storage
+                    .inner()
                     .reachable_from(symbol_id as u64)
                     .into_iter()
                     .filter_map(|id| self.get_function_name(id as i64))
                     .collect();
-                let backward: std::collections::HashSet<String> = self.storage.inner()
+                let backward: std::collections::HashSet<String> = self
+                    .storage
+                    .inner()
                     .reverse_reachable_from(symbol_id as u64)
                     .into_iter()
                     .filter_map(|id| self.get_function_name(id as i64))
@@ -456,7 +477,7 @@ impl BackendRouter for GeometricRouter {
                 forward.into_iter().collect()
             }
         };
-        
+
         Ok(crate::router::SliceResult {
             symbol: symbol.to_string(),
             direction: match direction {
@@ -470,12 +491,14 @@ impl BackendRouter for GeometricRouter {
 
     fn get_hotspots(&self) -> Result<Vec<Hotspot>> {
         // Get all symbols
-        let symbols = self.storage.inner()
+        let symbols = self
+            .storage
+            .inner()
             .get_all_symbols()
             .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?;
-        
+
         let mut hotspots = Vec::new();
-        
+
         for symbol in symbols {
             // Calculate complexity from CFG
             let complexity = if let Ok(cfg) = self.load_cfg(symbol.id as i64) {
@@ -484,26 +507,24 @@ impl BackendRouter for GeometricRouter {
             } else {
                 0.0
             };
-            
+
             // Calculate frequency from call graph
-            let frequency = self.storage.inner()
-                .get_callers(symbol.id)
-                .len() as f64;
-            
+            let frequency = self.storage.inner().get_callers(symbol.id).len() as f64;
+
             hotspots.push(Hotspot {
                 function_id: symbol.id as i64,
                 complexity,
                 frequency,
             });
         }
-        
+
         // Sort by combined risk score (complexity * frequency)
         hotspots.sort_by(|a, b| {
             let a_score = a.complexity * a.frequency;
             let b_score = b.complexity * b.frequency;
             b_score.partial_cmp(&a_score).unwrap()
         });
-        
+
         Ok(hotspots)
     }
     fn get_hotpaths(&self, _function_id: Option<i64>) -> Result<Vec<HotPath>> {
@@ -538,14 +559,14 @@ impl BackendRouter for GeometricRouter {
     fn get_icfg(&self, function_id: i64) -> Result<InterProceduralCfg> {
         // Build ICFG from call graph and individual CFGs
         let inner = self.storage.inner();
-        
+
         // Get direct callees
         let callees = inner.get_callees(function_id as u64);
-        
+
         let mut nodes = Vec::new();
         let edges = Vec::new();
         let mut node_counter: i64 = 0;
-        
+
         // Add entry function nodes
         if let Ok(cfg) = self.load_cfg(function_id) {
             for node_idx in cfg.node_indices() {
@@ -558,7 +579,7 @@ impl BackendRouter for GeometricRouter {
                 node_counter += 1;
             }
         }
-        
+
         // Add callee function nodes and call edges
         for callee_id in callees {
             if let Ok(cfg) = self.load_cfg(callee_id as i64) {
@@ -573,7 +594,7 @@ impl BackendRouter for GeometricRouter {
                 }
             }
         }
-        
+
         Ok(InterProceduralCfg {
             entry_function: function_id,
             nodes,
@@ -583,10 +604,11 @@ impl BackendRouter for GeometricRouter {
     fn get_call_graph(&self) -> Result<CallGraph> {
         // Build call graph from actual call edges in the geometric backend
         let inner = self.storage.inner();
-        let symbols = inner.get_all_symbols()
+        let symbols = inner
+            .get_all_symbols()
             .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?;
         let call_edges = inner.get_call_edges();
-        
+
         let nodes: Vec<CallGraphNode> = symbols
             .into_iter()
             .map(|s| CallGraphNode {
@@ -594,7 +616,7 @@ impl BackendRouter for GeometricRouter {
                 function_name: s.fqn,
             })
             .collect();
-        
+
         let edges: Vec<CallGraphEdge> = call_edges
             .into_iter()
             .map(|e| CallGraphEdge {
@@ -602,7 +624,7 @@ impl BackendRouter for GeometricRouter {
                 callee_id: e.dst_symbol_id as i64,
             })
             .collect();
-        
+
         Ok(CallGraph { nodes, edges })
     }
 }

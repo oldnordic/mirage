@@ -306,6 +306,9 @@ fn test_cfg_block_data_fields() {
         start_col: 0,
         end_line: 1,
         end_col: 10,
+        coord_x: 0,
+        coord_y: 0,
+        coord_z: 0,
     };
 
     assert_eq!(block.kind, "entry");

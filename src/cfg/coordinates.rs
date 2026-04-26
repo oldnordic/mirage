@@ -319,7 +319,7 @@ fn is_dominated_by(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cfg::{BlockKind, Terminator};
+    use crate::cfg::{BasicBlock, BlockKind, Terminator};
 
     // Helper to create a simple linear CFG: A -> B -> C
     fn create_linear_cfg() -> (Cfg, NodeIndex, NodeIndex, NodeIndex) {

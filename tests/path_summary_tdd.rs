@@ -14,6 +14,9 @@ fn test_noise_reduction() {
         ],
         terminator: Terminator::Return,
         source_location: None,
+        coord_x: 0,
+        coord_y: 0,
+        coord_z: 0,
     };
 
     let summary = PathSummarizer::summarize_block(&block);
@@ -30,6 +33,9 @@ fn test_call_extraction() {
         statements: vec!["Assign(Local(2), Call(auth::verify, [Local(1)]))".to_string()],
         terminator: Terminator::Return,
         source_location: None,
+        coord_x: 0,
+        coord_y: 0,
+        coord_z: 0,
     };
 
     let summary = PathSummarizer::summarize_block(&block);
@@ -47,6 +53,9 @@ fn test_path_linearization() {
         statements: vec!["Assign(Local(0), Constant(true))".to_string()],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
+        coord_x: 0,
+        coord_y: 0,
+        coord_z: 0,
     };
 
     let b2 = BasicBlock {
@@ -55,6 +64,9 @@ fn test_path_linearization() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
+        coord_x: 0,
+        coord_y: 0,
+        coord_z: 0,
     };
 
     let full_summary = PathSummarizer::summarize(&[b1, b2]);
@@ -75,6 +87,9 @@ fn test_robustness() {
         ],
         terminator: Terminator::Return,
         source_location: None,
+        coord_x: 0,
+        coord_y: 0,
+        coord_z: 0,
     };
 
     let summary = PathSummarizer::summarize_block(&block);
@@ -90,6 +105,9 @@ fn test_fakeread_filter() {
         statements: vec!["FakeRead(ForLet, Local(1))".to_string()],
         terminator: Terminator::Return,
         source_location: None,
+        coord_x: 0,
+        coord_y: 0,
+        coord_z: 0,
     };
 
     let summary = PathSummarizer::summarize_block(&block);

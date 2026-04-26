@@ -569,6 +569,7 @@ fn auto_discover_db() -> Option<String> {
 
     // Check for specific filenames in current directory
     let candidates = [
+        ".magellan/mirage.db",
         ".magellan/magellan.db",
         "codegraph.db",
         "mirage.db",
@@ -1456,6 +1457,9 @@ pub mod cmds {
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -1467,6 +1471,9 @@ pub mod cmds {
                 otherwise: 3,
             },
             source_location: None,
+            coord_x: 1,
+            coord_y: 0,
+            coord_z: 1,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -1475,6 +1482,9 @@ pub mod cmds {
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 2,
+            coord_y: 0,
+            coord_z: 2,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -1483,6 +1493,9 @@ pub mod cmds {
             statements: vec!["return false".to_string()],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 2,
+            coord_y: 0,
+            coord_z: 3,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -3494,6 +3507,7 @@ pub mod cmds {
             enumerate_paths_with_context, load_cfg_from_db_with_conn, EnumerationContext,
             PathLimits,
         };
+        #[cfg(feature = "sqlite")]
         use crate::storage::MirageDb;
         use std::collections::HashMap;
 
@@ -5575,6 +5589,9 @@ mod paths_tests {
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: Some(loc0),
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -5586,6 +5603,9 @@ mod paths_tests {
                 otherwise: 2,
             },
             source_location: Some(loc1),
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -5594,6 +5614,9 @@ mod paths_tests {
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
             source_location: Some(loc2),
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -5989,6 +6012,9 @@ mod unreachable_tests {
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 1: normal, goes to 2
@@ -6001,6 +6027,9 @@ mod unreachable_tests {
                 otherwise: 3,
             },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 2: exit (reachable)
@@ -6010,6 +6039,9 @@ mod unreachable_tests {
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 3: exit (reachable)
@@ -6019,6 +6051,9 @@ mod unreachable_tests {
             statements: vec!["return false".to_string()],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Block 4: unreachable (no edges to it)
@@ -6028,6 +6063,9 @@ mod unreachable_tests {
             statements: vec!["unreachable code".to_string()],
             terminator: Terminator::Unreachable,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -6173,6 +6211,9 @@ mod unreachable_tests {
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -6184,6 +6225,9 @@ mod unreachable_tests {
                 otherwise: 3,
             },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -6192,6 +6236,9 @@ mod unreachable_tests {
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // b3 and b4 are both unreachable, but b4 has an incoming edge from b3
@@ -6201,6 +6248,9 @@ mod unreachable_tests {
             statements: vec!["unreachable branch".to_string()],
             terminator: Terminator::Goto { target: 4 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b4 = g.add_node(BasicBlock {
@@ -6209,6 +6259,9 @@ mod unreachable_tests {
             statements: vec!["unreachable code".to_string()],
             terminator: Terminator::Unreachable,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         // Only connect entry to b1, making b3 and b4 unreachable
@@ -6280,6 +6333,9 @@ mod unreachable_tests {
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -6291,6 +6347,9 @@ mod unreachable_tests {
                 otherwise: 3,
             },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -6299,6 +6358,9 @@ mod unreachable_tests {
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -6307,6 +6369,9 @@ mod unreachable_tests {
             statements: vec!["unreachable branch".to_string()],
             terminator: Terminator::Goto { target: 4 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b4 = g.add_node(BasicBlock {
@@ -6315,6 +6380,9 @@ mod unreachable_tests {
             statements: vec!["unreachable code".to_string()],
             terminator: Terminator::Unreachable,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -7490,6 +7558,9 @@ mod output_format_tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -7501,6 +7572,9 @@ mod output_format_tests {
                 otherwise: 3,
             },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -7509,6 +7583,9 @@ mod output_format_tests {
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -7517,6 +7594,9 @@ mod output_format_tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -7931,6 +8011,9 @@ mod frontiers_tests {
                 otherwise: 2,
             },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -7939,6 +8022,9 @@ mod frontiers_tests {
             statements: vec!["branch 1".to_string()],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -7947,6 +8033,9 @@ mod frontiers_tests {
             statements: vec!["branch 2".to_string()],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -7955,6 +8044,9 @@ mod frontiers_tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -8025,6 +8117,9 @@ mod frontiers_tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -8033,6 +8128,9 @@ mod frontiers_tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -8041,6 +8139,9 @@ mod frontiers_tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -8049,6 +8150,9 @@ mod frontiers_tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -8079,6 +8183,9 @@ mod frontiers_tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -8090,6 +8197,9 @@ mod frontiers_tests {
                 otherwise: 3,
             },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -8098,6 +8208,9 @@ mod frontiers_tests {
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -8106,6 +8219,9 @@ mod frontiers_tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);

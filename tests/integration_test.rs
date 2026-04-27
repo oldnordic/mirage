@@ -1,6 +1,6 @@
 //! Integration tests for all mirage commands
 //!
-//! Tests verify commands work correctly on both SQLite and native-v3 backends.
+//! Tests verify commands work correctly on SQLite backend.
 //! These are "smoke tests" that verify:
 //! - CLI parsing works correctly
 //! - Commands can be invoked without panicking
@@ -73,7 +73,7 @@ impl TestContext {
         use rusqlite::Connection;
         use std::fs;
 
-        let mut conn = Connection::open(db_path).unwrap();
+        let conn = Connection::open(db_path).unwrap();
 
         // Enable foreign keys
         conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
@@ -109,7 +109,7 @@ impl TestContext {
         )
         .unwrap();
 
-        // Create cfg_blocks table
+        // Create cfg_blocks table (Magellan v10+ with 4D coordinates)
         conn.execute(
             "CREATE TABLE cfg_blocks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,6 +122,9 @@ impl TestContext {
                 start_col INTEGER NOT NULL,
                 end_line INTEGER NOT NULL,
                 end_col INTEGER NOT NULL,
+                coord_x INTEGER NOT NULL DEFAULT 0,
+                coord_y INTEGER NOT NULL DEFAULT 0,
+                coord_z INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id)
             )",
             [],
@@ -139,10 +142,10 @@ impl TestContext {
         // Insert test CFG blocks
         conn.execute(
             "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
-                                     start_line, start_col, end_line, end_col)
-             VALUES (1, 'entry', 'fallthrough', 0, 10, 1, 0, 1, 10),
-                    (1, 'normal', 'conditional', 10, 50, 2, 4, 5, 8),
-                    (1, 'return', 'return', 50, 60, 5, 0, 5, 10)",
+                                     start_line, start_col, end_line, end_col, coord_x, coord_y, coord_z)
+             VALUES (1, 'entry', 'fallthrough', 0, 10, 1, 0, 1, 10, 0, 0, 0),
+                    (1, 'normal', 'conditional', 10, 50, 2, 4, 5, 8, 1, 0, 1),
+                    (1, 'return', 'return', 50, 60, 5, 0, 5, 10, 2, 0, 2)",
             [],
         )
         .unwrap();
@@ -495,7 +498,7 @@ fn test_detect_backend_flag() {
     assert!(output.success(), "--detect-backend should succeed");
     assert!(
         output.stdout_contains("sqlite")
-            || output.stdout_contains("native-v3")
+            || output.stdout_contains("geometric")
             || output.stdout.contains("{"),
         "--detect-backend should output backend type"
     );

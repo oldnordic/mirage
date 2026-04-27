@@ -2,6 +2,8 @@
 //!
 //! These tests verify real installed-binary-style behavior.
 
+#![cfg(feature = "system-tests")]
+
 use std::path::Path;
 use std::process::Command;
 

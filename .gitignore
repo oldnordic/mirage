@@ -26,9 +26,18 @@ scripts/
 
 # Planning files (local development)
 .planning/
+.claude/
+.mcp.json
+AGENTS.md
 CONTEXT.md
 CLAUDE.md
 MAGELLAN_V2_INTEGRATION.md
+MIRAGE_CFG_EDGES_FIX_PLAN.md
+*_PLAN.md
+*_AUDIT.md
+*_REPORT.md
+*_ASSESSMENT.md
+2026-*-this-session-is-being-continued-from-a-previous-c.txt
 
 # Development artifacts
 .codemcp/
@@ -52,6 +61,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+*.db.bak-*
 
 # Planning/work files
 CLI_REFACTORING_PLAN.md
@@ -60,4 +70,3 @@ FIX_VERIFICATION.md
 MODULARIZATION_SCRIPT.sh
 REFACTORING_STATUS.md
 WORK_SUMMARY.md
-

@@ -292,7 +292,7 @@ mod tests {
         );
 
         // Get the block_id for edge tests
-        let block_id: i64 = conn.last_insert_rowid();
+        let _block_id: i64 = conn.last_insert_rowid();
 
         // Attempt to insert cfg_blocks with non-existent function_id -> should fail
         let invalid_result = conn.execute(

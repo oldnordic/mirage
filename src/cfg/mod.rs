@@ -210,11 +210,77 @@ pub fn build_edges_from_terminators(
     Ok(())
 }
 
+/// Build CFG edges from Magellan's cfg_edges table data
+///
+/// This function constructs edges in memory by reading the cfg_edges table,
+/// which stores edges as vector indices within the function's block list.
+///
+/// # Arguments
+///
+/// * `graph` - The CFG graph to add edges to (already populated with nodes)
+/// * `edges` - Edge rows from cfg_edges table: (source_idx, target_idx, edge_type)
+/// * `index_to_node` - Mapping from vector index (0,1,2...) to graph node index
+///
+/// # Returns
+///
+/// * `Ok(())` - Edges constructed successfully
+/// * `Err(...)`` - Error if index mapping fails
+///
+/// # Edge Type Mapping
+///
+/// | Magellan edge_type | Mirage EdgeType |
+/// |-------------------|-----------------|
+/// | fallthrough | Fallthrough |
+/// | conditional_true | TrueBranch |
+/// | conditional_false | FalseBranch |
+/// | back_edge | LoopBack |
+/// | call | Call |
+/// | return | Return |
+/// | jump | Fallthrough (break/continue fallback) |
+pub fn build_edges_from_cfg_edges(
+    graph: &mut Cfg,
+    edges: &[(i64, i64, String)],
+    index_to_node: &std::collections::HashMap<usize, usize>,
+) -> Result<()> {
+    use petgraph::graph::NodeIndex;
+
+    for (source_idx, target_idx, edge_type_str) in edges {
+        let source_node = *index_to_node
+            .get(&(*source_idx as usize))
+            .ok_or_else(|| anyhow::anyhow!("Source index {} not found in block map", source_idx))?;
+        let target_node = *index_to_node
+            .get(&(*target_idx as usize))
+            .ok_or_else(|| anyhow::anyhow!("Target index {} not found in block map", target_idx))?;
+
+        let edge_type = match edge_type_str.as_str() {
+            "fallthrough" => EdgeType::Fallthrough,
+            "conditional_true" => EdgeType::TrueBranch,
+            "conditional_false" => EdgeType::FalseBranch,
+            "back_edge" => EdgeType::LoopBack,
+            "call" => EdgeType::Call,
+            "return" => EdgeType::Return,
+            "jump" => EdgeType::Fallthrough,
+            _ => EdgeType::Fallthrough,
+        };
+
+        graph.add_edge(
+            NodeIndex::new(source_node),
+            NodeIndex::new(target_node),
+            edge_type,
+        );
+    }
+
+    Ok(())
+}
+
 /// Basic block in a CFG
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BasicBlock {
-    /// Unique identifier within the function
+    /// Unique identifier within the function (graph node index)
     pub id: BlockId,
+    /// Original database block ID from cfg_blocks (for coverage/schema lookups)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub db_id: Option<i64>,
     /// Block kind (entry, normal, exit)
     pub kind: BlockKind,
     /// Statements in this block (simplified for now)

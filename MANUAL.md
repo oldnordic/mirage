@@ -1,6 +1,6 @@
 # Mirage User Manual
 
-Version 1.2.1
+Version 1.2.4
 
 ---
 
@@ -42,7 +42,43 @@ cargo install --path .
 
 ### Requirements
 
-- **Magellan (required):** For CFG extraction, run `magellan watch` on your project first
+- **Magellan 3.1.7+ / Schema v11** (or v10 with 4D coordinates)
+  - For CFG extraction and 4D spatial coordinates
+  - Run `magellan watch --root ./src --db .magellan/mirage.db` first
+- **Rust 1.70+** (for MIR parsing)
+
+### Magellan v10 → v11 Migration
+
+If you're upgrading from Magellan v10 to v11, follow these steps:
+
+```bash
+# 1. Check your current Magellan schema version
+mirage status --db .magellan/mirage.db
+# Look for: "Schema version: 1 (Magellan: X)"
+
+# 2. If it shows v10 or earlier, rebuild your Magellan database
+rm .magellan/mirage.db
+magellan watch --root ./src --db .magellan/mirage.db --scan-initial
+
+# 3. Verify the new schema
+mirage status --db .magellan/mirage.db
+# Should show: "Schema version: 1 (Magellan: 11)"
+
+# 4. Clear old path caches (they use function_hash, v11 uses cfg_hash)
+# This is automatic - Mirage will rebuild caches on first run
+mirage paths --function "some_function" --db .magellan/mirage.db
+
+# 5. Verify 4D coordinates are available
+mirage cfg --function "main" --output json --db .magellan/mirage.db | jq '.data.blocks[0]'
+# Should include: coord_x, coord_y, coord_z, coord_t
+```
+
+**What changed in Magellan v11:**
+- Added `coord_t` column for temporal/type metadata
+- Changed from `function_hash` to `cfg_hash` for cache invalidation
+- Better cache invalidation when CFG structure changes
+
+**Backward compatibility:** Mirage 1.2.4+ works with both v10 and v11 databases, but v11 is recommended for the full 4D coordinate experience.
 
 ### Full Workflow Setup
 
@@ -56,13 +92,13 @@ cargo install magellan llmgrep mirage-analyzer splice
 cd /path/to/rust/project
 
 # Start the call graph indexer (magellan) - this creates CFG data
-magellan watch --root ./src --db .codemcp/project.v3
+magellan watch --root ./src --db .magellan/mirage.db
 
 # Search symbols (llmgrep)
-llmgrep search --query "function_name" --db .codemcp/project.v3
+llmgrep search --query "function_name" --db .magellan/mirage.db
 
 # Analyze paths (mirage)
-mirage paths --function "my_crate::main" --db .codemcp/project.v3
+mirage paths --function "main" --db .magellan/mirage.db
 ```
 
 ### First Usage
@@ -72,12 +108,12 @@ mirage paths --function "my_crate::main" --db .codemcp/project.v3
 cd /path/to/rust/project
 
 # 2. Create database with Magellan (this extracts CFG data)
-magellan watch --root ./src --db .codemcp/project.v3
+magellan watch --root ./src --db .magellan/mirage.db
 
 # 3. Analyze with Mirage
-mirage status --db .codemcp/project.v3
-mirage paths --function "my_crate::main" --db .codemcp/project.v3
-mirage cfg --function "my_crate::main" --db .codemcp/project.v3
+mirage status --db .magellan/mirage.db
+mirage paths --function "main" --db .magellan/mirage.db
+mirage cfg --function "main" --db .magellan/mirage.db
 ```
 
 ---
@@ -88,7 +124,7 @@ These options apply to all commands:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--db <PATH>` | Path to SQLite database | `./codemcp/mirage.db` |
+| `--db <PATH>` | Path to SQLite database | `.magellan/mirage.db` |
 | `--output <FORMAT>` | Output: `human`, `json`, `pretty` | `human` |
 
 Set the database path with environment variable:
@@ -156,19 +192,20 @@ Dominators:   Calculated on-demand
 Show all execution paths through a function.
 
 ```bash
-mirage paths --function "my_crate::function_name"
+mirage paths --function "function_name"
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--function <NAME>` | Function symbol ID or fully qualified name |
+| `--function <NAME>` | Function symbol ID or simple name |
+| `--file <PATH>` | File path to disambiguate duplicate names (optional) |
 | `--show-errors` | Show only error-returning paths |
 | `--max-length <N>` | Prune paths longer than N (default: 1000) |
 | `--with-blocks` | Include block details in output |
 
 **Output (human):**
 ```
-Paths: my_crate::function_name
+Paths: function_name
 ====================================
 
 Found 3 paths (1 error, 2 normal)
@@ -186,7 +223,7 @@ Path #3: Error (length 2)
 **JSON Output:**
 ```json
 {
-  "function": "my_crate::function_name",
+  "function": "function_name",
   "total_paths": 3,
   "paths": [
     {
@@ -206,17 +243,18 @@ Path #3: Error (length 2)
 Display the control-flow graph for a function.
 
 ```bash
-mirage cfg --function "my_crate::function_name"
+mirage cfg --function "function_name"
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--function <NAME>` | Function to display |
+| `--file <PATH>` | File path to disambiguate duplicate names (optional) |
 | `--format <FORMAT>` | `human`, `dot`, or `json` |
 
 **Human Output:**
 ```
-CFG: my_crate::function_name
+CFG: function_name
 =============================
 
 Block 0 (Entry)
@@ -243,12 +281,13 @@ dot -Tpng cfg.dot -o cfg.png
 Compute which code MUST execute on any path from entry to exit.
 
 ```bash
-mirage dominators --function "my_crate::function_name"
+mirage dominators --function "function_name"
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--function <NAME>` | Function to analyze |
+| `--file <PATH>` | File path to disambiguate duplicate names (optional) |
 | `--must-pass-through <ID>` | Show blocks dominated by this block |
 | `--post` | Show post-dominators (reverse) |
 | `--inter-procedural` | Use call graph dominance (requires Magellan) |
@@ -259,7 +298,7 @@ mirage dominators --function "my_crate::function_name"
 
 **Output:**
 ```
-Dominators: my_crate::function_name
+Dominators: function_name
 ======================================
 
 Block 0 (Entry)
@@ -281,12 +320,13 @@ Must-pass-through Block1:
 Find loops in the control-flow graph.
 
 ```bash
-mirage loops --function "my_crate::function_name"
+mirage loops --function "function_name"
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--function <NAME>` | Function to analyze |
+| `--file <PATH>` | File path to disambiguate duplicate names (optional) |
 | `--verbose` | Show loop body block IDs |
 
 **What is a Natural Loop?**
@@ -294,7 +334,7 @@ A back-edge (N → H) where H dominates N indicates a loop with header H.
 
 **Output:**
 ```
-Loops: my_crate::function_name
+Loops: function_name
 ================================
 
 Found 2 loops
@@ -331,7 +371,7 @@ mirage unreachable
 Unreachable Code
 =================
 
-Function: my_crate::obsolete_module
+Function: obsolete_module
   Block 12: Line 45 (dead code after return)
   Block 13: Line 50 (unreachable branch)
 
@@ -345,18 +385,19 @@ Total: 2 unreachable blocks in 1 function(s)
 Detect if/else and match patterns in the CFG.
 
 ```bash
-mirage patterns --function "my_crate::function_name"
+mirage patterns --function "function_name"
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--function <NAME>` | Function to analyze |
+| `--file <PATH>` | File path to disambiguate duplicate names (optional) |
 | `--if-else` | Show only if/else patterns |
 | `--match` | Show only match patterns |
 
 **Output:**
 ```
-Patterns: my_crate::function_name
+Patterns: function_name
 =====================================
 
 If/Else Patterns:
@@ -378,12 +419,13 @@ Match Patterns:
 Compute dominance frontiers (used for SSA placement).
 
 ```bash
-mirage frontiers --function "my_crate::function_name"
+mirage frontiers --function "function_name"
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--function <NAME>` | Function to analyze |
+| `--file <PATH>` | File path to disambiguate duplicate names (optional) |
 | `--node <ID>` | Show frontiers for specific node only |
 | `--iterated` | Show iterated dominance frontier |
 
@@ -422,12 +464,13 @@ The path still exists in the current CFG.
 Show what code is affected by changes to a specific block or path.
 
 ```bash
-mirage blast-zone --function "my_crate::function_name" --block-id 0
+mirage blast-zone --function "function_name" --block-id 0
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--function <NAME>` | Function containing the block |
+| `--file <PATH>` | File path to disambiguate duplicate names (optional) |
 | `--block-id <ID>` | Block ID to analyze from (default: 0) |
 | `--path-id <ID>` | Analyze impact from specific path |
 | `--max-depth <N>` | Maximum traversal depth (default: 100) |
@@ -439,7 +482,7 @@ The set of all code reachable from a given point. Changing code in the blast zon
 
 **Output:**
 ```
-Blast Zone: my_crate::function_name:Block0
+Blast Zone: function_name:Block0
 ==============================================
 
 Intra-Procedural Impact (CFG):
@@ -484,12 +527,73 @@ Function Loops (Intra-Procedural):
 
 ---
 
+### `icfg` - Inter-Procedural CFG
+
+Build an inter-procedural control flow graph combining the entry function with its callees via call/return edges.
+
+```bash
+mirage icfg --entry "main"
+```
+
+| Option | Description |
+|--------|-------------|
+| `--entry <NAME>` | Entry function symbol ID or name |
+| `--depth <N>` | Maximum call graph traversal depth (default: 3) |
+| `--return-edges <BOOL>` | Include return edges (default: true) |
+| `--format <FORMAT>` | `dot`, `json`, or `human` |
+
+**What is an ICFG?**
+An ICFG (Inter-procedural Control Flow Graph) connects multiple function CFGs with call edges (from caller to callee entry) and return edges (from callee exit back to caller). It enables whole-program path analysis.
+
+**DOT Export (for Graphviz):**
+```bash
+mirage icfg --entry "main" --format dot > icfg.dot
+dot -Tpng icfg.dot -o icfg.png
+```
+
+**JSON Output:**
+```bash
+mirage icfg --entry "main" --format json
+```
+
+---
+
+### `diff` - CFG Snapshot Diff
+
+Compare control-flow graphs between two database snapshots.
+
+```bash
+mirage diff --function "main" --before "snapshot_1" --after "snapshot_2"
+```
+
+| Option | Description |
+|--------|-------------|
+| `--function <NAME>` | Function to compare |
+| `--before <ID>` | Before snapshot ID or "current" |
+| `--after <ID>` | After snapshot ID or "current" |
+| `--show-edges` | Show edge differences |
+| `--verbose` | Show detailed block changes |
+
+**Output:**
+```
+Diff: main
+==========
+
+Blocks added: 2
+Blocks removed: 1
+Blocks changed: 3
+
+Edge changes: +2, -1
+```
+
+---
+
 ### `slice` - Program Slicing
 
 Compute backward or forward program slices.
 
 ```bash
-mirage slice --symbol "my_crate::function_name" --direction backward
+mirage slice --symbol "function_name" --direction backward
 ```
 
 | Option | Description |
@@ -501,6 +605,39 @@ mirage slice --symbol "my_crate::function_name" --direction backward
 **What is Slicing?**
 - **Backward slice:** All code that affects this symbol
 - **Forward slice:** All code that this symbol affects
+
+---
+
+### `hotpaths` - Most-Traversed Paths
+
+Identify the most frequently traversed execution paths through a function.
+
+```bash
+mirage hotpaths --function "main" --top 10
+```
+
+| Option | Description |
+|--------|-------------|
+| `--function <NAME>` | Function to analyze |
+| `--top <N>` | Number of hot paths to return (default: 10) |
+| `--rationale` | Show rationale for hotness scores |
+| `--min-score <SCORE>` | Minimum hotness threshold (0.0 to 1.0) |
+
+**Output:**
+```
+Hot Paths: main
+================
+
+Found 5 hot paths
+
+1. Path length 3 (hotness: 0.85)
+   Entry → Block1 → Block2 → Exit
+   Rationale: Dominates 12 other paths
+
+2. Path length 2 (hotness: 0.72)
+   Entry → Block3 → Exit
+   Rationale: Shared prefix with 8 paths
+```
 
 ---
 
@@ -537,6 +674,22 @@ Found 10 hotspots out of 45 functions
 2. handle_error (risk: 38.2)
    Paths: 8  Dominance: 2.0  Complexity: 8
 ```
+
+---
+
+### `migrate` - Database Migration
+
+Migrate a database between storage backends.
+
+```bash
+mirage migrate --from sqlite --to geometric --db .magellan/mirage.db
+```
+
+| Option | Description |
+|--------|-------------|
+| `--db <PATH>` | Database path to migrate |
+| `--backup` | Create backup before migrating |
+| `--dry-run` | Detect format only, do not migrate |
 
 ---
 

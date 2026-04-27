@@ -78,6 +78,7 @@ mod tests {
         // Block 0: entry, goes to 1
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -90,6 +91,7 @@ mod tests {
         // Block 1: if statement, goes to 2 (true) or 3 (false)
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -105,6 +107,7 @@ mod tests {
         // Block 2: true branch, returns
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -117,6 +120,7 @@ mod tests {
         // Block 3: false branch, returns
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -205,6 +209,7 @@ mod tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -219,6 +224,7 @@ mod tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
@@ -230,6 +236,7 @@ mod tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
@@ -241,6 +248,7 @@ mod tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -268,6 +276,7 @@ mod tests {
         // Block 0: entry with call that can unwind
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Call {
@@ -283,6 +292,7 @@ mod tests {
         // Block 1: normal return
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -295,6 +305,7 @@ mod tests {
         // Block 2: unwind exit
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Abort("panic".to_string()),
@@ -324,6 +335,7 @@ mod tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Return,
@@ -345,6 +357,7 @@ mod tests {
         // Block 0: entry
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -357,6 +370,7 @@ mod tests {
         // Block 1: normal path
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Return,
@@ -369,6 +383,7 @@ mod tests {
         // Block 2: unreachable (dead code)
         let _b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Unreachable,

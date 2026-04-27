@@ -160,8 +160,10 @@ pub fn build_icfg(
     let mut queue = vec![(entry_function, 0)];
     let mut visited = HashSet::new();
 
-    // Track call sites for return edges
-    let mut call_sites: HashMap<(i64, i64), NodeIndex> = HashMap::new();
+    // Collect caller->callee relationships for second-pass edge insertion.
+    // We defer inter-procedural edges until after all functions have been
+    // processed so that callee nodes are guaranteed to exist.
+    let mut call_relations: Vec<(i64, Vec<i64>)> = Vec::new();
 
     while let Some((function_id, depth)) = queue.pop() {
         if depth > options.max_depth || visited.contains(&function_id) {
@@ -181,7 +183,7 @@ pub fn build_icfg(
         let entry_idx = icfg.graph.add_node(IcfgNode {
             function_id,
             function_name: get_function_name(backend, function_id)?,
-            block_id: -1, // Special ID for entry
+            block_id: -1,
             node_type: IcfgNodeType::FunctionEntry,
         });
         icfg.node_map.insert((function_id, -1), entry_idx);
@@ -189,7 +191,7 @@ pub fn build_icfg(
         let exit_idx = icfg.graph.add_node(IcfgNode {
             function_id,
             function_name: get_function_name(backend, function_id)?,
-            block_id: -2, // Special ID for exit
+            block_id: -2,
             node_type: IcfgNodeType::FunctionExit,
         });
         icfg.node_map.insert((function_id, -2), exit_idx);
@@ -227,7 +229,6 @@ pub fn build_icfg(
                     }
                 }
                 "conditional" => {
-                    // Two edges: true and false branches
                     if idx + 1 < blocks.len() {
                         let to_idx = icfg.node_map[&(function_id, blocks[idx + 1].id)];
                         icfg.graph.add_edge(
@@ -249,17 +250,8 @@ pub fn build_icfg(
                         );
                     }
                 }
-                "return" | "panic" | "break" | "continue" => {
-                    // No outgoing edges
-                }
-                _ => {
-                    // Unknown terminator - no edge
-                }
-            }
-
-            // Track call sites for inter-procedural edges
-            if block.terminator == "call" {
-                call_sites.insert((function_id, block.id), from_idx);
+                "return" | "panic" | "break" | "continue" => {}
+                _ => {}
             }
         }
 
@@ -276,62 +268,66 @@ pub fn build_icfg(
             );
         }
 
-        // Query CALLS graph to find callees for call sites
-        for (block_idx, block) in blocks.iter().enumerate() {
-            if block.terminator != "call" {
-                continue;
+        // Discover callees for this function via call graph
+        let query = NeighborQuery {
+            edge_type: Some("CALLS".to_string()),
+            ..Default::default()
+        };
+        let calls_result = backend.neighbors(snapshot, function_id, query);
+
+        let mut callee_ids = match calls_result {
+            Ok(ids) => ids,
+            Err(_) => Vec::new(),
+        };
+
+        // Fallback: if GraphBackend returns empty, try storage.get_callees.
+        if callee_ids.is_empty() {
+            if let Ok(ids) = storage.get_callees(function_id) {
+                callee_ids = ids;
+            }
+        }
+
+        // Queue callees for expansion
+        for callee_id in &callee_ids {
+            if depth + 1 <= options.max_depth && !visited.contains(callee_id) {
+                queue.push((*callee_id, depth + 1));
+            }
+        }
+
+        // Record caller->callee relationship for second-pass edge insertion
+        if !callee_ids.is_empty() {
+            call_relations.push((function_id, callee_ids));
+        }
+    }
+
+    // Second pass: add inter-procedural edges after all nodes exist.
+    for (function_id, callee_ids) in &call_relations {
+        let entry_idx = icfg.node_map[&(*function_id, -1)];
+        for callee_id in callee_ids {
+            if let Some(&callee_entry_idx) = icfg.node_map.get(&(*callee_id, -1)) {
+                icfg.graph.add_edge(
+                    entry_idx,
+                    callee_entry_idx,
+                    IcfgEdge::Call {
+                        from_function: *function_id,
+                        to_function: *callee_id,
+                    },
+                );
             }
 
-            // Query GraphBackend for CALLS neighbors from this function
-            let query = NeighborQuery {
-                edge_type: Some("CALLS".to_string()),
-                ..Default::default()
-            };
-            let calls_result = backend.neighbors(snapshot, function_id, query);
-
-            let callee_ids = match calls_result {
-                Ok(ids) => ids,
-                Err(_) => continue, // Skip if CALLS query fails
-            };
-
-            for callee_id in callee_ids {
-                // Check if we should visit this callee
-                if depth + 1 <= options.max_depth && !visited.contains(&callee_id) {
-                    queue.push((callee_id, depth + 1));
-                }
-
-                // Add call edge from call site to callee entry
-                let call_site_idx = call_sites[&(function_id, block.id)];
-                let callee_entry = icfg.node_map.get(&(callee_id, -1));
-
-                if let Some(&entry_idx) = callee_entry {
+            if options.include_return_edges {
+                if let (Some(&callee_exit_idx), Some(&caller_exit_idx)) = (
+                    icfg.node_map.get(&(*callee_id, -2)),
+                    icfg.node_map.get(&(*function_id, -2)),
+                ) {
                     icfg.graph.add_edge(
-                        call_site_idx,
-                        entry_idx,
-                        IcfgEdge::Call {
-                            from_function: function_id,
-                            to_function: callee_id,
+                        callee_exit_idx,
+                        caller_exit_idx,
+                        IcfgEdge::Return {
+                            from_function: *callee_id,
+                            to_function: *function_id,
                         },
                     );
-
-                    // Add return edge from callee exit back to call site's successor
-                    if options.include_return_edges {
-                        if let Some(exit_idx) = icfg.node_map.get(&(callee_id, -2)) {
-                            // Find successor to call site (next block after call)
-                            if block_idx + 1 < blocks.len() {
-                                let successor_idx =
-                                    icfg.node_map[&(function_id, blocks[block_idx + 1].id)];
-                                icfg.graph.add_edge(
-                                    *exit_idx,
-                                    successor_idx,
-                                    IcfgEdge::Return {
-                                        from_function: callee_id,
-                                        to_function: function_id,
-                                    },
-                                );
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -487,6 +483,56 @@ impl IcfgJson {
             nodes,
             edges,
             function_count: function_ids.len(),
+        }
+    }
+
+    /// Convert the rich petgraph-based ICFG to the flat router representation.
+    ///
+    /// Assigns sequential IDs starting from 0 in petgraph node index order.
+    pub fn to_inter_procedural_cfg(icfg: &Icfg) -> crate::router::InterProceduralCfg {
+        let mut node_id_map = std::collections::HashMap::new();
+        let mut next_id: i64 = 0;
+
+        let nodes: Vec<crate::router::IcfgNode> = icfg
+            .graph
+            .node_indices()
+            .map(|idx| {
+                let node = &icfg.graph[idx];
+                let id = next_id;
+                node_id_map.insert(idx, id);
+                next_id += 1;
+                crate::router::IcfgNode {
+                    id,
+                    function_id: node.function_id,
+                    block_id: node.block_id,
+                }
+            })
+            .collect();
+
+        let edges: Vec<crate::router::IcfgEdge> = icfg
+            .graph
+            .edge_indices()
+            .filter_map(|idx| {
+                let (from, to) = icfg.graph.edge_endpoints(idx)?;
+                let edge = &icfg.graph[idx];
+                let kind = match edge {
+                    IcfgEdge::IntraProcedural { .. } => "intra-procedural",
+                    IcfgEdge::Call { .. } => "call",
+                    IcfgEdge::Return { .. } => "return",
+                }
+                .to_string();
+                Some(crate::router::IcfgEdge {
+                    from_node: *node_id_map.get(&from)?,
+                    to_node: *node_id_map.get(&to)?,
+                    kind,
+                })
+            })
+            .collect();
+
+        crate::router::InterProceduralCfg {
+            entry_function: icfg.entry_function,
+            nodes,
+            edges,
         }
     }
 }

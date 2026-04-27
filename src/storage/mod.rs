@@ -13,55 +13,41 @@
 pub mod paths;
 
 // Backend-agnostic storage trait and implementations (Phase 069-01)
-#[cfg(feature = "backend-sqlite")]
-pub mod sqlite_backend;
-#[cfg(feature = "backend-native-v3")]
-pub mod kv_backend;
 #[cfg(feature = "backend-geometric")]
 pub mod geometric;
+#[cfg(feature = "backend-sqlite")]
+pub mod sqlite_backend;
 
 // Also support the aliased feature names for convenience
-#[cfg(all(feature = "sqlite", not(feature = "backend-sqlite")))]
-pub mod sqlite_backend;
-#[cfg(all(feature = "native-v3", not(feature = "backend-native-v3")))]
-pub mod kv_backend;
 #[cfg(all(feature = "geometric", not(feature = "backend-geometric")))]
 pub mod geometric;
+#[cfg(all(feature = "sqlite", not(feature = "backend-sqlite")))]
+pub mod sqlite_backend;
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
 
 // GraphBackend imports for dual backend support
-use sqlitegraph::{GraphBackend, GraphConfig, SnapshotId, open_graph};
+use sqlitegraph::{open_graph, GraphBackend, GraphConfig, SnapshotId};
 
 // Note: We avoid importing BackendRouter here to prevent circular dependency
 // with crate::router which uses crate::storage. Instead, we use fully qualified
 // paths where needed.
 
-// Note: Magellan 2.4.x doesn't provide get_cfg_blocks_kv
-// CFG data should be retrieved through alternative methods for native-v3
-// #[cfg(feature = "backend-native-v3")]
-// use magellan::graph::get_cfg_blocks_kv;
-
 // Backend implementations (Phase 069-01)
-#[cfg(feature = "backend-sqlite")]
-pub use sqlite_backend::SqliteStorage;
-#[cfg(feature = "backend-native-v3")]
-pub use kv_backend::KvStorage;
 #[cfg(feature = "backend-geometric")]
 pub use geometric::GeometricStorage;
+#[cfg(feature = "backend-sqlite")]
+pub use sqlite_backend::SqliteStorage;
 
 // Re-export path caching functions
 // Note: Some exports like PathCache, store_paths, etc. are not currently used
 // but are kept for potential future use and API completeness
 #[allow(unused_imports)]
 pub use paths::{
+    get_cached_paths, invalidate_function_paths, store_paths, update_function_paths_if_changed,
     PathCache,
-    store_paths,
-    get_cached_paths,
-    invalidate_function_paths,
-    update_function_paths_if_changed,
 };
 
 // ============================================================================
@@ -70,7 +56,7 @@ pub use paths::{
 
 /// Backend-agnostic storage trait for CFG data
 ///
-/// This trait abstracts over SQLite and Native-V3 storage backends,
+/// This trait abstracts over supported storage backends,
 /// enabling runtime backend detection and zero breaking changes.
 ///
 /// # Design
@@ -87,7 +73,7 @@ pub use paths::{
 /// // Auto-detect and open backend
 /// let backend = Backend::detect_and_open("/path/to/db")?;
 ///
-/// // Query CFG blocks (works with both SQLite and native-v3)
+/// // Query CFG blocks
 /// let blocks = backend.get_cfg_blocks(123)?;
 /// # Ok(())
 /// # }
@@ -97,7 +83,6 @@ pub trait StorageTrait {
     ///
     /// Returns all basic blocks for the given function_id.
     /// For SQLite: queries cfg_blocks table
-    /// For native-v3: uses KV store with key "cfg:func:{function_id}"
     ///
     /// # Arguments
     ///
@@ -140,6 +125,27 @@ pub trait StorageTrait {
     fn get_cached_paths(&self, _function_id: i64) -> Result<Option<Vec<crate::cfg::Path>>> {
         Ok(None) // Default: no caching
     }
+
+    /// Get callees (functions called by the given function)
+    ///
+    /// Returns IDs of all functions that this function calls, based on
+    /// call graph edges in the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `function_id` - ID of the caller function
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<i64>)` - Callee function IDs
+    /// * `Err(...)` - Error if query fails
+    ///
+    /// # Default
+    ///
+    /// Default implementation returns an empty vector.
+    fn get_callees(&self, _function_id: i64) -> Result<Vec<i64>> {
+        Ok(Vec::new())
+    }
 }
 
 /// CFG block data (backend-agnostic representation)
@@ -178,19 +184,16 @@ pub struct CfgBlockData {
 
 /// Storage backend enum (Phase 069-01)
 ///
-/// This enum wraps SqliteStorage, KvStorage, or GeometricStorage and delegates
+/// This enum wraps SqliteStorage or GeometricStorage and delegates
 /// StorageTrait methods to the appropriate implementation.
 ///
 /// Follows llmgrep's Backend pattern for consistency across tools.
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)] // KvStorage may contain CodeGraph
+#[allow(clippy::large_enum_variant)]
 pub enum Backend {
     /// SQLite storage backend (traditional, always available)
     #[cfg(feature = "backend-sqlite")]
     Sqlite(SqliteStorage),
-    /// Native-V3 storage backend (high-performance, requires native-v3 feature)
-    #[cfg(feature = "backend-native-v3")]
-    NativeV3(KvStorage),
     /// Geometric storage backend for .geo files (Magellan 3.0+)
     #[cfg(feature = "backend-geometric")]
     Geometric(GeometricStorage),
@@ -233,7 +236,7 @@ impl Backend {
             }
         }
 
-        // For non-.geo files, use magellan's detection (SQLite vs Native-V3)
+        // For non-.geo files, use Magellan's SQLite detection.
         let sqlite_detected = detect_backend_format(db_path).is_ok();
 
         #[cfg(feature = "backend-sqlite")]
@@ -241,22 +244,13 @@ impl Backend {
             if sqlite_detected {
                 return SqliteStorage::open(db_path).map(Backend::Sqlite);
             } else {
-                return Err(anyhow::anyhow!("Native-V3 backend detected but SQLite feature enabled"));
+                return Err(anyhow::anyhow!("Unsupported database format; use a SQLite .db"));
             }
         }
 
-        #[cfg(feature = "backend-native-v3")]
+        #[cfg(not(any(feature = "backend-sqlite", feature = "backend-geometric")))]
         {
-            if sqlite_detected {
-                return Err(anyhow::anyhow!("SQLite backend detected but Native-V3 feature enabled"));
-            } else {
-                return KvStorage::open(db_path).map(Backend::NativeV3);
-            }
-        }
-
-        #[cfg(not(any(feature = "backend-sqlite", feature = "backend-native-v3", feature = "backend-geometric")))]
-        {
-        Err(anyhow::anyhow!("No storage backend feature enabled"))
+            Err(anyhow::anyhow!("No storage backend feature enabled"))
         }
     }
 
@@ -274,16 +268,9 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(_) => true,
+            #[cfg(feature = "backend-geometric")]
+            Backend::Geometric(_) => false,
             #[cfg(not(feature = "backend-sqlite"))]
-            _ => false,
-        }
-    }
-
-    /// Check if this is a Native-V3 backend
-    pub fn is_native_v3(&self) -> bool {
-        match self {
-            #[cfg(feature = "backend-native-v3")]
-            Backend::NativeV3(_) => true,
             _ => false,
         }
     }
@@ -293,8 +280,6 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(s) => s.get_cfg_blocks(function_id),
-            #[cfg(feature = "backend-native-v3")]
-            Backend::NativeV3(k) => k.get_cfg_blocks(function_id),
             #[cfg(feature = "backend-geometric")]
             Backend::Geometric(g) => g.get_cfg_blocks(function_id),
             #[allow(unreachable_patterns)]
@@ -307,8 +292,6 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(s) => s.get_entity(entity_id),
-            #[cfg(feature = "backend-native-v3")]
-            Backend::NativeV3(k) => k.get_entity(entity_id),
             #[cfg(feature = "backend-geometric")]
             Backend::Geometric(g) => g.get_entity(entity_id),
             #[allow(unreachable_patterns)]
@@ -321,12 +304,22 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(s) => s.get_cached_paths(function_id),
-            #[cfg(feature = "backend-native-v3")]
-            Backend::NativeV3(k) => k.get_cached_paths(function_id),
             #[cfg(feature = "backend-geometric")]
             Backend::Geometric(g) => g.get_cached_paths(function_id),
             #[allow(unreachable_patterns)]
             _ => Err(anyhow::anyhow!("No storage backend available")),
+        }
+    }
+
+    /// Delegate get_callees to inner backend
+    pub fn get_callees(&self, function_id: i64) -> Result<Vec<i64>> {
+        match self {
+            #[cfg(feature = "backend-sqlite")]
+            Backend::Sqlite(s) => s.get_callees(function_id),
+            #[cfg(feature = "backend-geometric")]
+            Backend::Geometric(g) => g.get_callees(function_id),
+            #[allow(unreachable_patterns)]
+            _ => Ok(Vec::new()),
         }
     }
 }
@@ -344,6 +337,10 @@ impl StorageTrait for Backend {
     fn get_cached_paths(&self, function_id: i64) -> Result<Option<Vec<crate::cfg::Path>>> {
         self.get_cached_paths(function_id)
     }
+
+    fn get_callees(&self, function_id: i64) -> Result<Vec<i64>> {
+        self.get_callees(function_id)
+    }
 }
 
 /// Database backend format detected in a graph database file.
@@ -354,8 +351,6 @@ impl StorageTrait for Backend {
 pub enum BackendFormat {
     /// SQLite-based backend (default, backward compatible)
     SQLite,
-    /// Native-v3 backend (requires native-v3 feature)
-    NativeV3,
     /// Geometric backend (.geo files, Magellan 3.0+)
     Geometric,
     /// Unknown or unrecognized format
@@ -365,7 +360,7 @@ pub enum BackendFormat {
 impl BackendFormat {
     /// Detect which backend format a database file uses.
     ///
-    /// Checks the file header to determine if the database is SQLite or native-v3 format.
+    /// Checks the file header to determine if the database is SQLite format.
     /// Returns Unknown if the file doesn't exist or has an unrecognized header.
     ///
     /// **Deprecated:** Use `Backend::detect_and_open()` for new code which provides
@@ -392,8 +387,7 @@ impl BackendFormat {
         Ok(if &header[..15] == b"SQLite format 3" {
             BackendFormat::SQLite
         } else {
-            // If it exists but isn't SQLite, assume native-v3
-            BackendFormat::NativeV3
+            BackendFormat::Unknown
         })
     }
 }
@@ -462,41 +456,17 @@ impl MirageDb {
         }
 
         // Phase 069-02: Use Backend::detect_and_open() for storage layer
-        let storage = Backend::detect_and_open(path)
-            .context("Failed to open storage backend")?;
+        let storage = Backend::detect_and_open(path).context("Failed to open storage backend")?;
 
         // Detect backend format from file header for GraphBackend creation
-        let detected_backend = BackendFormat::detect(path)
-            .context("Failed to detect backend format")?;
-
-        // Validate that detected backend matches compile-time feature
-        #[cfg(feature = "backend-sqlite")]
-        {
-            if detected_backend == BackendFormat::NativeV3 {
-                anyhow::bail!(
-                    "Database file '{}' uses native-v3 format, but this binary was built \
-                     with SQLite backend. Rebuild with: cargo build --release --no-default-features --features native-v3",
-                    path.display()
-                );
-            }
-        }
-
-        #[cfg(feature = "backend-native-v3")]
-        {
-            if detected_backend == BackendFormat::SQLite {
-                anyhow::bail!(
-                    "Database file '{}' uses SQLite format, but this binary was built \
-                     with native-v3 backend. Rebuild with: cargo build --release",
-                    path.display()
-                );
-            }
-        }
+        let detected_backend =
+            BackendFormat::detect(path).context("Failed to detect backend format")?;
 
         // Handle geometric backend specially - it doesn't use GraphBackend
         #[cfg(feature = "backend-geometric")]
         if detected_backend == BackendFormat::Geometric {
             let snapshot_id = SnapshotId::current();
-            
+
             // For geometric backend, we don't have a traditional GraphBackend
             // Instead, we use the GeometricStorage directly for all operations
             // Create a stub GraphBackend that returns errors for unsupported operations
@@ -517,7 +487,6 @@ impl MirageDb {
         // Select appropriate GraphConfig based on detected backend
         let cfg = match detected_backend {
             BackendFormat::SQLite => GraphConfig::sqlite(),
-            BackendFormat::NativeV3 => GraphConfig::native(),
             BackendFormat::Geometric => {
                 // This case is handled above, but needed for match completeness
                 GraphConfig::native()
@@ -531,26 +500,17 @@ impl MirageDb {
         };
 
         // Use open_graph factory to create GraphBackend for entity queries
-        let graph_backend = open_graph(path, &cfg)
-            .context("Failed to open graph database")?;
+        let graph_backend = open_graph(path, &cfg).context("Failed to open graph database")?;
 
         let snapshot_id = SnapshotId::current();
 
         // For SQLite backend, open Connection and validate schema
         #[cfg(feature = "backend-sqlite")]
         let conn = {
-            let mut conn = Connection::open(path)
-                .context("Failed to open SQLite connection")?;
+            let mut conn = Connection::open(path).context("Failed to open SQLite connection")?;
             Self::validate_schema_sqlite(&mut conn, path)?;
             Some(conn)
         };
-
-        // For native-v3 backend, schema validation will be added in future plans
-        #[cfg(feature = "backend-native-v3")]
-        {
-            // TODO: Add native-v3 schema validation via GraphBackend methods
-            // For now, we trust the native-v3 backend has the required tables
-        }
 
         Ok(Self {
             storage,
@@ -565,11 +525,15 @@ impl MirageDb {
     #[cfg(feature = "backend-sqlite")]
     fn validate_schema_sqlite(conn: &mut Connection, _path: &Path) -> Result<()> {
         // Check if mirage_meta table exists
-        let mirage_meta_exists: bool = conn.query_row(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='mirage_meta'",
-            [],
-            |row| row.get(0),
-        ).optional()?.unwrap_or(0) == 1;
+        let mirage_meta_exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='mirage_meta'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(0)
+            == 1;
 
         // Get Mirage schema version (0 if table doesn't exist)
         let mirage_version: i32 = if mirage_meta_exists {
@@ -577,7 +541,10 @@ impl MirageDb {
                 "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
                 [],
                 |row| row.get(0),
-            ).optional()?.flatten().unwrap_or(0)
+            )
+            .optional()?
+            .flatten()
+            .unwrap_or(0)
         } else {
             0
         };
@@ -586,31 +553,41 @@ impl MirageDb {
             anyhow::bail!(
                 "Database schema version {} is newer than supported version {}.
                  Please update Mirage.",
-                mirage_version, MIRAGE_SCHEMA_VERSION
+                mirage_version,
+                MIRAGE_SCHEMA_VERSION
             );
         }
 
         // Check Magellan schema compatibility
-        let magellan_version: i32 = conn.query_row(
-            "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).optional()?.flatten().unwrap_or(0);
+        let magellan_version: i32 = conn
+            .query_row(
+                "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten()
+            .unwrap_or(0);
 
         if magellan_version < MIN_MAGELLAN_SCHEMA_VERSION {
             anyhow::bail!(
                 "Magellan schema version {} is too old (minimum {}). \
                  Please update Magellan and run 'magellan watch' to rebuild CFGs.",
-                magellan_version, MIN_MAGELLAN_SCHEMA_VERSION
+                magellan_version,
+                MIN_MAGELLAN_SCHEMA_VERSION
             );
         }
 
         // Check for cfg_blocks table existence (Magellan v7+)
-        let cfg_blocks_exists: bool = conn.query_row(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cfg_blocks'",
-            [],
-            |row| row.get(0),
-        ).optional()?.unwrap_or(0) == 1;
+        let cfg_blocks_exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cfg_blocks'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(0)
+            == 1;
 
         if !cfg_blocks_exists {
             anyhow::bail!(
@@ -633,8 +610,6 @@ impl MirageDb {
     /// Get a reference to the underlying Connection (SQLite backend only)
     ///
     /// Phase 069-02: DEPRECATED - Use storage() for CFG queries, backend() for entity queries.
-    /// For SQLite backend, returns the Connection directly.
-    /// For native-v3 backend, returns an error.
     #[cfg(feature = "backend-sqlite")]
     pub fn conn(&self) -> Result<&Connection, anyhow::Error> {
         self.conn.as_ref().ok_or_else(|| {
@@ -647,8 +622,6 @@ impl MirageDb {
     /// Get a mutable reference to the underlying Connection (SQLite backend only)
     ///
     /// Phase 069-02: DEPRECATED - Use storage() for CFG queries, backend() for entity queries.
-    /// For SQLite backend, returns the Connection directly.
-    /// For native-v3 backend, returns an error.
     #[cfg(feature = "backend-sqlite")]
     pub fn conn_mut(&mut self) -> Result<&mut Connection, anyhow::Error> {
         self.conn.as_mut().ok_or_else(|| {
@@ -656,30 +629,6 @@ impl MirageDb {
                 "Direct Connection access deprecated. Use storage() for CFG queries or backend() for entity queries."
             )
         })
-    }
-
-    /// Get a reference to the underlying Connection (native-v3 backend)
-    ///
-    /// Phase 069-02: DEPRECATED - Use storage() for CFG queries, backend() for entity queries.
-    /// For native-v3 backend, this always returns an error since Connection
-    /// is only available with SQLite backend.
-    #[cfg(feature = "backend-native-v3")]
-    pub fn conn(&self) -> Result<&Connection, anyhow::Error> {
-        Err(anyhow::anyhow!(
-            "Direct Connection access deprecated. Use storage() for CFG queries or backend() for entity queries."
-        ))
-    }
-
-    /// Get a mutable reference to the underlying Connection (native-v3 backend)
-    ///
-    /// Phase 069-02: DEPRECATED - Use storage() for CFG queries, backend() for entity queries.
-    /// For native-v3 backend, this always returns an error since Connection
-    /// is only available with SQLite backend.
-    #[cfg(feature = "backend-native-v3")]
-    pub fn conn_mut(&mut self) -> Result<&mut Connection, anyhow::Error> {
-        Err(anyhow::anyhow!(
-            "Direct Connection access deprecated. Use storage() for CFG queries or backend() for entity queries."
-        ))
     }
 
     /// Get a reference to the storage backend for CFG queries
@@ -710,71 +659,68 @@ impl MirageDb {
         self.conn.is_some()
     }
 
-    /// Check if the database backend is SQLite
-    ///
-    /// For native-v3, this always returns false.
-    #[cfg(feature = "backend-native-v3")]
-    pub fn is_sqlite(&self) -> bool {
-        false
-    }
 }
 
 /// Create a stub GraphBackend for geometric backend
-/// 
+///
 /// Geometric backend doesn't use sqlitegraph's GraphBackend trait.
 /// Instead, it provides its own query methods directly via GeometricBackend.
 /// This stub is used to satisfy the MirageDb struct's graph_backend field.
-/// 
+///
 /// Any code that tries to use GraphBackend methods on a geometric database
 /// will get appropriate errors directing them to use the geometric-specific
 /// methods instead.
 #[cfg(feature = "backend-geometric")]
 fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
-    use sqlitegraph::{GraphBackend, GraphEntity, SqliteGraphError, SnapshotId};
-    use sqlitegraph::backend::{NodeSpec, EdgeSpec, NeighborQuery, BackendDirection};
-    use sqlitegraph::pattern::{PatternQuery, PatternMatch};
+    use sqlitegraph::backend::{BackendDirection, EdgeSpec, NeighborQuery, NodeSpec};
     use sqlitegraph::multi_hop::ChainStep;
-    
+    use sqlitegraph::pattern::{PatternMatch, PatternQuery};
+    use sqlitegraph::{GraphBackend, GraphEntity, SnapshotId, SqliteGraphError};
+
     /// Stub GraphBackend implementation for geometric backend
     /// All methods return errors since geometric uses its own API
     struct GeometricStubBackend;
-    
+
     impl GraphBackend for GeometricStubBackend {
         fn insert_node(&self, _node: NodeSpec) -> Result<i64, SqliteGraphError> {
             Err(SqliteGraphError::unsupported(
                 "GraphBackend operations not supported for geometric backend. Use GeometricBackend methods directly."
             ))
         }
-        
+
         fn insert_edge(&self, _edge: EdgeSpec) -> Result<i64, SqliteGraphError> {
             Err(SqliteGraphError::unsupported(
                 "GraphBackend operations not supported for geometric backend. Use GeometricBackend methods directly."
             ))
         }
-        
+
         fn update_node(&self, _node_id: i64, _node: NodeSpec) -> Result<i64, SqliteGraphError> {
             Err(SqliteGraphError::unsupported(
                 "GraphBackend operations not supported for geometric backend. Use GeometricBackend methods directly."
             ))
         }
-        
+
         fn delete_entity(&self, _id: i64) -> Result<(), SqliteGraphError> {
             Err(SqliteGraphError::unsupported(
                 "GraphBackend operations not supported for geometric backend. Use GeometricBackend methods directly."
             ))
         }
-        
+
         fn entity_ids(&self) -> Result<Vec<i64>, SqliteGraphError> {
             // Return empty list - geometric doesn't use entity_ids
             Ok(vec![])
         }
-        
-        fn get_node(&self, _snapshot_id: SnapshotId, _id: i64) -> Result<GraphEntity, SqliteGraphError> {
+
+        fn get_node(
+            &self,
+            _snapshot_id: SnapshotId,
+            _id: i64,
+        ) -> Result<GraphEntity, SqliteGraphError> {
             Err(SqliteGraphError::unsupported(
                 "GraphBackend operations not supported for geometric backend. Use GeometricBackend methods directly."
             ))
         }
-        
+
         fn neighbors(
             &self,
             _snapshot_id: SnapshotId,
@@ -784,7 +730,7 @@ fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
             // Return empty list - geometric doesn't use GraphBackend neighbors
             Ok(vec![])
         }
-        
+
         fn bfs(
             &self,
             _snapshot_id: SnapshotId,
@@ -794,7 +740,7 @@ fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
             // Return empty list - geometric has its own pathfinding
             Ok(vec![])
         }
-        
+
         fn shortest_path(
             &self,
             _snapshot_id: SnapshotId,
@@ -803,7 +749,7 @@ fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
         ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
             Ok(None)
         }
-        
+
         fn node_degree(
             &self,
             _snapshot_id: SnapshotId,
@@ -811,7 +757,7 @@ fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
         ) -> Result<(usize, usize), SqliteGraphError> {
             Ok((0, 0))
         }
-        
+
         fn k_hop(
             &self,
             _snapshot_id: SnapshotId,
@@ -821,7 +767,7 @@ fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
         ) -> Result<Vec<i64>, SqliteGraphError> {
             Ok(vec![])
         }
-        
+
         fn k_hop_filtered(
             &self,
             _snapshot_id: SnapshotId,
@@ -832,7 +778,7 @@ fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
         ) -> Result<Vec<i64>, SqliteGraphError> {
             Ok(vec![])
         }
-        
+
         fn chain_query(
             &self,
             _snapshot_id: SnapshotId,
@@ -841,7 +787,7 @@ fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
         ) -> Result<Vec<i64>, SqliteGraphError> {
             Ok(vec![])
         }
-        
+
         fn pattern_search(
             &self,
             _snapshot_id: SnapshotId,
@@ -850,39 +796,42 @@ fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
         ) -> Result<Vec<PatternMatch>, SqliteGraphError> {
             Ok(vec![])
         }
-        
+
         fn checkpoint(&self) -> Result<(), SqliteGraphError> {
             Ok(())
         }
-        
+
         fn flush(&self) -> Result<(), SqliteGraphError> {
             Ok(())
         }
-        
-        fn backup(&self, _backup_dir: &std::path::Path) -> Result<sqlitegraph::backend::BackupResult, SqliteGraphError> {
+
+        fn backup(
+            &self,
+            _backup_dir: &std::path::Path,
+        ) -> Result<sqlitegraph::backend::BackupResult, SqliteGraphError> {
             Err(SqliteGraphError::unsupported(
-                "Backup not supported for geometric backend"
+                "Backup not supported for geometric backend",
             ))
         }
-        
+
         fn snapshot_export(
             &self,
             _export_dir: &std::path::Path,
         ) -> Result<sqlitegraph::backend::SnapshotMetadata, SqliteGraphError> {
             Err(SqliteGraphError::unsupported(
-                "Snapshot export not supported for geometric backend"
+                "Snapshot export not supported for geometric backend",
             ))
         }
-        
+
         fn snapshot_import(
             &self,
             _import_dir: &std::path::Path,
         ) -> Result<sqlitegraph::backend::ImportMetadata, SqliteGraphError> {
             Err(SqliteGraphError::unsupported(
-                "Snapshot import not supported for geometric backend"
+                "Snapshot import not supported for geometric backend",
             ))
         }
-        
+
         fn query_nodes_by_kind(
             &self,
             _snapshot_id: SnapshotId,
@@ -890,7 +839,7 @@ fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
         ) -> Result<Vec<i64>, SqliteGraphError> {
             Ok(vec![])
         }
-        
+
         fn query_nodes_by_name_pattern(
             &self,
             _snapshot_id: SnapshotId,
@@ -899,7 +848,7 @@ fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
             Ok(vec![])
         }
     }
-    
+
     Box::new(GeometricStubBackend)
 }
 
@@ -918,11 +867,13 @@ fn migrations() -> Vec<Migration> {
 
 /// Run schema migrations to bring database up to current version
 pub fn migrate_schema(conn: &mut Connection) -> Result<()> {
-    let current_version: i32 = conn.query_row(
-        "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(0);
+    let current_version: i32 = conn
+        .query_row(
+            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     if current_version >= MIRAGE_SCHEMA_VERSION {
         // Already at or above current version
@@ -937,8 +888,12 @@ pub fn migrate_schema(conn: &mut Connection) -> Result<()> {
 
     for migration in pending {
         // Run migration
-        (migration.up)(conn)
-            .with_context(|| format!("Failed to run migration v{}: {}", migration.version, migration.description))?;
+        (migration.up)(conn).with_context(|| {
+            format!(
+                "Failed to run migration v{}: {}",
+                migration.version, migration.description
+            )
+        })?;
 
         // Update version
         conn.execute(
@@ -992,6 +947,9 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
             start_col INTEGER,
             end_line INTEGER,
             end_col INTEGER,
+            coord_x INTEGER NOT NULL DEFAULT 0,
+            coord_y INTEGER NOT NULL DEFAULT 0,
+            coord_z INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (function_id) REFERENCES graph_entities(id)
         )",
         [],
@@ -1021,8 +979,14 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
         [],
     )?;
 
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cfg_paths_function ON cfg_paths(function_id)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cfg_paths_kind ON cfg_paths(path_kind)", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cfg_paths_function ON cfg_paths(function_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cfg_paths_kind ON cfg_paths(path_kind)",
+        [],
+    )?;
 
     // Create cfg_path_elements table
     conn.execute(
@@ -1036,7 +1000,10 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
         [],
     )?;
 
-    conn.execute("CREATE INDEX IF NOT EXISTS cfg_path_elements_block ON cfg_path_elements(block_id)", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS cfg_path_elements_block ON cfg_path_elements(block_id)",
+        [],
+    )?;
 
     // Create cfg_dominators table
     conn.execute(
@@ -1098,43 +1065,39 @@ impl MirageDb {
         match self.conn.as_ref() {
             Some(conn) => {
                 // SQLite backend - use direct SQL queries
-                let cfg_blocks: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM cfg_blocks",
-                    [],
-                    |row| row.get(0),
-                ).unwrap_or(0);
+                let cfg_blocks: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM cfg_blocks", [], |row| row.get(0))
+                    .unwrap_or(0);
 
                 // Edges are now computed in memory from terminator data (per RESEARCH.md Pattern 2)
                 // This count is kept for backward compatibility but will always be 0 for new databases
-                let cfg_edges: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM cfg_edges",
-                    [],
-                    |row| row.get(0),
-                ).unwrap_or(0);
+                let cfg_edges: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM cfg_edges", [], |row| row.get(0))
+                    .unwrap_or(0);
 
-                let cfg_paths: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM cfg_paths",
-                    [],
-                    |row| row.get(0),
-                ).unwrap_or(0);
+                let cfg_paths: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM cfg_paths", [], |row| row.get(0))
+                    .unwrap_or(0);
 
-                let cfg_dominators: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM cfg_dominators",
-                    [],
-                    |row| row.get(0),
-                ).unwrap_or(0);
+                let cfg_dominators: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM cfg_dominators", [], |row| row.get(0))
+                    .unwrap_or(0);
 
-                let mirage_schema_version: i32 = conn.query_row(
-                    "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
-                    [],
-                    |row| row.get(0),
-                ).unwrap_or(0);
+                let mirage_schema_version: i32 = conn
+                    .query_row(
+                        "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
 
-                let magellan_schema_version: i32 = conn.query_row(
-                    "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
-                    [],
-                    |row| row.get(0),
-                ).unwrap_or(0);
+                let magellan_schema_version: i32 = conn
+                    .query_row(
+                        "SELECT magellan_schema_version FROM magellan_meta WHERE id = 1",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
 
                 #[allow(deprecated)]
                 Ok(DatabaseStatus {
@@ -1147,12 +1110,12 @@ impl MirageDb {
                 })
             }
             None => {
-                // No connection - use storage backend instead (geometric or native-v3)
+                // No connection - use storage backend instead (geometric)
                 self.status_via_storage()
             }
         }
     }
-    
+
     /// Helper function to get status via storage backend (for non-SQLite backends)
     #[cfg(feature = "backend-sqlite")]
     fn status_via_storage(&self) -> Result<DatabaseStatus> {
@@ -1164,8 +1127,8 @@ impl MirageDb {
                 let stats = geometric.get_stats()?;
                 return Ok(DatabaseStatus {
                     cfg_blocks: stats.cfg_block_count as i64,
-                    cfg_edges: 0, // Edges computed in memory
-                    cfg_paths: 0, // Paths computed on-demand
+                    cfg_edges: 0,      // Edges computed in memory
+                    cfg_paths: 0,      // Paths computed on-demand
                     cfg_dominators: 0, // Dominators computed on-demand
                     mirage_schema_version: MIRAGE_SCHEMA_VERSION,
                     magellan_schema_version: MIN_MAGELLAN_SCHEMA_VERSION,
@@ -1173,13 +1136,13 @@ impl MirageDb {
             }
         }
 
-        // For native-v3 or other backends
+        // Fallback for other backends
         #[allow(deprecated)]
         // cfg_edges field is kept for backward compatibility with existing databases
         // Edges are now computed in memory from terminator data (per commit 20a28d4)
         Ok(DatabaseStatus {
             cfg_blocks: 0,
-            cfg_edges: 0,  // Always 0 for new databases, kept for backward compatibility
+            cfg_edges: 0, // Always 0 for new databases, kept for backward compatibility
             cfg_paths: 0,
             cfg_dominators: 0,
             mirage_schema_version: MIRAGE_SCHEMA_VERSION,
@@ -1187,46 +1150,13 @@ impl MirageDb {
         })
     }
 
-    /// Get database statistics (native-v3 backend)
-    ///
-    /// Uses GraphBackend methods to query entity and KV store data.
-    #[cfg(feature = "backend-native-v3")]
-    pub fn status(&self) -> Result<DatabaseStatus> {
-        // For native-v3, CFG blocks are stored in the KV store
-        // Counting them requires iterating through all function entities
-        // and checking for CFG data in the KV store
-        let _snapshot = SnapshotId::current();
-        
-        // TODO: Implement CFG block counting for native-v3 using kv_prefix_scan
-        // For now, return 0 as the implementation requires sqlitegraph native-v3 APIs
-        let cfg_blocks_count: i64 = 0;
-
-        // For native-v3, these counts are 0 as they're not stored in KV
-        // cfg_paths and cfg_dominators are Mirage-specific tables not in native-v3
-        let cfg_edges: i64 = 0; // Edges computed in memory
-        let cfg_paths: i64 = 0; // Path caching not yet implemented for native-v3
-        let cfg_dominators: i64 = 0; // Dominator caching not yet implemented for native-v3
-
-        // Schema versions: use constants (native-v3 doesn't have meta tables)
-        // In the future, these could be stored in KV with well-known keys
-        let mirage_schema_version = MIRAGE_SCHEMA_VERSION;
-        let magellan_schema_version = MIN_MAGELLAN_SCHEMA_VERSION;
-
-        #[allow(deprecated)]
-        Ok(DatabaseStatus {
-            cfg_blocks: cfg_blocks_count,
-            cfg_edges,
-            cfg_paths,
-            cfg_dominators,
-            mirage_schema_version,
-            magellan_schema_version,
-        })
-    }
-
     /// Get database statistics (geometric backend)
     ///
     /// Uses GeometricBackend methods to query symbol and CFG data.
-    #[cfg(all(feature = "backend-geometric", not(feature = "backend-sqlite"), not(feature = "backend-native-v3")))]
+    #[cfg(all(
+        feature = "backend-geometric",
+        not(feature = "backend-sqlite")
+    ))]
     pub fn status(&self) -> Result<DatabaseStatus> {
         // For geometric backend, we need to query through the storage
         // Since we don't have direct SQLite access, use the GeometricStorage methods
@@ -1262,7 +1192,7 @@ impl MirageDb {
 
     /// Resolve a function name or ID to a function_id (backend-agnostic)
     ///
-    /// This method works with both SQLite and native-v3 backends.
+    /// This method works with both SQLite and geometric backends.
     ///
     /// # Arguments
     ///
@@ -1308,7 +1238,11 @@ impl MirageDb {
     /// * `Ok(i64)` - The function_id if found
     /// * `Err(...)` - Error if function not found or query fails
     #[cfg(feature = "backend-sqlite")]
-    pub fn resolve_function_name_with_file(&self, name_or_id: &str, file_filter: Option<&str>) -> Result<i64> {
+    pub fn resolve_function_name_with_file(
+        &self,
+        name_or_id: &str,
+        file_filter: Option<&str>,
+    ) -> Result<i64> {
         // Try to parse as numeric ID first
         if let Ok(id) = name_or_id.parse::<i64>() {
             return Ok(id);
@@ -1346,7 +1280,7 @@ impl MirageDb {
             path.to_string()
         }
     }
-    
+
     /// Resolve function name for geometric backend
     ///
     /// Accepts:
@@ -1359,18 +1293,22 @@ impl MirageDb {
         if let Ok(id) = name_or_id.parse::<i64>() {
             // Verify the ID exists
             if let Backend::Geometric(ref geometric) = self.storage {
-                if geometric.inner().find_symbol_by_id_info(id as u64).is_some() {
+                if geometric
+                    .inner()
+                    .find_symbol_by_id_info(id as u64)
+                    .is_some()
+                {
                     return Ok(id);
                 }
             }
             anyhow::bail!("Function with ID '{}' not found", id);
         }
-        
+
         // Check if this is a Full Qualified Name (FQN) format: magellan::/path/to/file.rs::FunctionName
         if let Some(fqn_data) = Self::parse_fqn(name_or_id) {
             return self.resolve_function_by_fqn(fqn_data);
         }
-        
+
         // Use simple name resolution via geometric storage
         if let Backend::Geometric(ref geometric) = self.storage {
             // Find symbols by name
@@ -1378,31 +1316,32 @@ impl MirageDb {
             if all_symbols.is_empty() {
                 anyhow::bail!("Function '{}' not found", name_or_id);
             }
-            
+
             // Deduplicate by symbol ID - the ID is the unique primary key in the database.
             // This handles cases where the same symbol may be indexed multiple times with
             // identical (name, file_path, location) data but different internal records.
-            let mut unique_symbols: Vec<magellan::graph::geometric_backend::SymbolInfo> = Vec::new();
+            let mut unique_symbols: Vec<magellan::graph::geometric_backend::SymbolInfo> =
+                Vec::new();
             let mut seen_ids: std::collections::HashSet<u64> = std::collections::HashSet::new();
-            
+
             for sym in all_symbols {
                 if seen_ids.insert(sym.id) {
                     unique_symbols.push(sym);
                 }
             }
-            
+
             // Check if all candidates are at the same location (duplicates) or genuinely different
             if unique_symbols.len() > 1 {
                 let first = &unique_symbols[0];
                 let first_path_normalized = Self::normalize_path_for_dedup(&first.file_path);
                 let all_same_location = unique_symbols.iter().all(|sym| {
                     let sym_path_normalized = Self::normalize_path_for_dedup(&sym.file_path);
-                    sym.name == first.name 
+                    sym.name == first.name
                         && sym_path_normalized == first_path_normalized
-                        && sym.start_line == first.start_line 
+                        && sym.start_line == first.start_line
                         && sym.start_col == first.start_col
                 });
-                
+
                 if !all_same_location {
                     // Genuinely ambiguous - different functions with same name
                     anyhow::bail!(
@@ -1422,7 +1361,7 @@ impl MirageDb {
             anyhow::bail!("Geometric backend not available")
         }
     }
-    
+
     /// Parse FQN format: magellan::/path/to/file.rs::Function symbol_name
     /// Returns (file_path, symbol_name) if valid FQN
     #[cfg(feature = "backend-geometric")]
@@ -1432,15 +1371,15 @@ impl MirageDb {
         if !name.starts_with("magellan::") {
             return None;
         }
-        
+
         // Strip the prefix
         let after_prefix = &name[10..]; // Skip "magellan::"
-        
+
         // Find the last :: separator
         if let Some(last_sep_pos) = after_prefix.rfind("::") {
             let file_path = &after_prefix[..last_sep_pos];
             let name_part = &after_prefix[last_sep_pos + 2..];
-            
+
             // The name_part may include a kind prefix like "Function ", "Struct ", etc.
             // Strip the kind prefix to get the actual symbol name
             let symbol_name = if let Some(space_pos) = name_part.find(' ') {
@@ -1448,20 +1387,20 @@ impl MirageDb {
             } else {
                 name_part
             };
-            
+
             if !file_path.is_empty() && !symbol_name.is_empty() {
                 return Some((file_path, symbol_name));
             }
         }
-        
+
         None
     }
-    
+
     /// Resolve function by FQN (file path + symbol name)
     #[cfg(feature = "backend-geometric")]
     fn resolve_function_by_fqn(&self, fqn_data: (&str, &str)) -> Result<i64> {
         let (file_path, symbol_name) = fqn_data;
-        
+
         if let Backend::Geometric(ref geometric) = self.storage {
             // Use the direct lookup method (handles deduplication internally)
             match geometric.find_symbol_id_by_name_and_path(symbol_name, file_path) {
@@ -1470,17 +1409,22 @@ impl MirageDb {
                     // Not found or ambiguous - try to get more details for error message
                     let all_symbols = geometric.find_symbols_by_name(symbol_name);
                     let normalized_target = Self::normalize_path_for_dedup(file_path);
-                    
+
                     let matching_symbols: Vec<_> = all_symbols
                         .into_iter()
                         .filter(|sym| {
-                            let sym_path_normalized = Self::normalize_path_for_dedup(&sym.file_path);
+                            let sym_path_normalized =
+                                Self::normalize_path_for_dedup(&sym.file_path);
                             sym_path_normalized == normalized_target
                         })
                         .collect();
-                    
+
                     if matching_symbols.is_empty() {
-                        anyhow::bail!("Function '{}' not found in file '{}'", symbol_name, file_path);
+                        anyhow::bail!(
+                            "Function '{}' not found in file '{}'",
+                            symbol_name,
+                            file_path
+                        );
                     } else {
                         // Multiple matches - report ambiguity
                         anyhow::bail!(
@@ -1497,72 +1441,9 @@ impl MirageDb {
         }
     }
 
-    /// Resolve a function name or ID to a function_id (native-v3 backend)
-    ///
-    /// This method uses the native-v3 backend to resolve function names.
-    /// Matches Magellan's storage format: entity.kind = 'Symbol' with data.kind = 'Function'
-    #[cfg(feature = "backend-native-v3")]
-    pub fn resolve_function_name(&self, name_or_id: &str) -> Result<i64> {
-        // Try to parse as numeric ID first
-        if let Ok(id) = name_or_id.parse::<i64>() {
-            return Ok(id);
-        }
-
-        // For native-v3, query using GraphBackend
-        use sqlitegraph::SnapshotId;
-        let snapshot = SnapshotId::current();
-
-        // Get all entities and filter for functions
-        let entity_ids = self.backend().entity_ids()
-            .context("Failed to query entities from backend")?;
-
-        // First pass: look for matching symbol_id (hex hash like 7ca9eebfa98204a5)
-        for entity_id in &entity_ids {
-            if let Ok(entity) = self.backend().get_node(snapshot, *entity_id) {
-                if entity.kind == "Symbol" {
-                    // Check if symbol_id matches
-                    if let Some(symbol_id) = entity.data.get("symbol_id").and_then(|s| s.as_str()) {
-                        if symbol_id == name_or_id {
-                            // Check data.kind for Function type
-                            if let Some(kind) = entity.data.get("kind").and_then(|k| k.as_str()) {
-                                if kind == "Function" {
-                                    return Ok(*entity_id);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Second pass: look for matching name
-        for entity_id in &entity_ids {
-            if let Ok(entity) = self.backend().get_node(snapshot, *entity_id) {
-                // Check if this is a Symbol entity with matching name
-                // Magellan stores symbols with entity.kind = 'Symbol' 
-                // and the actual symbol kind (Function, Struct, etc.) in data.kind
-                if entity.kind == "Symbol" && entity.name == name_or_id {
-                    // Check data.kind for Function type
-                    if let Some(kind) = entity.data.get("kind").and_then(|k| k.as_str()) {
-                        if kind == "Function" {
-                            return Ok(*entity_id);
-                        }
-                    }
-                }
-            }
-        }
-
-        anyhow::bail!(
-            "Function '{}' not found in database. Run 'magellan watch' to index functions.",
-            name_or_id
-        )
-    }
-
     /// Load a CFG from the database (backend-agnostic)
     ///
-    /// This method works with both SQLite and native-v3 backends.
     /// For SQLite backend: uses SQL query on cfg_blocks table
-    /// For native-v3 backend: uses Magellan's KV store via get_cfg_blocks_kv()
     ///
     /// # Arguments
     ///
@@ -1599,43 +1480,73 @@ impl MirageDb {
         let file_path = self.get_function_file(function_id);
 
         // Convert CfgBlockData to the tuple format expected by load_cfg_from_rows
-        let block_rows: Vec<(i64, String, Option<String>, Option<i64>, Option<i64>,
-                              Option<i64>, Option<i64>, Option<i64>, Option<i64>,
-                              Option<i64>, Option<i64>, Option<i64>)> = blocks
+        let block_rows: Vec<(
+            i64,
+            String,
+            Option<String>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+        )> = blocks
             .into_iter()
             .enumerate()
-            .map(|(idx, b)| (
-                idx as i64,  // id (use index as id)
-                b.kind,
-                Some(b.terminator),
-                Some(b.byte_start as i64),
-                Some(b.byte_end as i64),
-                Some(b.start_line as i64),
-                Some(b.start_col as i64),
-                Some(b.end_line as i64),
-                Some(b.end_col as i64),
-                Some(b.coord_x),
-                Some(b.coord_y),
-                Some(b.coord_z),
-            ))
+            .map(|(idx, b)| {
+                (
+                    idx as i64, // id (use index as id)
+                    b.kind,
+                    Some(b.terminator),
+                    Some(b.byte_start as i64),
+                    Some(b.byte_end as i64),
+                    Some(b.start_line as i64),
+                    Some(b.start_col as i64),
+                    Some(b.end_line as i64),
+                    Some(b.end_col as i64),
+                    Some(b.coord_x),
+                    Some(b.coord_y),
+                    Some(b.coord_z),
+                )
+            })
             .collect();
 
-        load_cfg_from_rows(block_rows, file_path.map(std::path::PathBuf::from))
-    }
+        // Query cfg_edges from SQLite connection if available (Magellan v11+)
+        let cfg_edges: Vec<(i64, i64, String)> = if let Ok(conn) = self.conn() {
+            match conn.prepare_cached(
+                "SELECT source_idx, target_idx, edge_type
+                 FROM cfg_edges
+                 WHERE function_id = ?
+                 ORDER BY source_idx, target_idx",
+            ) {
+                Ok(mut stmt) => {
+                    match stmt.query_map(params![function_id], |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                    }) {
+                        Ok(rows) => rows.collect::<Result<Vec<_>, _>>().unwrap_or_default(),
+                        Err(_) => vec![],
+                    }
+                }
+                Err(_) => vec![],
+            }
+        } else {
+            vec![]
+        };
 
-    /// Load a CFG from the database (native-v3 backend)
-    ///
-    /// This method uses the native-v3 KV store to load CFG data.
-    #[cfg(feature = "backend-native-v3")]
-    pub fn load_cfg(&self, function_id: i64) -> Result<crate::cfg::Cfg> {
-        load_cfg_from_native_v3(self.backend(), function_id)
+        load_cfg_from_rows(
+            block_rows,
+            file_path.map(std::path::PathBuf::from),
+            cfg_edges,
+        )
     }
 
     /// Get the function name for a given function_id (backend-agnostic)
     ///
-    /// This method works with both SQLite and native-v3 backends.
     /// For SQLite backend: queries the graph_entities table
-    /// For native-v3 backend: uses GraphBackend::get_node
+    /// For Geometric backend: uses GraphBackend::get_node
     ///
     /// # Arguments
     ///
@@ -1647,7 +1558,8 @@ impl MirageDb {
     /// * `None` - Function not found
     pub fn get_function_name(&self, function_id: i64) -> Option<String> {
         let snapshot = SnapshotId::current();
-        self.backend().get_node(snapshot, function_id)
+        self.backend()
+            .get_node(snapshot, function_id)
             .ok()
             .and_then(|entity| {
                 // Return the name if this is a function
@@ -1663,9 +1575,9 @@ impl MirageDb {
 
     /// Get the file path for a given function_id (backend-agnostic)
     ///
-    /// This method works with both SQLite and native-v3 backends.
+    /// This method works with both SQLite and geometric backends.
     /// For SQLite backend: queries the graph_entities table
-    /// For native-v3 backend: uses GraphBackend::get_node
+    /// For geometric backend: uses GraphBackend::get_node
     ///
     /// # Arguments
     ///
@@ -1677,16 +1589,15 @@ impl MirageDb {
     /// * `None` - File path not available
     pub fn get_function_file(&self, function_id: i64) -> Option<String> {
         let snapshot = SnapshotId::current();
-        self.backend().get_node(snapshot, function_id)
+        self.backend()
+            .get_node(snapshot, function_id)
             .ok()
             .and_then(|entity| entity.file_path)
     }
 
-    /// Check if a function has CFG blocks (backend-agnostic)
+    /// Check if a function has CFG blocks (SQLite backend)
     ///
-    /// This method works with both SQLite and native-v3 backends.
     /// For SQLite backend: queries the cfg_blocks table
-    /// For native-v3 backend: checks KV store for cfg:func:{function_id}
     ///
     /// # Arguments
     ///
@@ -1704,22 +1615,9 @@ impl MirageDb {
             .unwrap_or(false)
     }
 
-    /// Check if a function has CFG blocks (native-v3 backend)
+    /// Get the function hash for path caching (SQLite backend)
     ///
-    /// For native-v3, checks the KV store for CFG blocks.
-    /// TODO: Implement using sqlitegraph native-v3 KV APIs
-    #[cfg(feature = "backend-native-v3")]
-    pub fn function_exists(&self, _function_id: i64) -> bool {
-        // TODO: Implement native-v3 function existence check
-        // This requires using sqlitegraph native-v3 KV store APIs
-        false
-    }
-
-    /// Get the function hash for path caching (backend-agnostic)
-    ///
-    /// This method works with both SQLite and native-v3 backends.
     /// For SQLite backend: queries the cfg_blocks table
-    /// For native-v3 backend: returns None (Magellan manages its own caching)
     ///
     /// # Arguments
     ///
@@ -1727,8 +1625,8 @@ impl MirageDb {
     ///
     /// # Returns
     ///
-    /// * `Some(hash)` - The function hash if available (SQLite only)
-    /// * `None` - Hash not available or native-v3 backend
+    /// * `Some(hash)` - The function hash if available
+    /// * `None` - Hash not available
     #[cfg(feature = "backend-sqlite")]
     pub fn get_function_hash(&self, function_id: i64) -> Option<String> {
         use crate::storage::get_function_hash;
@@ -1737,15 +1635,6 @@ impl MirageDb {
             .ok()
             .flatten()
     }
-
-    /// Get the function hash for path caching (native-v3 backend)
-    ///
-    /// For native-v3, always returns None since Magellan manages its own caching.
-    #[cfg(feature = "backend-native-v3")]
-    pub fn get_function_hash(&self, _function_id: i64) -> Option<String> {
-        // Magellan manages its own caching, so Mirage's hash-based caching is not used
-        None
-    }
 }
 
 /// Resolve a function name or ID to a function_id (SQLite backend)
@@ -1753,7 +1642,11 @@ impl MirageDb {
 /// This is a helper function for the SQLite backend. For backend-agnostic
 /// resolution, use `MirageDb::resolve_function_name` which takes `&MirageDb`.
 #[cfg(feature = "backend-sqlite")]
-fn resolve_function_name_sqlite(conn: &Connection, name_or_id: &str, file_filter: Option<&str>) -> Result<i64> {
+fn resolve_function_name_sqlite(
+    conn: &Connection,
+    name_or_id: &str,
+    file_filter: Option<&str>,
+) -> Result<i64> {
     // First try to look up by symbol_id (hex hash like 7ca9eebfa98204a5)
     // Magellan stores symbol_id inside the data JSON column
     let function_id_by_symbol: Option<i64> = conn
@@ -1841,32 +1734,45 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
     // Query all blocks for this function from Magellan's cfg_blocks table
     // Magellan schema v7+ uses: kind (not block_kind), terminator as TEXT, and line/col columns
     // Also includes 4D spatial coordinates: coord_x (dominator depth), coord_y (loop nesting), coord_z (branch distance)
-    let mut stmt = conn.prepare_cached(
-        "SELECT id, kind, terminator, byte_start, byte_end,
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT id, kind, terminator, byte_start, byte_end,
                 start_line, start_col, end_line, end_col,
                 coord_x, coord_y, coord_z
          FROM cfg_blocks
          WHERE function_id = ?
          ORDER BY id ASC",
-    ).context("Failed to prepare cfg_blocks query")?;
+        )
+        .context("Failed to prepare cfg_blocks query")?;
 
-    let block_rows: Vec<(i64, String, Option<String>, Option<i64>, Option<i64>,
-                          Option<i64>, Option<i64>, Option<i64>, Option<i64>,
-                          Option<i64>, Option<i64>, Option<i64>)> = stmt
+    let block_rows: Vec<(
+        i64,
+        String,
+        Option<String>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+    )> = stmt
         .query_map(params![function_id], |row| {
             Ok((
-                row.get(0)?,     // id (database primary key)
-                row.get(1)?,     // kind (Magellan's column name)
-                row.get(2)?,     // terminator (plain TEXT, not JSON)
-                row.get(3)?,     // byte_start
-                row.get(4)?,     // byte_end
-                row.get(5)?,     // start_line
-                row.get(6)?,     // start_col
-                row.get(7)?,     // end_line
-                row.get(8)?,     // end_col
-                row.get(9)?,     // coord_x (dominator depth)
-                row.get(10)?,    // coord_y (loop nesting depth)
-                row.get(11)?,    // coord_z (branch distance)
+                row.get(0)?,  // id (database primary key)
+                row.get(1)?,  // kind (Magellan's column name)
+                row.get(2)?,  // terminator (plain TEXT, not JSON)
+                row.get(3)?,  // byte_start
+                row.get(4)?,  // byte_end
+                row.get(5)?,  // start_line
+                row.get(6)?,  // start_col
+                row.get(7)?,  // end_line
+                row.get(8)?,  // end_col
+                row.get(9)?,  // coord_x (dominator depth)
+                row.get(10)?, // coord_y (loop nesting depth)
+                row.get(11)?, // coord_z (branch distance)
             ))
         })
         .context("Failed to execute cfg_blocks query")?
@@ -1880,44 +1786,50 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
         );
     }
 
-    load_cfg_from_rows(block_rows, file_path)
+    // Query cfg_edges for this function (Magellan v11+)
+    let edges: Vec<(i64, i64, String)> = match conn.prepare_cached(
+        "SELECT source_idx, target_idx, edge_type
+             FROM cfg_edges
+             WHERE function_id = ?
+             ORDER BY source_idx, target_idx",
+    ) {
+        Ok(mut stmt) => stmt
+            .query_map(params![function_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .context("Failed to query cfg_edges")?
+            .collect::<Result<Vec<_>, _>>()
+            .context("Failed to collect cfg_edges rows")?,
+        Err(_) => Vec::new(),
+    };
+
+    load_cfg_from_rows(block_rows, file_path, edges)
 }
 
-/// Load CFG from native-v3 backend
-///
-/// This helper function loads CFG blocks from the native-v3 KV store.
-///
-/// **NOT YET IMPLEMENTED**: This feature requires additional development.
-/// The native-v3 backend uses sqlitegraph's KV store interface, which needs
-/// custom implementation for CFG block loading.
-///
-/// To use CFG functionality with native-v3, please use the SQLite backend
-/// instead (which is the default).
-#[cfg(feature = "backend-native-v3")]
-fn load_cfg_from_native_v3(
-    _backend: &dyn GraphBackend,
-    _function_id: i64,
-) -> Result<crate::cfg::Cfg> {
-    compile_error!(
-        "Native-V3 CFG loading is not yet implemented. \
-        Please disable the 'backend-native-v3' feature and use the default SQLite backend. \
-        See: https://github.com/yourusername/mirage/issues for implementation status."
-    )
-}
-
-/// Common CFG loading logic used by both SQLite and native-v3 backends
+/// Common CFG loading logic used by the SQLite backend
 ///
 /// This function takes pre-fetched block rows and builds the CFG structure.
-/// It is shared between both backend implementations to ensure consistency.
 fn load_cfg_from_rows(
-    block_rows: Vec<(i64, String, Option<String>, Option<i64>, Option<i64>,
-                     Option<i64>, Option<i64>, Option<i64>, Option<i64>,
-                     Option<i64>, Option<i64>, Option<i64>)>,
+    block_rows: Vec<(
+        i64,
+        String,
+        Option<String>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+    )>,
     file_path: Option<std::path::PathBuf>,
+    cfg_edges: Vec<(i64, i64, String)>,
 ) -> Result<crate::cfg::Cfg> {
-    use crate::cfg::{BasicBlock, BlockKind, Cfg, Terminator};
-    use crate::cfg::build_edges_from_terminators;
     use crate::cfg::source::SourceLocation;
+    use crate::cfg::{build_edges_from_cfg_edges, build_edges_from_terminators};
+    use crate::cfg::{BasicBlock, BlockKind, Cfg, Terminator};
     use std::collections::HashMap;
 
     // Build mapping from database block ID to graph node index
@@ -1925,10 +1837,23 @@ fn load_cfg_from_rows(
     let mut graph = Cfg::new();
 
     // Add each block to the graph
-    for (node_idx, (db_id, kind_str, terminator_str, byte_start, byte_end,
-                     start_line, start_col, end_line, end_col,
-                     coord_x, coord_y, coord_z)) in
-        block_rows.iter().enumerate()
+    for (
+        node_idx,
+        (
+            db_id,
+            kind_str,
+            terminator_str,
+            byte_start,
+            byte_end,
+            start_line,
+            start_col,
+            end_line,
+            end_col,
+            coord_x,
+            coord_y,
+            coord_z,
+        ),
+    ) in block_rows.iter().enumerate()
     {
         // Parse Magellan's block kind to Mirage's BlockKind
         let kind = match kind_str.as_str() {
@@ -1945,12 +1870,18 @@ fn load_cfg_from_rows(
         // Parse Magellan's terminator string to Mirage's Terminator enum
         let terminator = match terminator_str.as_deref() {
             Some("fallthrough") => Terminator::Goto { target: 0 }, // target will be resolved from edges
-            Some("conditional") => Terminator::SwitchInt { targets: vec![], otherwise: 0 },
+            Some("conditional") => Terminator::SwitchInt {
+                targets: vec![],
+                otherwise: 0,
+            },
             Some("goto") => Terminator::Goto { target: 0 },
             Some("return") => Terminator::Return,
             Some("break") => Terminator::Abort("break".to_string()),
             Some("continue") => Terminator::Abort("continue".to_string()),
-            Some("call") => Terminator::Call { target: None, unwind: None },
+            Some("call") => Terminator::Call {
+                target: None,
+                unwind: None,
+            },
             Some("panic") => Terminator::Abort("panic".to_string()),
             Some(_) | None => Terminator::Unreachable,
         };
@@ -1981,6 +1912,7 @@ fn load_cfg_from_rows(
 
         let block = BasicBlock {
             id: node_idx,
+            db_id: Some(*db_id),
             kind,
             statements: vec![], // Empty for now - future enhancement
             terminator,
@@ -1995,10 +1927,22 @@ fn load_cfg_from_rows(
         db_id_to_node.insert(*db_id, node_idx);
     }
 
-    // Build edges from terminator data (per RESEARCH.md Pattern 2)
-    // Edges are derived in memory by analyzing terminators, not queried from cfg_edges table
-    build_edges_from_terminators(&mut graph, &block_rows, &db_id_to_node)
-        .context("Failed to build edges from terminator data")?;
+    // Build mapping from vector index to graph node index (for cfg_edges)
+    let mut index_to_node: HashMap<usize, usize> = HashMap::new();
+    for (idx, (db_id, _, _, _, _, _, _, _, _, _, _, _)) in block_rows.iter().enumerate() {
+        if let Some(&node_idx) = db_id_to_node.get(db_id) {
+            index_to_node.insert(idx, node_idx);
+        }
+    }
+
+    // Use cfg_edges from Magellan if available, otherwise fall back to terminators
+    if !cfg_edges.is_empty() {
+        build_edges_from_cfg_edges(&mut graph, &cfg_edges, &index_to_node)
+            .context("Failed to build edges from cfg_edges")?;
+    } else {
+        build_edges_from_terminators(&mut graph, &block_rows, &db_id_to_node)
+            .context("Failed to build edges from terminator data")?;
+    }
 
     Ok(graph)
 }
@@ -2006,7 +1950,7 @@ fn load_cfg_from_rows(
 /// Resolve a function name or ID to a function_id (backend-agnostic)
 ///
 /// This is the main entry point for resolving function names. It works with both
-/// SQLite and native-v3 backends.
+/// SQLite and geometric backends.
 ///
 /// # Arguments
 ///
@@ -2063,14 +2007,18 @@ pub fn resolve_function_name(db: &MirageDb, name_or_id: &str) -> Result<i64> {
 /// # Ok(())
 /// # }
 /// ```
-pub fn resolve_function_name_with_file(db: &MirageDb, name_or_id: &str, file_filter: Option<&str>) -> Result<i64> {
+pub fn resolve_function_name_with_file(
+    db: &MirageDb,
+    name_or_id: &str,
+    file_filter: Option<&str>,
+) -> Result<i64> {
     db.resolve_function_name_with_file(name_or_id, file_filter)
 }
 
 /// Get the function name for a given function_id (backend-agnostic)
 ///
 /// This is the main entry point for getting function names. It works with both
-/// SQLite and native-v3 backends.
+/// SQLite and geometric backends.
 ///
 /// # Arguments
 ///
@@ -2101,7 +2049,7 @@ pub fn get_function_name_db(db: &MirageDb, function_id: i64) -> Option<String> {
 /// Get the file path for a given function_id (backend-agnostic)
 ///
 /// This is the main entry point for getting function file paths. It works with both
-/// SQLite and native-v3 backends.
+/// SQLite and geometric backends.
 ///
 /// # Arguments
 ///
@@ -2132,10 +2080,10 @@ pub fn get_function_file_db(db: &MirageDb, function_id: i64) -> Option<String> {
 /// Get the function hash for path caching (backend-agnostic)
 ///
 /// This is the main entry point for getting function hashes. It works with both
-/// SQLite and native-v3 backends.
+/// SQLite and geometric backends.
 ///
 /// For SQLite backend: returns the stored hash if available
-/// For native-v3 backend: always returns None (Magellan manages its own caching)
+/// For geometric backend: always returns None (Magellan manages its own caching)
 ///
 /// # Arguments
 ///
@@ -2145,7 +2093,7 @@ pub fn get_function_file_db(db: &MirageDb, function_id: i64) -> Option<String> {
 /// # Returns
 ///
 /// * `Some(hash)` - The function hash if available (SQLite only)
-/// * `None` - Hash not available or native-v3 backend
+/// * `None` - Hash not available or geometric backend
 ///
 /// # Examples
 ///
@@ -2200,7 +2148,7 @@ pub fn resolve_function_name_with_conn(conn: &Connection, name_or_id: &str) -> R
 
 /// Load a CFG from the database for a given function_id (backend-agnostic)
 ///
-/// This is the main entry point for loading CFGs. It works with both SQLite and native-v3 backends.
+/// This is the main entry point for loading CFGs. It works with SQLite and geometric backends.
 ///
 /// # Arguments
 ///
@@ -2226,7 +2174,7 @@ pub fn resolve_function_name_with_conn(conn: &Connection, name_or_id: &str) -> R
 /// # Notes
 ///
 /// - For SQLite backend: uses SQL query on cfg_blocks table
-/// - For native-v3 backend: uses Magellan's KV store via get_cfg_blocks_kv()
+/// - For geometric backend: uses Magellan's KV store via get_cfg_blocks_kv()
 /// - Requires Magellan schema v7+ for cfg_blocks table
 /// - Edges are constructed in memory from terminator data, not queried from cfg_edges table
 pub fn load_cfg_from_db(db: &MirageDb, function_id: i64) -> Result<crate::cfg::Cfg> {
@@ -2306,7 +2254,7 @@ pub fn load_cfg_from_db_with_conn(conn: &Connection, function_id: i64) -> Result
 pub fn store_cfg(
     conn: &mut Connection,
     function_id: i64,
-    _function_hash: &str,  // Unused: Magellan manages its own caching
+    _function_hash: &str, // Unused: Magellan manages its own caching
     cfg: &crate::cfg::Cfg,
 ) -> Result<()> {
     use crate::cfg::{BlockKind, Terminator};
@@ -2319,20 +2267,25 @@ pub fn store_cfg(
     conn.execute(
         "DELETE FROM cfg_blocks WHERE function_id = ?",
         params![function_id],
-    ).context("Failed to clear existing cfg_blocks")?;
+    )
+    .context("Failed to clear existing cfg_blocks")?;
 
     // Insert each block and collect database IDs
     let mut block_id_map: std::collections::HashMap<petgraph::graph::NodeIndex, i64> =
         std::collections::HashMap::new();
 
-    let mut insert_block = conn.prepare_cached(
-        "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
-                                  start_line, start_col, end_line, end_col)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).context("Failed to prepare block insert statement")?;
+    let mut insert_block = conn
+        .prepare_cached(
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                  start_line, start_col, end_line, end_col,
+                                  coord_x, coord_y, coord_z)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .context("Failed to prepare block insert statement")?;
 
     for node_idx in cfg.node_indices() {
-        let block = cfg.node_weight(node_idx)
+        let block = cfg
+            .node_weight(node_idx)
             .context("CFG node has no weight")?;
 
         // Convert terminator to Magellan's string format
@@ -2348,17 +2301,23 @@ pub fn store_cfg(
         };
 
         // Get location data from source_location
-        let (byte_start, byte_end) = block.source_location.as_ref()
+        let (byte_start, byte_end) = block
+            .source_location
+            .as_ref()
             .map(|loc| (Some(loc.byte_start as i64), Some(loc.byte_end as i64)))
             .unwrap_or((None, None));
 
-        let (start_line, start_col, end_line, end_col) = block.source_location.as_ref()
-            .map(|loc| (
-                Some(loc.start_line as i64),
-                Some(loc.start_column as i64),
-                Some(loc.end_line as i64),
-                Some(loc.end_column as i64),
-            ))
+        let (start_line, start_col, end_line, end_col) = block
+            .source_location
+            .as_ref()
+            .map(|loc| {
+                (
+                    Some(loc.start_line as i64),
+                    Some(loc.start_column as i64),
+                    Some(loc.end_line as i64),
+                    Some(loc.end_column as i64),
+                )
+            })
             .unwrap_or((None, None, None, None));
 
         // Convert BlockKind to Magellan's kind string
@@ -2368,17 +2327,22 @@ pub fn store_cfg(
             BlockKind::Exit => "return",
         };
 
-        insert_block.execute(params![
-            function_id,
-            kind,
-            terminator_str,
-            byte_start,
-            byte_end,
-            start_line,
-            start_col,
-            end_line,
-            end_col,
-        ]).context("Failed to insert cfg_block")?;
+        insert_block
+            .execute(params![
+                function_id,
+                kind,
+                terminator_str,
+                byte_start,
+                byte_end,
+                start_line,
+                start_col,
+                end_line,
+                end_col,
+                block.coord_x,
+                block.coord_y,
+                block.coord_z,
+            ])
+            .context("Failed to insert cfg_block")?;
 
         let db_id = conn.last_insert_rowid();
         block_id_map.insert(node_idx, db_id);
@@ -2408,8 +2372,12 @@ pub fn function_exists(conn: &Connection, function_id: i64) -> bool {
     conn.query_row(
         "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
         params![function_id],
-        |row| row.get::<_, i64>(0).map(|count| count > 0)
-    ).optional().ok().flatten().unwrap_or(false)
+        |row| row.get::<_, i64>(0).map(|count| count > 0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .unwrap_or(false)
 }
 
 /// Get the stored hash for a function
@@ -2431,23 +2399,31 @@ pub fn function_exists(conn: &Connection, function_id: i64) -> bool {
 /// is only available when using Mirage's legacy schema.
 pub fn get_function_hash(conn: &Connection, function_id: i64) -> Option<String> {
     // Try Magellan v8+ cfg_hash column first
-    let cfg_hash: Option<String> = conn.query_row(
-        "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
-        params![function_id],
-        |row| row.get(0)
-    ).optional().ok().flatten();
-    
+    let cfg_hash: Option<String> = conn
+        .query_row(
+            "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
+            params![function_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+
     if cfg_hash.is_some() {
         return cfg_hash;
     }
-    
+
     // Fallback: use symbol_id from graph_entities (Magellan v7 schema)
     // This provides a stable identifier for caching
     conn.query_row(
         "SELECT json_extract(data, '$.symbol_id') FROM graph_entities WHERE id = ? LIMIT 1",
         params![function_id],
-        |row| row.get::<_, Option<String>>(0)
-    ).optional().ok().flatten().flatten()
+        |row| row.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .flatten()
 }
 
 /// Compare two function hashes and return true if they differ
@@ -2470,20 +2446,18 @@ pub fn get_function_hash(conn: &Connection, function_id: i64) -> Option<String> 
 ///
 /// Compare stored cfg_hash against new hash to detect function changes.
 /// Returns true if hashes differ or no hash is found (indicating re-indexing needed).
-pub fn hash_changed(
-    conn: &Connection,
-    function_id: i64,
-    _new_hash: &str,
-) -> Result<bool> {
-    let old_hash: Option<String> = conn.query_row(
-        "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
-        params![function_id],
-        |row| row.get(0)
-    ).optional()?;
+pub fn hash_changed(conn: &Connection, function_id: i64, _new_hash: &str) -> Result<bool> {
+    let old_hash: Option<String> = conn
+        .query_row(
+            "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
+            params![function_id],
+            |row| row.get(0),
+        )
+        .optional()?;
 
     match old_hash {
         Some(old) => Ok(old != _new_hash),
-        None => Ok(true),  // New function or no hash stored, always index
+        None => Ok(true), // New function or no hash stored, always index
     }
 }
 
@@ -2524,10 +2498,8 @@ pub fn get_changed_functions(
         let git_files = String::from_utf8_lossy(&git_output.stdout);
 
         // Collect .rs files that changed
-        let changed_rs_files: Vec<&str> = git_files
-            .lines()
-            .filter(|f| f.ends_with(".rs"))
-            .collect();
+        let changed_rs_files: Vec<&str> =
+            git_files.lines().filter(|f| f.ends_with(".rs")).collect();
 
         if changed_rs_files.is_empty() {
             return Ok(changed);
@@ -2545,21 +2517,25 @@ pub fn get_changed_functions(
             // Query for functions in this file
             // Note: file_path in graph_entities may be relative or absolute,
             // so we check both patterns
-            let mut stmt = conn.prepare_cached(
-                "SELECT name FROM graph_entities
+            let mut stmt = conn
+                .prepare_cached(
+                    "SELECT name FROM graph_entities
                  WHERE kind = 'function' AND (
                      file_path = ? OR
                      file_path = ? OR
                      file_path LIKE '%' || ?
-                 )"
-            ).context("Failed to prepare function lookup query")?;
+                 )",
+                )
+                .context("Failed to prepare function lookup query")?;
 
             let with_slash = format!("/{}", normalized_path);
 
-            let rows = stmt.query_map(
-                params![normalized_path, &with_slash, normalized_path],
-                |row| row.get::<_, String>(0)
-            ).context("Failed to execute function lookup")?;
+            let rows = stmt
+                .query_map(
+                    params![normalized_path, &with_slash, normalized_path],
+                    |row| row.get::<_, String>(0),
+                )
+                .context("Failed to execute function lookup")?;
 
             for row in rows {
                 if let Ok(func_name) = row {
@@ -2584,15 +2560,14 @@ pub fn get_changed_functions(
 /// * `Ok(Some(file_path))` - The file path if found
 /// * `Ok(None)` - Function not found
 /// * `Err(...)` - Database error
-pub fn get_function_file(
-    conn: &Connection,
-    function_name: &str,
-) -> Result<Option<String>> {
-    let file: Option<String> = conn.query_row(
-        "SELECT file_path FROM graph_entities WHERE kind = 'function' AND name = ? LIMIT 1",
-        params![function_name],
-        |row| row.get(0)
-    ).optional()?;
+pub fn get_function_file(conn: &Connection, function_name: &str) -> Result<Option<String>> {
+    let file: Option<String> = conn
+        .query_row(
+            "SELECT file_path FROM graph_entities WHERE kind = 'function' AND name = ? LIMIT 1",
+            params![function_name],
+            |row| row.get(0),
+        )
+        .optional()?;
 
     Ok(file)
 }
@@ -2612,8 +2587,11 @@ pub fn get_function_name(conn: &Connection, function_id: i64) -> Option<String> 
     conn.query_row(
         "SELECT name FROM graph_entities WHERE id = ?",
         params![function_id],
-        |row| row.get(0)
-    ).optional().ok().flatten()
+        |row| row.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
 }
 
 /// Get path elements (blocks in order) for a given path_id
@@ -2628,16 +2606,16 @@ pub fn get_function_name(conn: &Connection, function_id: i64) -> Option<String> 
 /// * `Ok(Vec<BlockId>)` - Ordered list of block IDs in the path
 /// * `Err(...)` - Error if query fails or path not found
 pub fn get_path_elements(conn: &Connection, path_id: &str) -> Result<Vec<crate::cfg::BlockId>> {
-    let mut stmt = conn.prepare_cached(
-        "SELECT block_id FROM cfg_path_elements
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT block_id FROM cfg_path_elements
          WHERE path_id = ?
          ORDER BY sequence_order ASC",
-    ).context("Failed to prepare path elements query")?;
+        )
+        .context("Failed to prepare path elements query")?;
 
     let blocks: Vec<crate::cfg::BlockId> = stmt
-        .query_map(params![path_id], |row| {
-            Ok(row.get::<_, i64>(0)? as usize)
-        })
+        .query_map(params![path_id], |row| Ok(row.get::<_, i64>(0)? as usize))
         .context("Failed to execute path elements query")?
         .collect::<Result<Vec<_>, _>>()
         .context("Failed to collect path elements")?;
@@ -2701,8 +2679,7 @@ pub fn create_minimal_database<P: AsRef<Path>>(path: P) -> Result<()> {
         anyhow::bail!("Database already exists: {}", path.display());
     }
 
-    let mut conn = Connection::open(path)
-        .context("Failed to create database file")?;
+    let mut conn = Connection::open(path).context("Failed to create database file")?;
 
     // Create Magellan meta table
     conn.execute(
@@ -2713,7 +2690,8 @@ pub fn create_minimal_database<P: AsRef<Path>>(path: P) -> Result<()> {
             created_at INTEGER NOT NULL
         )",
         [],
-    ).context("Failed to create magellan_meta table")?;
+    )
+    .context("Failed to create magellan_meta table")?;
 
     // Create graph_entities table (minimal schema)
     conn.execute(
@@ -2725,18 +2703,21 @@ pub fn create_minimal_database<P: AsRef<Path>>(path: P) -> Result<()> {
             data TEXT NOT NULL
         )",
         [],
-    ).context("Failed to create graph_entities table")?;
+    )
+    .context("Failed to create graph_entities table")?;
 
     // Create indexes for graph_entities
     conn.execute(
         "CREATE INDEX idx_graph_entities_kind ON graph_entities(kind)",
         [],
-    ).context("Failed to create index on graph_entities.kind")?;
+    )
+    .context("Failed to create index on graph_entities.kind")?;
 
     conn.execute(
         "CREATE INDEX idx_graph_entities_name ON graph_entities(name)",
         [],
-    ).context("Failed to create index on graph_entities.name")?;
+    )
+    .context("Failed to create index on graph_entities.name")?;
 
     // Initialize Magellan meta
     let now = chrono::Utc::now().timestamp();
@@ -2747,7 +2728,8 @@ pub fn create_minimal_database<P: AsRef<Path>>(path: P) -> Result<()> {
     ).context("Failed to initialize magellan_meta")?;
 
     // Create Mirage schema
-    create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).context("Failed to create Mirage schema")?;
+    create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION)
+        .context("Failed to create Mirage schema")?;
 
     Ok(())
 }
@@ -2768,7 +2750,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -2779,7 +2762,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Insert Magellan meta
         conn.execute(
@@ -2792,11 +2776,13 @@ mod tests {
         create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Verify tables exist
-        let table_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'cfg_%'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let table_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'cfg_%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert!(table_count >= 4); // cfg_blocks, cfg_paths, cfg_path_elements, cfg_dominators (cfg_edges is managed by Magellan v11+)
     }
@@ -2814,7 +2800,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -2825,7 +2812,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -2837,11 +2825,13 @@ mod tests {
         create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
 
         // Verify version is 1
-        let version: i32 = conn.query_row(
-            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let version: i32 = conn
+            .query_row(
+                "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(version, MIRAGE_SCHEMA_VERSION);
     }
@@ -2859,7 +2849,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -2870,7 +2861,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -2885,11 +2877,13 @@ mod tests {
         migrate_schema(&mut conn).unwrap();
 
         // Verify version is still 1
-        let version: i32 = conn.query_row(
-            "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let version: i32 = conn
+            .query_row(
+                "SELECT mirage_schema_version FROM mirage_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(version, MIRAGE_SCHEMA_VERSION);
     }
@@ -2910,7 +2904,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -2921,7 +2916,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -2936,7 +2932,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
 
         let function_id: i64 = conn.last_insert_rowid();
 
@@ -2949,7 +2946,10 @@ mod tests {
         );
 
         // Should fail with foreign key constraint error
-        assert!(invalid_result.is_err(), "Insert with invalid function_id should fail");
+        assert!(
+            invalid_result.is_err(),
+            "Insert with invalid function_id should fail"
+        );
 
         // Insert valid cfg_blocks with correct function_id (should succeed)
         let valid_result = conn.execute(
@@ -2959,14 +2959,19 @@ mod tests {
             params!(function_id, "entry", "return", 0, 10, 1, 0, 1, 10),
         );
 
-        assert!(valid_result.is_ok(), "Insert with valid function_id should succeed");
+        assert!(
+            valid_result.is_ok(),
+            "Insert with valid function_id should succeed"
+        );
 
         // Verify the insert worked
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(count, 1, "Should have exactly one cfg_block entry");
     }
@@ -2986,7 +2991,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -2997,7 +3003,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -3012,7 +3019,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
 
         let function_id: i64 = conn.last_insert_rowid();
 
@@ -3021,6 +3029,7 @@ mod tests {
 
         let b0 = cfg.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -3029,6 +3038,7 @@ mod tests {
 
         let b1 = cfg.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Return,
@@ -3041,11 +3051,13 @@ mod tests {
         store_cfg(&mut conn, function_id, "test_hash_123", &cfg).unwrap();
 
         // Verify blocks were stored
-        let block_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let block_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(block_count, 2, "Should have 2 blocks");
 
@@ -3081,7 +3093,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -3092,7 +3105,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -3105,7 +3119,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
 
         let function_id: i64 = conn.last_insert_rowid();
 
@@ -3113,6 +3128,7 @@ mod tests {
         let mut cfg1 = Cfg::new();
         let b0 = cfg1.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -3120,6 +3136,7 @@ mod tests {
         });
         let b1 = cfg1.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -3129,11 +3146,13 @@ mod tests {
 
         store_cfg(&mut conn, function_id, "hash_v1", &cfg1).unwrap();
 
-        let block_count_v1: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let block_count_v1: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         assert_eq!(block_count_v1, 2);
 
@@ -3141,6 +3160,7 @@ mod tests {
         let mut cfg2 = Cfg::new();
         let b0 = cfg2.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -3148,6 +3168,7 @@ mod tests {
         });
         let b1 = cfg2.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
@@ -3155,6 +3176,7 @@ mod tests {
         });
         let b2 = cfg2.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -3165,11 +3187,13 @@ mod tests {
 
         store_cfg(&mut conn, function_id, "hash_v3", &cfg2).unwrap();
 
-        let block_count_v3: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-            params![function_id],
-            |row| row.get(0),
-        ).unwrap();
+        let block_count_v3: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
+                params![function_id],
+                |row| row.get(0),
+            )
+            .unwrap();
 
         // Should have 3 blocks now (old ones cleared)
         assert_eq!(block_count_v3, 3);
@@ -3197,7 +3221,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -3208,7 +3233,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Insert Magellan v7 meta
         conn.execute(
@@ -3237,7 +3263,8 @@ mod tests {
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id)
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create graph_edges for CFG edges
         conn.execute(
@@ -3249,7 +3276,8 @@ mod tests {
                 data TEXT
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create Mirage schema (mirage_meta and additional tables)
         create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
@@ -3270,7 +3298,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "my_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = conn.last_insert_rowid();
 
         // Resolve by numeric ID
@@ -3286,8 +3315,14 @@ mod tests {
         // Magellan v7 stores functions as kind='Symbol' with data.kind='Function'
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
-            params!("Symbol", "test_function", "test.rs", r#"{"kind":"Function"}"#),
-        ).unwrap();
+            params!(
+                "Symbol",
+                "test_function",
+                "test.rs",
+                r#"{"kind":"Function"}"#
+            ),
+        )
+        .unwrap();
         let function_id: i64 = conn.last_insert_rowid();
 
         // Resolve by name
@@ -3302,7 +3337,10 @@ mod tests {
         // Try to resolve a non-existent function
         let result = resolve_function_name_with_conn(&conn, "nonexistent_func");
 
-        assert!(result.is_err(), "Should return error for non-existent function");
+        assert!(
+            result.is_err(),
+            "Should return error for non-existent function"
+        );
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("not found") || err_msg.contains("not found in database"));
     }
@@ -3315,7 +3353,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "func123", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Resolve by numeric string "123" - should parse as ID, not name
         let result = resolve_function_name_with_conn(&conn, "123").unwrap();
@@ -3325,7 +3364,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "another_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let _id_456 = conn.last_insert_rowid();
 
         // If we query "456" it should try to parse as numeric ID
@@ -3341,7 +3381,10 @@ mod tests {
         // Try to load CFG for non-existent function
         let result = load_cfg_from_db_with_conn(&conn, 99999);
 
-        assert!(result.is_err(), "Should return error for function with no CFG");
+        assert!(
+            result.is_err(),
+            "Should return error for function with no CFG"
+        );
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("No CFG blocks found") || err_msg.contains("not found"));
     }
@@ -3356,7 +3399,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "empty_term_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = conn.last_insert_rowid();
 
         // Create a block with NULL terminator (should default to Unreachable)
@@ -3365,7 +3409,8 @@ mod tests {
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params!(function_id, "return", "return", 0, 10, 1, 0, 1, 10),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Load the CFG - should handle NULL terminator gracefully
         let cfg = load_cfg_from_db_with_conn(&conn, function_id).unwrap();
@@ -3385,7 +3430,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "edge_types_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = conn.last_insert_rowid();
 
         // Create blocks with different edge types
@@ -3394,7 +3440,8 @@ mod tests {
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params!(function_id, "entry", "conditional", 0, 10, 1, 0, 1, 10),
-        ).unwrap();
+        )
+        .unwrap();
         let _block_0_id: i64 = conn.last_insert_rowid();
 
         conn.execute(
@@ -3402,7 +3449,8 @@ mod tests {
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params!(function_id, "block", "fallthrough", 10, 20, 2, 0, 2, 10),
-        ).unwrap();
+        )
+        .unwrap();
         let _block_1_id: i64 = conn.last_insert_rowid();
 
         conn.execute(
@@ -3410,7 +3458,8 @@ mod tests {
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params!(function_id, "block", "call", 20, 30, 3, 0, 3, 10),
-        ).unwrap();
+        )
+        .unwrap();
         let _block_2_id: i64 = conn.last_insert_rowid();
 
         conn.execute(
@@ -3418,7 +3467,8 @@ mod tests {
                                      start_line, start_col, end_line, end_col)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params!(function_id, "return", "return", 30, 40, 4, 0, 4, 10),
-        ).unwrap();
+        )
+        .unwrap();
         let _block_3_id: i64 = conn.last_insert_rowid();
 
         // Load the CFG - edges are now built from terminator data, not cfg_edges table
@@ -3432,9 +3482,10 @@ mod tests {
         // Block 1 (fallthrough) -> Block 2 (Fallthrough)
         // Block 2 (call) -> Block 3 (Call)
         use petgraph::visit::EdgeRef;
-        let edges: Vec<_> = cfg.edge_references().map(|e| {
-            (e.source().index(), e.target().index(), *e.weight())
-        }).collect();
+        let edges: Vec<_> = cfg
+            .edge_references()
+            .map(|e| (e.source().index(), e.target().index(), *e.weight()))
+            .collect();
 
         assert!(edges.contains(&(0, 1, EdgeType::TrueBranch)));
         assert!(edges.contains(&(0, 2, EdgeType::FalseBranch)));
@@ -3450,7 +3501,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "my_test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = conn.last_insert_rowid();
 
         // Get function name
@@ -3470,7 +3522,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "path_test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = conn.last_insert_rowid();
 
         // Insert a path
@@ -3484,15 +3537,18 @@ mod tests {
         conn.execute(
             "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
             params!("test_path_abc123", 0, 0),
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
             params!("test_path_abc123", 1, 1),
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
             params!("test_path_abc123", 2, 2),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Get path elements
         let blocks = get_path_elements(&conn, "test_path_abc123").unwrap();
@@ -3513,13 +3569,15 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "impact_test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = conn.last_insert_rowid();
 
         // Create a simple CFG: 0 -> 1 -> 2 -> 3
         let mut cfg = crate::cfg::Cfg::new();
         let b0 = cfg.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -3527,6 +3585,7 @@ mod tests {
         });
         let b1 = cfg.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
@@ -3534,6 +3593,7 @@ mod tests {
         });
         let b2 = cfg.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
@@ -3541,6 +3601,7 @@ mod tests {
         });
         let b3 = cfg.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -3560,15 +3621,18 @@ mod tests {
         conn.execute(
             "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
             params!("impact_test_path", 0, 0),
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
             params!("impact_test_path", 1, 1),
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO cfg_path_elements (path_id, sequence_order, block_id) VALUES (?, ?, ?)",
             params!("impact_test_path", 2, 3),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Compute impact
         let impact = compute_path_impact_from_db(&conn, "impact_test_path", &cfg, None).unwrap();
@@ -3594,7 +3658,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "CREATE TABLE graph_entities (
@@ -3605,7 +3670,8 @@ mod tests {
                 data TEXT NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -3617,7 +3683,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "test_func", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = conn.last_insert_rowid();
 
         // Try to load CFG - should fail with helpful error
@@ -3626,8 +3693,11 @@ mod tests {
 
         let err_msg = result.unwrap_err().to_string();
         // Error should mention the problem (either cfg_blocks or prepare failed)
-        assert!(err_msg.contains("cfg_blocks") || err_msg.contains("prepare"),
-                "Error should mention cfg_blocks or prepare: {}", err_msg);
+        assert!(
+            err_msg.contains("cfg_blocks") || err_msg.contains("prepare"),
+            "Error should mention cfg_blocks or prepare: {}",
+            err_msg
+        );
     }
 
     #[test]
@@ -3639,10 +3709,16 @@ mod tests {
         assert!(result.is_err(), "Should fail for non-existent function");
 
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("No CFG blocks found") || err_msg.contains("not found"),
-                "Error should mention missing CFG: {}", err_msg);
-        assert!(err_msg.contains("magellan watch"),
-                "Error should suggest running magellan watch: {}", err_msg);
+        assert!(
+            err_msg.contains("No CFG blocks found") || err_msg.contains("not found"),
+            "Error should mention missing CFG: {}",
+            err_msg
+        );
+        assert!(
+            err_msg.contains("magellan watch"),
+            "Error should suggest running magellan watch: {}",
+            err_msg
+        );
     }
 
     #[test]
@@ -3653,7 +3729,8 @@ mod tests {
         conn.execute(
             "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
             params!("function", "func_without_cfg", "test.rs", "{}"),
-        ).unwrap();
+        )
+        .unwrap();
         let function_id: i64 = conn.last_insert_rowid();
 
         // Try to load CFG - should fail with helpful error
@@ -3661,10 +3738,16 @@ mod tests {
         assert!(result.is_err(), "Should fail when no CFG blocks exist");
 
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("No CFG blocks found"),
-                "Error should mention no CFG blocks: {}", err_msg);
-        assert!(err_msg.contains("magellan watch"),
-                "Error should suggest running magellan watch: {}", err_msg);
+        assert!(
+            err_msg.contains("No CFG blocks found"),
+            "Error should mention no CFG blocks: {}",
+            err_msg
+        );
+        assert!(
+            err_msg.contains("magellan watch"),
+            "Error should suggest running magellan watch: {}",
+            err_msg
+        );
     }
 
     #[test]
@@ -3676,8 +3759,11 @@ mod tests {
         assert!(result.is_err(), "Should fail for non-existent function");
 
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("not found") || err_msg.contains("not found in database"),
-                "Error should mention function not found: {}", err_msg);
+        assert!(
+            err_msg.contains("not found") || err_msg.contains("not found in database"),
+            "Error should mention function not found: {}",
+            err_msg
+        );
     }
 
     #[test]
@@ -3693,7 +3779,8 @@ mod tests {
                 created_at INTEGER NOT NULL
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
@@ -3717,7 +3804,8 @@ mod tests {
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id)
             )",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Try to open via MirageDb - should fail with schema version error
         drop(conn);
@@ -3732,7 +3820,8 @@ mod tests {
                     created_at INTEGER NOT NULL
                 )",
                 [],
-            ).unwrap();
+            )
+            .unwrap();
             conn.execute(
                 "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
                  VALUES (1, 6, 3, 0)",
@@ -3747,17 +3836,24 @@ mod tests {
                     data TEXT NOT NULL
                 )",
                 [],
-            ).unwrap();
+            )
+            .unwrap();
         }
 
         let result = MirageDb::open(db_file.path());
         assert!(result.is_err(), "Should fail with old Magellan schema");
 
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("too old") || err_msg.contains("minimum"),
-                "Error should mention schema too old: {}", err_msg);
-        assert!(err_msg.contains("magellan watch"),
-                "Error should suggest running magellan watch: {}", err_msg);
+        assert!(
+            err_msg.contains("too old") || err_msg.contains("minimum"),
+            "Error should mention schema too old: {}",
+            err_msg
+        );
+        assert!(
+            err_msg.contains("magellan watch"),
+            "Error should suggest running magellan watch: {}",
+            err_msg
+        );
     }
 
     // Backend detection tests (13-01)
@@ -3773,27 +3869,21 @@ mod tests {
         file.sync_all().unwrap();
 
         let backend = BackendFormat::detect(temp_file.path()).unwrap();
-        assert_eq!(backend, BackendFormat::SQLite, "Should detect SQLite format");
-    }
-
-    #[test]
-    fn test_backend_detect_native_v3_header() {
-        use std::io::Write;
-
-        // Create a temporary file with custom header (not SQLite)
-        let temp_file = tempfile::NamedTempFile::new().unwrap();
-        let mut file = std::fs::File::create(temp_file.path()).unwrap();
-        file.write_all(b"MIRAGE-NATIVE-V3\0").unwrap();
-        file.sync_all().unwrap();
-
-        let backend = BackendFormat::detect(temp_file.path()).unwrap();
-        assert_eq!(backend, BackendFormat::NativeV3, "Should detect native-v3 format");
+        assert_eq!(
+            backend,
+            BackendFormat::SQLite,
+            "Should detect SQLite format"
+        );
     }
 
     #[test]
     fn test_backend_detect_nonexistent_file() {
         let backend = BackendFormat::detect(Path::new("/nonexistent/path/to/file.db")).unwrap();
-        assert_eq!(backend, BackendFormat::Unknown, "Non-existent file should be Unknown");
+        assert_eq!(
+            backend,
+            BackendFormat::Unknown,
+            "Non-existent file should be Unknown"
+        );
     }
 
     #[test]
@@ -3803,7 +3893,11 @@ mod tests {
         // File is empty (0 bytes)
 
         let backend = BackendFormat::detect(temp_file.path()).unwrap();
-        assert_eq!(backend, BackendFormat::Unknown, "Empty file should be Unknown");
+        assert_eq!(
+            backend,
+            BackendFormat::Unknown,
+            "Empty file should be Unknown"
+        );
     }
 
     #[test]
@@ -3817,17 +3911,18 @@ mod tests {
         file.sync_all().unwrap();
 
         let backend = BackendFormat::detect(temp_file.path()).unwrap();
-        assert_eq!(backend, BackendFormat::Unknown, "Partial header should be Unknown");
+        assert_eq!(
+            backend,
+            BackendFormat::Unknown,
+            "Partial header should be Unknown"
+        );
     }
 
     #[test]
     fn test_backend_equality() {
         assert_eq!(BackendFormat::SQLite, BackendFormat::SQLite);
-        assert_eq!(BackendFormat::NativeV3, BackendFormat::NativeV3);
         assert_eq!(BackendFormat::Unknown, BackendFormat::Unknown);
 
-        assert_ne!(BackendFormat::SQLite, BackendFormat::NativeV3);
         assert_ne!(BackendFormat::SQLite, BackendFormat::Unknown);
-        assert_ne!(BackendFormat::NativeV3, BackendFormat::Unknown);
     }
 }

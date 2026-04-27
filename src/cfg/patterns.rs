@@ -347,6 +347,7 @@ mod tests {
         // Block 0: entry, goes to 1
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -359,6 +360,7 @@ mod tests {
         // Block 1: if condition
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -374,6 +376,7 @@ mod tests {
         // Block 2: true branch
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["true branch".to_string()],
             terminator: Terminator::Goto { target: 4 },
@@ -386,6 +389,7 @@ mod tests {
         // Block 3: false branch
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["false branch".to_string()],
             terminator: Terminator::Goto { target: 4 },
@@ -398,6 +402,7 @@ mod tests {
         // Block 4: merge point
         let b4 = g.add_node(BasicBlock {
             id: 4,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["merge".to_string()],
             terminator: Terminator::Return,
@@ -451,6 +456,7 @@ mod tests {
         // Block 0: match with 3 branches
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -465,6 +471,7 @@ mod tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["case 1".to_string()],
             terminator: Terminator::Return,
@@ -476,6 +483,7 @@ mod tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["case 2".to_string()],
             terminator: Terminator::Return,
@@ -487,6 +495,7 @@ mod tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["default".to_string()],
             terminator: Terminator::Return,
@@ -516,6 +525,7 @@ mod tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -531,6 +541,7 @@ mod tests {
         for i in 1..=3 {
             g.add_node(BasicBlock {
                 id: i,
+                db_id: None,
                 kind: BlockKind::Exit,
                 statements: vec![],
                 terminator: Terminator::Return,
@@ -557,6 +568,7 @@ mod tests {
         // Entry
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -569,6 +581,7 @@ mod tests {
         // If/else at block 1
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -584,6 +597,7 @@ mod tests {
         // True branch (leads to match)
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             // Multi-way match with 2 targets (3 branches total)
@@ -600,6 +614,7 @@ mod tests {
         // False branch
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
@@ -612,6 +627,7 @@ mod tests {
         // Match branches
         let b4 = g.add_node(BasicBlock {
             id: 4,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
@@ -623,6 +639,7 @@ mod tests {
 
         let b5 = g.add_node(BasicBlock {
             id: 5,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
@@ -634,6 +651,7 @@ mod tests {
 
         let b6 = g.add_node(BasicBlock {
             id: 6,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
@@ -646,6 +664,7 @@ mod tests {
         // Merge point
         let b7 = g.add_node(BasicBlock {
             id: 7,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -693,6 +712,7 @@ mod tests {
         // Linear: 0 -> 1 -> 2
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -704,6 +724,7 @@ mod tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
@@ -715,6 +736,7 @@ mod tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,

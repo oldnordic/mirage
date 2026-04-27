@@ -155,9 +155,12 @@ impl BackendRouter for SqliteRouter {
         anyhow::bail!("Path verification not yet implemented for SQLite router")
     }
 
-    fn get_icfg(&self, _function_id: i64) -> Result<InterProceduralCfg> {
-        // TODO: Implement using cfg::icfg module
-        anyhow::bail!("ICFG not yet implemented for SQLite router")
+    fn get_icfg(&self, function_id: i64) -> Result<InterProceduralCfg> {
+        use crate::cfg::icfg::{build_icfg, IcfgOptions};
+
+        let options = IcfgOptions::default();
+        let icfg = build_icfg(self.db.storage(), self.db.backend(), function_id, options)?;
+        Ok(crate::cfg::icfg::IcfgJson::to_inter_procedural_cfg(&icfg))
     }
 
     fn get_call_graph(&self) -> Result<CallGraph> {

@@ -208,6 +208,7 @@ impl<'a> CFGBuilder<'a> {
 
             let basic_block = BasicBlock {
                 id,
+                db_id: None,
                 kind,
                 statements: statements.iter().map(|n| self.node_text(*n)).collect(),
                 terminator: self.extract_terminator(statements),

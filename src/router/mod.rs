@@ -4,30 +4,19 @@ use std::path::Path;
 
 #[cfg(feature = "backend-geometric")]
 pub mod geometric;
-#[cfg(feature = "backend-native-v3")]
-pub mod native_v3;
 pub mod sqlite;
 
 #[cfg(feature = "backend-geometric")]
 pub use geometric::GeometricRouter;
-#[cfg(feature = "backend-native-v3")]
-pub use native_v3::NativeV3Router;
 #[cfg(feature = "backend-sqlite")]
 pub use sqlite::SqliteRouter;
 
 // Priority-based Router type alias:
 // - Geometric takes priority if enabled
-// - Otherwise NativeV3 if enabled
 // - Otherwise SQLite if enabled
 #[cfg(feature = "backend-geometric")]
 pub type Router = GeometricRouter;
-#[cfg(all(not(feature = "backend-geometric"), feature = "backend-native-v3"))]
-pub type Router = NativeV3Router;
-#[cfg(all(
-    not(feature = "backend-geometric"),
-    not(feature = "backend-native-v3"),
-    feature = "backend-sqlite"
-))]
+#[cfg(all(not(feature = "backend-geometric"), feature = "backend-sqlite"))]
 pub type Router = SqliteRouter;
 
 pub trait BackendRouter: Sized {

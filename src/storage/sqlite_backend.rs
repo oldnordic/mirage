@@ -252,12 +252,34 @@ impl StorageTrait for SqliteStorage {
             Ok(Some(paths))
         }
     }
+
+    fn get_callees(&self, function_id: i64) -> Result<Vec<i64>> {
+        // Magellan schema: functions have CALLER edges to call-site entities,
+        // and call-site entities have CALLS edges to callee functions.
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT DISTINCT g2.to_id
+                 FROM graph_edges g1
+                 JOIN graph_edges g2 ON g1.to_id = g2.from_id
+                 WHERE g1.from_id = ? AND g1.edge_type = 'CALLER'
+                   AND g2.edge_type = 'CALLS'",
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to prepare get_callees query: {}", e))?;
+
+        let callees = stmt
+            .query_map(params![function_id], |row| row.get::<_, i64>(0))
+            .map_err(|e| anyhow::anyhow!("Failed to execute get_callees query: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("Failed to collect callee rows: {}", e))?;
+
+        Ok(callees)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     /// Helper to create a test database with cfg_blocks table
     fn create_test_db() -> tempfile::NamedTempFile {

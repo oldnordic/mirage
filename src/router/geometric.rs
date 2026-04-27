@@ -6,6 +6,7 @@
 use super::*;
 use crate::storage::GeometricStorage;
 use anyhow::Result;
+use petgraph::visit::EdgeRef;
 
 use std::path::Path;
 
@@ -60,6 +61,9 @@ impl BackendRouter for GeometricRouter {
                 start_col: block.start_col,
                 end_line: block.end_line,
                 end_col: block.end_col,
+                coord_x: block.dominator_depth as i64,
+                coord_y: block.loop_nesting as i64,
+                coord_z: block.branch_count as i64,
             };
 
             // Convert block kind string to BlockKind enum
@@ -95,10 +99,14 @@ impl BackendRouter for GeometricRouter {
 
             let node_idx = cfg.add_node(crate::cfg::BasicBlock {
                 id: data.id as usize,
+                db_id: None,
                 kind,
                 statements: vec![],
                 terminator,
                 source_location: Some(source_location),
+                coord_x: data.coord_x,
+                coord_y: data.coord_y,
+                coord_z: data.coord_z,
             });
             block_map.insert(block.id, node_idx);
         }
@@ -111,8 +119,21 @@ impl BackendRouter for GeometricRouter {
             if let (Some(&src_idx), Some(&dst_idx)) =
                 (block_map.get(&edge.src_id), block_map.get(&edge.dst_id))
             {
-                // Use Fallthrough edge type
-                cfg.add_edge(src_idx, dst_idx, crate::cfg::EdgeType::Fallthrough);
+                // Map geometric backend edge_type to Mirage EdgeType
+                // Matches Magellan's CfgEdgeType discriminants:
+                // 0=Fallthrough, 1=ConditionalTrue, 2=ConditionalFalse,
+                // 3=Jump, 4=BackEdge, 5=Call, 6=Return
+                let edge_type = match edge.edge_type {
+                    0 => crate::cfg::EdgeType::Fallthrough,
+                    1 => crate::cfg::EdgeType::TrueBranch,
+                    2 => crate::cfg::EdgeType::FalseBranch,
+                    3 => crate::cfg::EdgeType::Fallthrough, // Jump maps to Fallthrough
+                    4 => crate::cfg::EdgeType::LoopBack,
+                    5 => crate::cfg::EdgeType::Call,
+                    6 => crate::cfg::EdgeType::Return,
+                    _ => crate::cfg::EdgeType::Fallthrough,
+                };
+                cfg.add_edge(src_idx, dst_idx, edge_type);
             }
         }
 
@@ -557,40 +578,134 @@ impl BackendRouter for GeometricRouter {
     }
 
     fn get_icfg(&self, function_id: i64) -> Result<InterProceduralCfg> {
-        // Build ICFG from call graph and individual CFGs
         let inner = self.storage.inner();
-
-        // Get direct callees
-        let callees = inner.get_callees(function_id as u64);
+        let callees: Vec<i64> = inner
+            .get_callees(function_id as u64)
+            .into_iter()
+            .map(|id| id as i64)
+            .collect();
 
         let mut nodes = Vec::new();
-        let edges = Vec::new();
-        let mut node_counter: i64 = 0;
+        let mut edges = Vec::new();
+        let mut node_map: std::collections::HashMap<(i64, i64), i64> =
+            std::collections::HashMap::new();
+        let mut next_id: i64 = 0;
 
-        // Add entry function nodes
-        if let Ok(cfg) = self.load_cfg(function_id) {
-            for node_idx in cfg.node_indices() {
-                let block_id = cfg[node_idx].id as i64;
-                nodes.push(IcfgNode {
-                    id: node_counter,
-                    function_id,
-                    block_id,
-                });
-                node_counter += 1;
+        let all_functions: Vec<i64> = std::iter::once(function_id)
+            .chain(callees.iter().copied())
+            .collect();
+
+        // Create nodes for all functions
+        for func_id in &all_functions {
+            if let Ok(cfg) = self.load_cfg(*func_id) {
+                for node_idx in cfg.node_indices() {
+                    let block_id = cfg[node_idx].id as i64;
+                    node_map.insert((*func_id, block_id), next_id);
+                    nodes.push(IcfgNode {
+                        id: next_id,
+                        function_id: *func_id,
+                        block_id,
+                    });
+                    next_id += 1;
+                }
             }
         }
 
-        // Add callee function nodes and call edges
-        for callee_id in callees {
-            if let Ok(cfg) = self.load_cfg(callee_id as i64) {
-                for node_idx in cfg.node_indices() {
-                    let block_id = cfg[node_idx].id as i64;
-                    nodes.push(IcfgNode {
-                        id: node_counter,
-                        function_id: callee_id as i64,
-                        block_id,
-                    });
-                    node_counter += 1;
+        // Add intra-procedural edges for all functions
+        for func_id in &all_functions {
+            if let Ok(cfg) = self.load_cfg(*func_id) {
+                for edge_idx in cfg.edge_indices() {
+                    let (src, dst) = cfg.edge_endpoints(edge_idx).unwrap();
+                    let src_id = cfg[src].id as i64;
+                    let dst_id = cfg[dst].id as i64;
+                    if let (Some(&from), Some(&to)) = (
+                        node_map.get(&(*func_id, src_id)),
+                        node_map.get(&(*func_id, dst_id)),
+                    ) {
+                        edges.push(IcfgEdge {
+                            from_node: from,
+                            to_node: to,
+                            kind: "intra-procedural".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Add inter-procedural call/return edges from the entry function
+        if let Ok(entry_cfg) = self.load_cfg(function_id) {
+            for node_idx in entry_cfg.node_indices() {
+                let block = &entry_cfg[node_idx];
+                let is_call = matches!(block.terminator, crate::cfg::Terminator::Call { .. })
+                    || matches!(
+                        &block.terminator,
+                        crate::cfg::Terminator::Abort(ref s) if s == "call"
+                    );
+
+                if is_call {
+                    let call_site_id =
+                        *node_map.get(&(function_id, block.id as i64)).unwrap_or(&-1);
+                    if call_site_id < 0 {
+                        continue;
+                    }
+
+                    for callee_id in &callees {
+                        if let Ok(callee_cfg) = self.load_cfg(*callee_id) {
+                            // Find callee entry node (first block)
+                            if let Some(callee_entry_idx) = callee_cfg.node_indices().next() {
+                                let callee_entry_block = &callee_cfg[callee_entry_idx];
+                                let callee_entry_id = *node_map
+                                    .get(&(*callee_id, callee_entry_block.id as i64))
+                                    .unwrap_or(&-1);
+                                if callee_entry_id < 0 {
+                                    continue;
+                                }
+
+                                edges.push(IcfgEdge {
+                                    from_node: call_site_id,
+                                    to_node: callee_entry_id,
+                                    kind: "call".to_string(),
+                                });
+
+                                // Return edges: from each callee return block to caller successor
+                                for callee_node_idx in callee_cfg.node_indices() {
+                                    let callee_block = &callee_cfg[callee_node_idx];
+                                    let is_return = matches!(
+                                        callee_block.terminator,
+                                        crate::cfg::Terminator::Return
+                                    ) || matches!(
+                                        &callee_block.terminator,
+                                        crate::cfg::Terminator::Abort(ref s) if s == "return"
+                                    );
+
+                                    if is_return {
+                                        let callee_return_id = *node_map
+                                            .get(&(*callee_id, callee_block.id as i64))
+                                            .unwrap_or(&-1);
+                                        if callee_return_id < 0 {
+                                            continue;
+                                        }
+
+                                        // Connect to successors of call site in caller
+                                        for out_edge in entry_cfg.edges(node_idx) {
+                                            let target = out_edge.target();
+                                            let target_block = &entry_cfg[target];
+                                            let successor_id = *node_map
+                                                .get(&(function_id, target_block.id as i64))
+                                                .unwrap_or(&-1);
+                                            if successor_id >= 0 {
+                                                edges.push(IcfgEdge {
+                                                    from_node: callee_return_id,
+                                                    to_node: successor_id,
+                                                    kind: "return".to_string(),
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

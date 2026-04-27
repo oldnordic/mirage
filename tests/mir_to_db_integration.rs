@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use mirage_analyzer::mir::charon_llbc::Crate;
 use mirage_analyzer::mir::translator::translate_function;
 use mirage_analyzer::storage::{store_cfg, MirageDb};

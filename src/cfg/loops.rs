@@ -288,6 +288,7 @@ mod tests {
         // Block 0: entry, goes to loop header
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -300,6 +301,7 @@ mod tests {
         // Block 1: loop header, condition goes to 2 (continue) or 3 (exit)
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -315,6 +317,7 @@ mod tests {
         // Block 2: loop body, goes back to header
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -327,6 +330,7 @@ mod tests {
         // Block 3: exit
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -386,6 +390,7 @@ mod tests {
         // Linear: 0 -> 1 -> 2
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -397,6 +402,7 @@ mod tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
@@ -408,6 +414,7 @@ mod tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -437,6 +444,7 @@ mod tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -448,6 +456,7 @@ mod tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -462,6 +471,7 @@ mod tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -476,6 +486,7 @@ mod tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
@@ -487,6 +498,7 @@ mod tests {
 
         let b4 = g.add_node(BasicBlock {
             id: 4,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -556,6 +568,7 @@ mod tests {
         // Create nested loops
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -567,6 +580,7 @@ mod tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -581,6 +595,7 @@ mod tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -595,6 +610,7 @@ mod tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
@@ -606,6 +622,7 @@ mod tests {
 
         let b4 = g.add_node(BasicBlock {
             id: 4,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -674,6 +691,7 @@ mod tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -685,6 +703,7 @@ mod tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -699,6 +718,7 @@ mod tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -713,6 +733,7 @@ mod tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
@@ -724,6 +745,7 @@ mod tests {
 
         let b4 = g.add_node(BasicBlock {
             id: 4,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -785,6 +807,7 @@ mod tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -796,6 +819,7 @@ mod tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -822,6 +846,7 @@ mod tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -833,6 +858,7 @@ mod tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -847,6 +873,7 @@ mod tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -861,6 +888,7 @@ mod tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
@@ -872,6 +900,7 @@ mod tests {
 
         let b4 = g.add_node(BasicBlock {
             id: 4,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,

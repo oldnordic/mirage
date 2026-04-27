@@ -520,7 +520,7 @@ fn test_geometric_verify_command() {
 #[test]
 fn test_geometric_migrate_command() {
     let ctx = GeometricTestContext::new();
-    let output = ctx.run_command(&["migrate", "--from", "geometric", "--to", "native-v3"]);
+    let output = ctx.run_command(&["migrate", "--from", "geometric", "--to", "sqlite"]);
 
     assert!(
         output.success()

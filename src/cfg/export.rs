@@ -327,6 +327,13 @@ pub struct CFGExport {
     pub edges: Vec<EdgeExport>,
 }
 
+/// Coverage data for a single block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockCoverage {
+    /// Number of times this block was executed
+    pub hit_count: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockExport {
     pub id: usize,
@@ -341,6 +348,9 @@ pub struct BlockExport {
     pub coord_y: i64,
     /// Z coordinate: branch distance from entry point
     pub coord_z: i64,
+    /// Coverage data (only present when coverage is available)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coverage: Option<BlockCoverage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -351,7 +361,15 @@ pub struct EdgeExport {
 }
 
 /// Export CFG to JSON format
-pub fn export_json(cfg: &Cfg, function_name: &str) -> CFGExport {
+///
+/// Optionally includes per-block coverage data keyed by the original database block ID
+/// (`cfg_blocks.id`). If `coverage` is `Some`, each `BlockExport` will include a
+/// `coverage` field when its `db_id` matches an entry in the map.
+pub fn export_json(
+    cfg: &Cfg,
+    function_name: &str,
+    coverage: Option<&std::collections::HashMap<i64, i64>>,
+) -> CFGExport {
     use crate::cfg::analysis;
 
     let entry = analysis::find_entry(cfg).map(|idx| idx.index());
@@ -364,6 +382,12 @@ pub fn export_json(cfg: &Cfg, function_name: &str) -> CFGExport {
         .node_indices()
         .map(|idx| {
             let block = cfg.node_weight(idx).unwrap();
+            let block_coverage = coverage.and_then(|cov_map| {
+                block
+                    .db_id
+                    .and_then(|db_id| cov_map.get(&db_id))
+                    .map(|&hit_count| BlockCoverage { hit_count })
+            });
             BlockExport {
                 id: block.id,
                 kind: format_block_kind(&block.kind).to_string(),
@@ -373,6 +397,7 @@ pub fn export_json(cfg: &Cfg, function_name: &str) -> CFGExport {
                 coord_x: block.coord_x,
                 coord_y: block.coord_y,
                 coord_z: block.coord_z,
+                coverage: block_coverage,
             }
         })
         .collect();
@@ -410,6 +435,7 @@ mod tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec!["x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -421,6 +447,7 @@ mod tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["if x > 0".to_string()],
             terminator: Terminator::SwitchInt {
@@ -435,6 +462,7 @@ mod tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
@@ -446,6 +474,7 @@ mod tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["return false".to_string()],
             terminator: Terminator::Return,
@@ -477,7 +506,7 @@ mod tests {
     #[test]
     fn test_export_json() {
         let cfg = create_test_cfg();
-        let export = export_json(&cfg, "test_function");
+        let export = export_json(&cfg, "test_function", None);
 
         assert_eq!(export.function_name, "test_function");
         assert_eq!(export.entry, Some(0));
@@ -632,7 +661,7 @@ mod tests {
         }
 
         // When: Exporting to JSON
-        let export = export_json(&cfg, "test_function");
+        let export = export_json(&cfg, "test_function", None);
 
         // Then: JSON export should include coordinate fields
         assert!(!export.blocks.is_empty());

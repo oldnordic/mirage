@@ -1,12 +1,12 @@
 use mirage_analyzer::cfg::summary::{summarize_path, PathSummarizer};
 use mirage_analyzer::cfg::{BasicBlock, BlockKind, Cfg, Path, PathKind, Terminator};
-use petgraph::graph::NodeIndex;
 
 #[test]
 fn test_summary_empty_statements() {
     let blocks = vec![
         BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -17,6 +17,7 @@ fn test_summary_empty_statements() {
         },
         BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Return,
@@ -37,6 +38,7 @@ fn test_summary_all_empty() {
     let blocks = vec![
         BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -47,6 +49,7 @@ fn test_summary_all_empty() {
         },
         BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
@@ -68,6 +71,7 @@ fn test_summarize_path_empty_summary() {
     let mut cfg = Cfg::new();
     let _b0 = cfg.add_node(BasicBlock {
         id: 0,
+        db_id: None,
         kind: BlockKind::Normal,
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
@@ -78,6 +82,7 @@ fn test_summarize_path_empty_summary() {
     });
     let _b1 = cfg.add_node(BasicBlock {
         id: 1,
+        db_id: None,
         kind: BlockKind::Normal,
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },

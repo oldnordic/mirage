@@ -8,7 +8,7 @@
 //! - Uses petgraph for graph representation and algorithms
 //! - Computes set differences for blocks and edges
 //! - Calculates structural similarity based on graph edit distance
-//! - Supports both SQLite and native-v3 backends via StorageTrait
+//! - Supports SQLite and geometric backends via StorageTrait
 //!
 //! # Examples
 //!

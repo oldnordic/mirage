@@ -5,8 +5,7 @@
 //! - GeometricDB (.geo files)
 //! - Native V3
 
-use mirage_analyzer::storage::{Backend, BackendFormat, MirageDb};
-use std::path::Path;
+use mirage_analyzer::storage::{BackendFormat, MirageDb};
 use tempfile::TempDir;
 
 #[cfg(feature = "backend-sqlite")]
@@ -50,26 +49,37 @@ fn test_open_sqlite_database() {
     // Create minimal database with required tables
     {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
-        // Create minimal graph_entities table for Magellan compatibility
-        conn.execute(
-            "CREATE TABLE graph_entities (
-                id INTEGER PRIMARY KEY,
-                fqn TEXT NOT NULL,
+        conn.execute_batch(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+            VALUES (1, 11, 3, 0);
+            CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
                 name TEXT NOT NULL,
-                kind TEXT NOT NULL
-            )",
-            [],
-        )
-        .unwrap();
-        // Create minimal cfg_blocks table for Mirage
-        conn.execute(
-            "CREATE TABLE cfg_blocks (
-                id INTEGER PRIMARY KEY,
+                file_path TEXT,
+                data TEXT NOT NULL
+            );
+            CREATE TABLE cfg_blocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 function_id INTEGER NOT NULL,
                 kind TEXT NOT NULL,
-                terminator TEXT NOT NULL
-            )",
-            [],
+                terminator TEXT NOT NULL,
+                byte_start INTEGER,
+                byte_end INTEGER,
+                start_line INTEGER,
+                start_col INTEGER,
+                end_line INTEGER,
+                end_col INTEGER,
+                coord_x INTEGER DEFAULT 0,
+                coord_y INTEGER DEFAULT 0,
+                coord_z INTEGER DEFAULT 0
+            );",
         )
         .unwrap();
     }
@@ -123,38 +133,58 @@ fn test_get_cfg_blocks_from_sqlite() {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
 
         // Create minimal schema
-        conn.execute(
-            "CREATE TABLE graph_entities (
-                id INTEGER PRIMARY KEY,
-                fqn TEXT NOT NULL,
+        conn.execute_batch(
+            "CREATE TABLE magellan_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                magellan_schema_version INTEGER NOT NULL,
+                sqlitegraph_schema_version INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
+            VALUES (1, 11, 3, 0);
+            CREATE TABLE graph_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
                 name TEXT NOT NULL,
-                kind TEXT NOT NULL
-            )",
-            [],
-        )
-        .unwrap();
-
-        conn.execute(
-            "CREATE TABLE cfg_blocks (
-                id INTEGER PRIMARY KEY,
+                file_path TEXT,
+                data TEXT NOT NULL
+            );
+            CREATE TABLE cfg_blocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 function_id INTEGER NOT NULL,
                 kind TEXT NOT NULL,
-                terminator TEXT NOT NULL
-            )",
-            [],
+                terminator TEXT NOT NULL,
+                byte_start INTEGER,
+                byte_end INTEGER,
+                start_line INTEGER,
+                start_col INTEGER,
+                end_line INTEGER,
+                end_col INTEGER,
+                coord_x INTEGER DEFAULT 0,
+                coord_y INTEGER DEFAULT 0,
+                coord_z INTEGER DEFAULT 0
+            );",
         )
         .unwrap();
 
         // Insert a test function
         conn.execute(
-            "INSERT INTO graph_entities (fqn, name, kind) VALUES (?, ?, ?)",
-            ["test::function", "function", "fn"],
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            [
+                "Symbol",
+                "function",
+                "test.rs",
+                "{\"kind\":\"Function\",\"symbol_id\":\"test_function\"}",
+            ],
         )
         .unwrap();
 
         // Insert CFG block
         conn.execute(
-            "INSERT INTO cfg_blocks (function_id, kind, terminator) VALUES (1, 'Entry', 'Return')",
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                      start_line, start_col, end_line, end_col,
+                                      coord_x, coord_y, coord_z)
+             VALUES (1, 'Entry', 'Return', 0, 10, 1, 0, 1, 10, 0, 0, 0)",
             [],
         )
         .unwrap();

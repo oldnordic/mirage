@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/mirage-analyzer)](https://crates.io/crates/mirage-analyzer)
 [![Documentation](https://docs.rs/mirage-analyzer/badge.svg)](https://docs.rs/mirage-analyzer)
 
-**Version:** 1.2.0
+**Version:** 1.2.4
 
 Path-aware code intelligence engine for Rust. Analyzes control-flow graphs from Magellan databases.
 
@@ -24,12 +24,12 @@ Mirage reads Magellan code graphs and provides control-flow analysis:
 cargo install mirage-analyzer
 
 # Index your codebase with Magellan first
-magellan watch --root ./src --db code.geo
+magellan watch --root ./src --db .magellan/mirage.db
 
 # Analyze CFG
-mirage --db code.geo paths --function "my_crate::main"
-mirage --db code.geo cfg --function "my_crate::process"
-mirage --db code.geo cycles
+mirage --db .magellan/mirage.db paths --function "main"
+mirage --db .magellan/mirage.db cfg --function "process"
+mirage --db .magellan/mirage.db cycles
 ```
 
 ## Backends
@@ -38,22 +38,25 @@ Mirage supports Magellan's database formats:
 
 | Backend | File Extension | Feature Flag | Status |
 |---------|---------------|--------------|--------|
-| Geometric | `.geo` | `backend-geometric` | Default |
-| SQLite | `.db` | `backend-sqlite` | Supported |
+| SQLite | `.db` | `backend-sqlite` | Default |
+| Geometric | `.geo` | `backend-geometric` | Supported |
 
-**Note:** The Geometric backend is now default. Install with:
+**Note:** The SQLite backend is now default. Install with:
 ```bash
-# Default (Geometric)
+# Default (SQLite)
 cargo install mirage-analyzer
 
-# SQLite backend only
-cargo install mirage-analyzer --features backend-sqlite --no-default-features
+# Geometric backend only
+cargo install mirage-analyzer --features backend-geometric --no-default-features
 ```
 
 ## Requirements
 
-- **[Magellan](https://github.com/oldnordic/magellan)** 3.0+ — Code graph indexing
-- Magellan database (`.geo` or `.db`) created by `magellan watch`
+- **[Magellan](https://github.com/oldnordic/magellan)** 3.1.7+ / Schema v11 (or v10 with 4D coordinate columns)
+- Rust 1.70+ (for MIR parsing)
+- Magellan database (`.db`) created by `magellan watch`
+
+**Database Location:** Default is `.magellan/mirage.db` (auto-discovered)
 
 ## Documentation
 

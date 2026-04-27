@@ -5,6 +5,39 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-04-27
+
+### Fixed
+- **Magellan v11 compatibility** — Use `cfg_hash` column consistently across all path enumeration
+  - Fixed `get_or_enumerate_paths()` to use `cfg_hash` instead of `function_hash` for Magellan v11 schema
+  - Fixed `enumerate_paths_cached()` for Magellan v11 schema with cfg_hash column
+  - Fixed `enumerate_paths_cached_with_context()` for cfg_hash compatibility
+  - Fixed `hash_changed()` to use cfg_hash column for detecting CFG changes
+  - Removed divergent `cfg_edges` table creation (Magellan v11 manages it)
+  - **Impact**: Path caching now works correctly with Magellan v11 databases; automatic cache invalidation when CFG changes
+- **ICFG (inter-procedural CFG) across supported backends** — `mirage icfg` now correctly discovers callees and emits call/return edges
+  - Added `get_callees()` to `StorageTrait` with implementations for SQLite and geometric backends (`src/storage/mod.rs`, `src/storage/sqlite_backend.rs`, `src/storage/geometric.rs`)
+  - Fixed `build_icfg()` in `src/cfg/icfg.rs` to use a two-pass algorithm: first pass builds all nodes, second pass adds inter-procedural edges after callee nodes exist
+  - Added fallback to `storage.get_callees()` when `GraphBackend::neighbors()` returns empty, fixing callee discovery for both geometric (stub GraphBackend) and SQLite (CALLER→CALLS two-hop Magellan schema)
+  - Completed geometric router `get_icfg()` (`src/router/geometric.rs`) — now populates intra-procedural, call, and return edges instead of returning an empty edges vector
+  - Implemented SQLite router `get_icfg()` (`src/router/sqlite.rs`) — delegates to `build_icfg()` and converts to `InterProceduralCfg`
+  - Added `IcfgJson::to_inter_procedural_cfg()` conversion in `src/cfg/icfg.rs` to bridge the petgraph-based `Icfg` and the flat `router::InterProceduralCfg` models
+- **CFG edge loading from Magellan's `cfg_edges` table** — Mirage now reads actual control-flow edges instead of guessing them from terminator strings
+  - Added `build_edges_from_cfg_edges()` in `src/cfg/mod.rs` to construct edges from `cfg_edges` (source_idx, target_idx, edge_type)
+  - Modified `src/storage/mod.rs` to query `cfg_edges` in both `load_cfg_from_sqlite()` and `MirageDb::load_cfg()`
+  - Fixed `get_or_enumerate_paths()` to re-enumerate when cached paths table is empty (prevents stale 0-path caches)
+  - Falls back to `build_edges_from_terminators()` for pre-Magellan-v11 databases without `cfg_edges`
+  - **Impact**: Path enumeration now returns > 0 paths for functions with proper edge data; loop detection works; dominator trees are correct
+- **Geometric backend edge type mapping** in `src/router/geometric.rs` — maps `edge_type` u32 discriminants to Mirage `EdgeType` enum instead of hardcoding `Fallthrough` for all edges
+
+### Changed
+- **Database schema requirement** — Now requires Magellan v11+ (or v10 with 4D coordinate columns)
+  - Added `coord_t` column support for temporal/type metadata (Magellan v11)
+  - Migration guide available in MANUAL.md for users upgrading from v10
+- **Documentation updates**:
+  - `MANUAL.md`: Updated version to 1.2.4, added `icfg`, `hotpaths`, `diff`, and `migrate` commands; added `--file` option to all function-disambiguating commands; updated all database path examples from `.codemcp/project.db` to `.magellan/mirage.db`; simplified function name examples (use simple names, not crate-qualified)
+  - `README.md`: Fixed version to 1.2.4 and removed internal automation references
+
 ## [1.3.0] - 2026-04-12
 
 ### Added
@@ -35,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Subagent Audits**: Completed soundness, security, and performance reviews using specialized AI subagents.
 - **Database Integrity**: Proved physical storage of MIR JSON in the `statements` column via direct SQL audit.
 
-## [1.2.3] - 2026-03-20
+## [1.2.4] - 2026-03-20
 
 ### Added
 - **`--file` option to disambiguate functions with duplicate names**
@@ -137,7 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.5] - 2026-02-22
 
 ### Fixed
-- **Symbol ID Lookup:** `--function <hex_id>` now correctly resolves Magellan symbol IDs (e.g., `7ca9eebfa98204a5`) in both SQLite and native-v3 backends
+- **Symbol ID Lookup:** `--function <hex_id>` now correctly resolves Magellan symbol IDs (e.g., `7ca9eebfa98204a5`) in both SQLite and retired-binary-backend backends
 - **Remediation Hints:** Fixed broken hint messages
   - Changed `mirage cfg --list-functions` → `magellan find <function_name>`
   - Changed `mirage verify --list` → `mirage paths --function <name>`
@@ -147,9 +180,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Documentation tests now pass (60 doctests)
-- Fixed native-v3 backend KV store implementation
+- Fixed retired-binary-backend backend KV store implementation
 - Removed obsolete native-v2 references
-- Cleaned up feature flag naming (backend-sqlite, backend-native-v3)
+- Cleaned up feature flag naming (backend-sqlite, backend-retired-binary-backend)
 
 ## [1.0.3] - 2026-02-20
 
@@ -159,16 +192,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.2] - 2026-02-14
 
 ### Added
-- **Native-V3 Backend Support:** High-performance binary backend with KV store
-  - Feature flag: `--features native-v3 --no-default-features`
-  - Uses Magellan's native-v3 format (`.v3` files)
+- **retired binary backend Backend Support:** High-performance binary backend with KV store
+  - Feature flag: `--features retired-binary-backend --no-default-features`
+  - Uses Magellan's retired-binary-backend format (`.db` files)
   - Full feature parity with SQLite backend
   - Dual backend architecture with runtime detection
 
 ### Changed
 - **Dependencies:**
-  - magellan: 2.2 → 2.4.3 (native-v3 support)
-  - sqlitegraph: 1.5 → 2.0.3 (native-v3 support)
+  - magellan: 2.2 → 2.4.3 (retired-binary-backend support)
+  - sqlitegraph: 1.5 → 2.0.3 (retired-binary-backend support)
 
 ### Fixed
 - **Tests:** Fixed pre-existing test failures

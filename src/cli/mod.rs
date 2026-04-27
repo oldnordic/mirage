@@ -38,7 +38,7 @@ pub struct Cli {
     #[arg(global = true, long, value_enum, default_value_t = OutputFormat::Human)]
     pub output: OutputFormat,
 
-    /// Detect and report backend format (sqlite or native-v3)
+    /// Detect and report backend format (sqlite or geometric)
     #[arg(long, global = true, default_value = "false")]
     pub detect_backend: bool,
 
@@ -107,6 +107,9 @@ pub enum Commands {
     /// Show inter-procedural CFG (combined function CFGs with call/return edges)
     Icfg(IcfgArgs),
 
+    /// Show per-block coverage for a function
+    Coverage(CoverageArgs),
+
     /// Migrate database between storage backends
     Migrate(MigrateArgs),
 }
@@ -147,6 +150,10 @@ pub struct PathsArgs {
     /// Git revision for incremental analysis (e.g., "HEAD~1")
     #[arg(long)]
     pub since: Option<String>,
+
+    /// Sort paths by coverage hit count (highest first)
+    #[arg(long)]
+    pub by_coverage: bool,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -162,6 +169,17 @@ pub struct CfgArgs {
     /// Output format
     #[arg(long, value_enum)]
     pub format: Option<CfgFormat>,
+}
+
+#[derive(Parser, Debug, Clone)]
+pub struct CoverageArgs {
+    /// Function symbol ID or name
+    #[arg(long)]
+    pub function: String,
+
+    /// File path to disambiguate functions with same name (optional)
+    #[arg(long)]
+    pub file: Option<String>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -454,8 +472,6 @@ pub struct DiffArgs {
 pub enum BackendFormat {
     /// SQLite database (traditional backend)
     Sqlite,
-    /// Native V3 database (high-performance backend)
-    NativeV3,
     /// Geometric database (.geo files, Magellan 3.0+)
     Geometric,
 }
@@ -464,7 +480,6 @@ impl std::fmt::Display for BackendFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Sqlite => write!(f, "sqlite"),
-            Self::NativeV3 => write!(f, "native-v3"),
             Self::Geometric => write!(f, "geometric"),
         }
     }
@@ -496,7 +511,7 @@ pub enum CfgFormat {
 /// Resolve the database path from multiple sources
 ///
 /// Priority: CLI arg > MIRAGE_DB env var > auto-discover in common locations
-/// Auto-discovery searches: .codemcp/*.db, .forge/*.db, *.db in current directory
+/// Auto-discovery searches: .magellan/*.db, .forge/*.db, *.db in current directory
 pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
     if let Some(path) = cli_db {
         return Ok(path);
@@ -523,15 +538,14 @@ pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
 ///
 /// Searches in priority order:
 /// 1. .magellan/*.db files (Magellan's conventional location)
-/// 2. .codemcp/*.db files
-/// 3. .forge/*.db files
-/// 4. *.db in current directory
-/// 5. codegraph.db, mirage.db, magellan.db in current directory
+/// 2. .forge/*.db files
+/// 3. *.db in current directory
+/// 4. mirage.db or magellan.db in current directory
 fn auto_discover_db() -> Option<String> {
     use std::path::Path;
 
     // Search directories in priority order
-    let search_dirs = [".magellan", ".codemcp", ".forge", "."];
+    let search_dirs = [".magellan", ".forge", "."];
 
     for dir in &search_dirs {
         if let Ok(entries) = std::fs::read_dir(dir) {
@@ -540,7 +554,7 @@ fn auto_discover_db() -> Option<String> {
                 .filter(|e| {
                     let path = e.path();
                     path.extension()
-                        .map(|ext| ext == "db" || ext == "v3")
+                        .map(|ext| ext == "db")
                         .unwrap_or(false)
                 })
                 .map(|e| e.path())
@@ -549,13 +563,13 @@ fn auto_discover_db() -> Option<String> {
             // Sort for deterministic results
             db_files.sort();
 
-            // Return first match, preferring codegraph.db or magellan.db
+            // Return first match, preferring current Magellan/Mirage database names.
             if let Some(preferred) = db_files.iter().find(|p| {
                 let name = p
                     .file_stem()
                     .map(|s| s.to_string_lossy())
                     .unwrap_or_default();
-                name == "codegraph" || name == "magellan" || name == "mirage"
+                name == "magellan" || name == "mirage"
             }) {
                 return Some(preferred.to_string_lossy().to_string());
             }
@@ -571,7 +585,6 @@ fn auto_discover_db() -> Option<String> {
     let candidates = [
         ".magellan/mirage.db",
         ".magellan/magellan.db",
-        "codegraph.db",
         "mirage.db",
         "magellan.db",
         "graph.db",
@@ -1233,7 +1246,6 @@ pub mod cmds {
 
         // Enumerate paths (backend-agnostic)
         // For SQLite backend: use get_or_enumerate_paths for caching
-        // For native-v3 backend: use enumerate_paths directly (no caching)
         let mut paths = if db.is_sqlite() {
             // SQLite backend: use caching layer
             let function_hash = match get_function_hash_db(&db, function_id) {
@@ -1269,6 +1281,61 @@ pub mod cmds {
         // Filter to error paths if requested
         if args.show_errors {
             paths.retain(|p| p.kind == PathKind::Error);
+        }
+
+        // Sort by coverage if requested (highest total hit count first)
+        if args.by_coverage {
+            let coverage_map: std::collections::HashMap<i64, i64> = db
+                .conn()
+                .ok()
+                .and_then(|conn| {
+                    let sql = "SELECT block_id, hit_count FROM cfg_block_coverage \
+                           WHERE block_id IN (SELECT id FROM cfg_blocks WHERE function_id = ?1)";
+                    let mut stmt = conn.prepare(sql).ok()?;
+                    let rows = stmt.query_map([function_id], |row| {
+                        Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+                    });
+                    let mut map = std::collections::HashMap::new();
+                    if let Ok(iter) = rows {
+                        for item in iter {
+                            if let Ok((block_id, hit_count)) = item {
+                                map.insert(block_id, hit_count);
+                            }
+                        }
+                    }
+                    if map.is_empty() {
+                        None
+                    } else {
+                        Some(map)
+                    }
+                })
+                .unwrap_or_default();
+
+            // Build graph node index -> hit_count lookup via db_id
+            let node_hits: std::collections::HashMap<usize, i64> = cfg
+                .node_indices()
+                .filter_map(|idx| {
+                    cfg.node_weight(idx).and_then(|b| {
+                        b.db_id
+                            .and_then(|db_id| coverage_map.get(&db_id).copied())
+                            .map(|hits| (b.id, hits))
+                    })
+                })
+                .collect();
+
+            paths.sort_by(|a, b| {
+                let total_a: i64 = a
+                    .blocks
+                    .iter()
+                    .map(|bid| node_hits.get(bid).copied().unwrap_or(0))
+                    .sum();
+                let total_b: i64 = b
+                    .blocks
+                    .iter()
+                    .map(|bid| node_hits.get(bid).copied().unwrap_or(0))
+                    .sum();
+                total_b.cmp(&total_a) // descending
+            });
         }
 
         // Count error paths for reporting
@@ -1413,6 +1480,30 @@ pub mod cmds {
             }
         };
 
+        // Query coverage data (Magellan v3.1.6+ tables; graceful fallback if absent)
+        let coverage: Option<std::collections::HashMap<i64, i64>> =
+            db.conn().ok().and_then(|conn| {
+                let sql = "SELECT block_id, hit_count FROM cfg_block_coverage \
+                       WHERE block_id IN (SELECT id FROM cfg_blocks WHERE function_id = ?1)";
+                let mut stmt = conn.prepare(sql).ok()?;
+                let rows = stmt.query_map([function_id], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+                });
+                let mut map = std::collections::HashMap::new();
+                if let Ok(iter) = rows {
+                    for item in iter {
+                        if let Ok((block_id, hit_count)) = item {
+                            map.insert(block_id, hit_count);
+                        }
+                    }
+                }
+                if map.is_empty() {
+                    None
+                } else {
+                    Some(map)
+                }
+            });
+
         // Determine output format (args.format overrides cli.output)
         let format = args.format.unwrap_or(match cli.output {
             OutputFormat::Human => CfgFormat::Human,
@@ -1428,7 +1519,7 @@ pub mod cmds {
             }
             CfgFormat::Json => {
                 // Export to JSON and wrap in JsonResponse for consistency
-                let export: CFGExport = export_json(&cfg, &args.function);
+                let export: CFGExport = export_json(&cfg, &args.function, coverage.as_ref());
                 let response = output::JsonResponse::new(export);
 
                 match cli.output {
@@ -1453,6 +1544,7 @@ pub mod cmds {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -1464,6 +1556,7 @@ pub mod cmds {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["if x > 0".to_string()],
             terminator: Terminator::SwitchInt {
@@ -1478,6 +1571,7 @@ pub mod cmds {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
@@ -1489,6 +1583,7 @@ pub mod cmds {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["return false".to_string()],
             terminator: Terminator::Return,
@@ -2268,10 +2363,6 @@ pub mod cmds {
         // Query all functions from the database
         // Note: Requires SQLite backend for full table scan
         if !db.is_sqlite() {
-            output::info(
-                "Note: Native-V3 backend detected. Using entity iteration instead of SQL query.",
-            );
-            // TODO: Implement entity iteration for native-v3
             output::error("The 'unreachable' command currently requires SQLite backend.");
             output::info("Use SQLite backend or run with --help for alternatives.");
             std::process::exit(output::EXIT_USAGE);
@@ -2546,7 +2637,7 @@ pub mod cmds {
                 std::process::exit(output::EXIT_USAGE);
             } else {
                 output::error(msg);
-                output::info("Native-V3 backend does not support path caching.");
+                output::info("retired binary backend backend does not support path caching.");
                 std::process::exit(output::EXIT_USAGE);
             }
         }
@@ -2719,7 +2810,7 @@ pub mod cmds {
                     std::process::exit(output::EXIT_USAGE);
                 } else {
                     output::error(msg);
-                    output::info("Native-V3 backend does not support path caching. Use: mirage blast-zone --function <name> --block-id <id>");
+                    output::info("retired binary backend backend does not support path caching. Use: mirage blast-zone --function <name> --block-id <id>");
                     std::process::exit(output::EXIT_USAGE);
                 }
             }
@@ -3255,7 +3346,7 @@ pub mod cmds {
                 output::error(
                     "The 'cycles' command with --function-loops requires SQLite backend.",
                 );
-                output::info("Native-V3 backend is not yet supported for this feature.");
+                output::info("retired binary backend backend is not yet supported for this feature.");
                 std::process::exit(output::EXIT_USAGE);
             }
 
@@ -4528,7 +4619,6 @@ pub mod cmds {
         // Convert storage BackendFormat to cli BackendFormat for comparison
         let actual_format_cli = match actual_format {
             StorageBackendFormat::SQLite => BackendFormat::Sqlite,
-            StorageBackendFormat::NativeV3 => BackendFormat::NativeV3,
             StorageBackendFormat::Geometric => BackendFormat::Geometric,
             StorageBackendFormat::Unknown => {
                 return Err(anyhow::anyhow!(
@@ -4597,67 +4687,163 @@ pub mod cmds {
             eprintln!("Backup created: {}", backup_path);
         }
 
-        // Delegate to magellan's migration function
-        match (args.from, args.to) {
-            (BackendFormat::Sqlite, BackendFormat::NativeV3) => {
-                // Use magellan's run_migrate_backend for in-place migration
-                #[cfg(feature = "backend-native-v3")]
-                let input_db = std::path::PathBuf::from(&args.db);
-                #[cfg(feature = "backend-native-v3")]
-                let output_db = input_db.clone(); // In-place migration
+        Err(anyhow::anyhow!(
+            "Backend migration is not supported by this Mirage build; use SQLite .magellan/<project>.db databases"
+        ))
+    }
+    pub fn coverage(args: &CoverageArgs, cli: &Cli) -> Result<()> {
+        use crate::cfg::{load_cfg_from_db, resolve_function_name_with_file};
+        use crate::storage::MirageDb;
 
-                #[cfg(feature = "backend-native-v3")]
-                {
-                    use magellan::migrate_backend_cmd::run_migrate_backend;
+        // Resolve database path
+        let db_path = super::resolve_db_path(cli.db.clone())?;
 
-                    let result = run_migrate_backend(input_db, output_db, None, false)?;
-
-                    // Report migration results
-                    match cli.output {
-                        OutputFormat::Human => {
-                            println!("{}", result.message);
-                        }
-                        OutputFormat::Json | OutputFormat::Pretty => {
-                            let output = serde_json::json!({
-                                "success": result.success,
-                                "from": format!("{:?}", result.source_format),
-                                "to": format!("{:?}", result.target_format),
-                                "entities_migrated": result.entities_migrated,
-                                "edges_migrated": result.edges_migrated,
-                                "side_tables_migrated": result.side_tables_migrated,
-                            });
-                            match cli.output {
-                                OutputFormat::Json => {
-                                    println!("{}", serde_json::to_string(&output)?)
-                                }
-                                OutputFormat::Pretty => {
-                                    println!("{}", serde_json::to_string_pretty(&output)?)
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                    }
-
-                    if !result.success {
-                        return Err(anyhow::anyhow!("Migration failed"));
-                    }
-
-                    Ok(())
-                }
-
-                #[cfg(not(feature = "backend-native-v3"))]
-                {
-                    Err(anyhow::anyhow!(
-                        "Native-v3 feature not enabled. Rebuild with: --features backend-native-v3"
-                    ))
+        // Open database
+        let db = match MirageDb::open(&db_path) {
+            Ok(db) => db,
+            Err(_e) => {
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::database_not_found(&db_path);
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!("Failed to open database: {}", db_path));
+                    output::info("Hint: Run 'magellan watch' to create the database");
+                    std::process::exit(output::EXIT_DATABASE);
                 }
             }
-            (BackendFormat::NativeV3, BackendFormat::Sqlite) => Err(anyhow::anyhow!(
-                "Migration from native-v3 to sqlite is not yet supported. \
-                     SQLite backend is the default and recommended format."
-            )),
-            _ => unreachable!(),
+        };
+
+        // Resolve function name/ID
+        let function_id =
+            match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
+                Ok(id) => id,
+                Err(_e) => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::function_not_found(&args.function);
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!(
+                            "Function '{}' not found in database",
+                            args.function
+                        ));
+                        output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
+                }
+            };
+
+        // Load CFG to map block IDs
+        let cfg = match load_cfg_from_db(&db, function_id) {
+            Ok(cfg) => cfg,
+            Err(_e) => {
+                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                    let error = output::JsonError::new(
+                        "CgfLoadError",
+                        &format!("Failed to load CFG for function '{}'", args.function),
+                        output::E_CFG_ERROR,
+                    );
+                    let wrapper = output::JsonResponse::new(error);
+                    println!("{}", wrapper.to_json());
+                    std::process::exit(output::EXIT_DATABASE);
+                } else {
+                    output::error(&format!(
+                        "Failed to load CFG for function '{}'",
+                        args.function
+                    ));
+                    output::info("The function may be corrupted. Try re-running 'magellan watch'");
+                    std::process::exit(output::EXIT_DATABASE);
+                }
+            }
+        };
+
+        // Query coverage data (graceful fallback if tables absent)
+        let coverage_rows: Vec<(usize, String, i64)> =
+            db.conn().ok().map_or_else(Vec::new, |conn| {
+                let sql = "SELECT bb.id, bb.kind, COALESCE(bc.hit_count, 0) \
+                       FROM cfg_blocks bb \
+                       LEFT JOIN cfg_block_coverage bc ON bb.id = bc.block_id \
+                       WHERE bb.function_id = ?1 \
+                       ORDER BY bb.byte_start";
+                let mut stmt = match conn.prepare(sql) {
+                    Ok(s) => s,
+                    Err(_) => return Vec::new(),
+                };
+                let rows = stmt.query_map([function_id], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)? as usize,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                });
+                match rows {
+                    Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
+                    Err(_) => Vec::new(),
+                }
+            });
+
+        // Build a lookup from db_block_id to graph node index (via BasicBlock.id)
+        let db_id_to_graph_id: std::collections::HashMap<i64, usize> = cfg
+            .node_indices()
+            .filter_map(|idx| {
+                cfg.node_weight(idx)
+                    .and_then(|b| b.db_id.map(|db_id| (db_id, b.id)))
+            })
+            .collect();
+
+        match cli.output {
+            OutputFormat::Human => {
+                println!("Coverage for function '{}'", args.function);
+                println!("{}", "=".repeat(60));
+                if coverage_rows.is_empty() {
+                    println!("No coverage data available.");
+                    println!("Hint: Run tests with 'cargo test' to generate coverage.");
+                } else {
+                    for (db_id, kind, hits) in &coverage_rows {
+                        let graph_id = db_id_to_graph_id
+                            .get(&(*db_id as i64))
+                            .map(|id| id.to_string())
+                            .unwrap_or_else(|| "?".to_string());
+                        println!(
+                            "  Block {:>3} (graph #{}, kind={:>8}): {:>6} hits",
+                            db_id, graph_id, kind, hits
+                        );
+                    }
+                }
+            }
+            OutputFormat::Json | OutputFormat::Pretty => {
+                #[derive(serde::Serialize)]
+                struct CoverageEntry {
+                    block_id: usize,
+                    graph_id: Option<usize>,
+                    kind: String,
+                    hit_count: i64,
+                }
+                let entries: Vec<CoverageEntry> = coverage_rows
+                    .iter()
+                    .map(|(db_id, kind, hits)| CoverageEntry {
+                        block_id: *db_id,
+                        graph_id: db_id_to_graph_id.get(&(*db_id as i64)).copied(),
+                        kind: kind.to_string(),
+                        hit_count: *hits,
+                    })
+                    .collect();
+                let response = output::JsonResponse::new(serde_json::json!({
+                    "function": args.function,
+                    "coverage": entries,
+                }));
+                match cli.output {
+                    OutputFormat::Json => println!("{}", response.to_json()),
+                    OutputFormat::Pretty => println!("{}", response.to_pretty_json()),
+                    _ => unreachable!(),
+                }
+            }
         }
+
+        Ok(())
     }
 }
 
@@ -4729,10 +4915,10 @@ mod tests {
         // So we just verify the function doesn't panic
         match result {
             Ok(path) => {
-                // If we got a path, it should be a .db or .v3 file
+                // If we got a path, it should be a .db or .db file
                 assert!(
-                    path.ends_with(".db") || path.ends_with(".v3"),
-                    "Auto-discovered DB should have .db or .v3 extension"
+                    path.ends_with(".db") || path.ends_with(".db"),
+                    "Auto-discovered DB should have .db or .db extension"
                 );
             }
             Err(_) => {
@@ -4812,7 +4998,7 @@ mod cfg_tests {
     fn test_cfg_json_format() {
         let cfg = cmds::create_test_cfg();
         let function_name = "test_function";
-        let export = export_json(&cfg, function_name);
+        let export = export_json(&cfg, function_name, None);
 
         // Verify function name is included
         assert_eq!(
@@ -4872,7 +5058,7 @@ mod cfg_tests {
         let test_names = vec!["my_function", "TestFunc", "module::submodule::function"];
 
         for name in test_names {
-            let export = export_json(&cfg, name);
+            let export = export_json(&cfg, name, None);
             assert_eq!(
                 export.function_name, name,
                 "Function name should be preserved in export"
@@ -4949,7 +5135,7 @@ mod cfg_tests {
         use crate::output::JsonResponse;
 
         let cfg = cmds::create_test_cfg();
-        let export = export_json(&cfg, "wrapped_function");
+        let export = export_json(&cfg, "wrapped_function", None);
         let response = JsonResponse::new(export);
 
         // Verify JsonResponse structure
@@ -5098,13 +5284,17 @@ mod status_tests {
     /// Test that status() returns correct database statistics
     #[test]
     #[cfg(feature = "backend-sqlite")]
+    #[allow(deprecated)]
     fn test_status_returns_correct_statistics() {
         let (_file, db) = create_test_db().unwrap();
         let status = db.status().unwrap();
 
         assert_eq!(status.cfg_blocks, 2, "Should have 2 cfg_blocks");
         // cfg_edges is managed by Magellan v11+; count may be 0 if table absent
-        assert_eq!(status.cfg_edges, 0, "cfg_edges count should be 0 (managed by Magellan)");
+        assert_eq!(
+            status.cfg_edges, 0,
+            "cfg_edges count should be 0 (managed by Magellan)"
+        );
         assert_eq!(status.cfg_paths, 1, "Should have 1 cfg_path");
         assert_eq!(status.cfg_dominators, 1, "Should have 1 cfg_dominator");
         assert_eq!(
@@ -5120,6 +5310,7 @@ mod status_tests {
     /// Test that human output format contains expected fields
     #[test]
     #[cfg(feature = "backend-sqlite")]
+    #[allow(deprecated)]
     fn test_status_human_output_format() {
         let (_file, db) = create_test_db().unwrap();
         let status = db.status().unwrap();
@@ -5229,6 +5420,7 @@ mod status_tests {
     /// Test that status() with empty database returns zero counts
     #[test]
     #[cfg(feature = "backend-sqlite")]
+    #[allow(deprecated)]
     fn test_status_empty_database_returns_zeros() {
         use crate::storage::{
             REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION,
@@ -5373,6 +5565,7 @@ mod paths_tests {
             with_blocks: false,
             incremental: false,
             since: None,
+            by_coverage: false,
         };
 
         assert_eq!(args.function, "test_function");
@@ -5392,6 +5585,7 @@ mod paths_tests {
             with_blocks: true,
             incremental: false,
             since: None,
+            by_coverage: false,
         };
 
         assert_eq!(args.function, "my_func");
@@ -5525,6 +5719,7 @@ mod paths_tests {
             with_blocks: true,
             incremental: false,
             since: None,
+            by_coverage: false,
         };
 
         let args_without = PathsArgs {
@@ -5535,6 +5730,7 @@ mod paths_tests {
             with_blocks: false,
             incremental: false,
             since: None,
+            by_coverage: false,
         };
 
         assert!(args_with.with_blocks, "with_blocks should be true");
@@ -5585,6 +5781,7 @@ mod paths_tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -5596,6 +5793,7 @@ mod paths_tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["if x > 0".to_string()],
             terminator: Terminator::SwitchInt {
@@ -5610,6 +5808,7 @@ mod paths_tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
@@ -6008,6 +6207,7 @@ mod unreachable_tests {
         // Block 0: entry, goes to 1
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -6020,6 +6220,7 @@ mod unreachable_tests {
         // Block 1: normal, goes to 2
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["if x > 0".to_string()],
             terminator: Terminator::SwitchInt {
@@ -6035,6 +6236,7 @@ mod unreachable_tests {
         // Block 2: exit (reachable)
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
@@ -6047,6 +6249,7 @@ mod unreachable_tests {
         // Block 3: exit (reachable)
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["return false".to_string()],
             terminator: Terminator::Return,
@@ -6059,6 +6262,7 @@ mod unreachable_tests {
         // Block 4: unreachable (no edges to it)
         let _b4 = g.add_node(BasicBlock {
             id: 4,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["unreachable code".to_string()],
             terminator: Terminator::Unreachable,
@@ -6207,6 +6411,7 @@ mod unreachable_tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -6218,6 +6423,7 @@ mod unreachable_tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["if x > 0".to_string()],
             terminator: Terminator::SwitchInt {
@@ -6232,6 +6438,7 @@ mod unreachable_tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
@@ -6244,6 +6451,7 @@ mod unreachable_tests {
         // b3 and b4 are both unreachable, but b4 has an incoming edge from b3
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["unreachable branch".to_string()],
             terminator: Terminator::Goto { target: 4 },
@@ -6255,6 +6463,7 @@ mod unreachable_tests {
 
         let b4 = g.add_node(BasicBlock {
             id: 4,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["unreachable code".to_string()],
             terminator: Terminator::Unreachable,
@@ -6329,6 +6538,7 @@ mod unreachable_tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -6340,6 +6550,7 @@ mod unreachable_tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["if x > 0".to_string()],
             terminator: Terminator::SwitchInt {
@@ -6354,6 +6565,7 @@ mod unreachable_tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["return true".to_string()],
             terminator: Terminator::Return,
@@ -6365,6 +6577,7 @@ mod unreachable_tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["unreachable branch".to_string()],
             terminator: Terminator::Goto { target: 4 },
@@ -6376,6 +6589,7 @@ mod unreachable_tests {
 
         let b4 = g.add_node(BasicBlock {
             id: 4,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec!["unreachable code".to_string()],
             terminator: Terminator::Unreachable,
@@ -7554,6 +7768,7 @@ mod output_format_tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -7565,6 +7780,7 @@ mod output_format_tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -7579,6 +7795,7 @@ mod output_format_tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -7590,6 +7807,7 @@ mod output_format_tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -8004,6 +8222,7 @@ mod frontiers_tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -8018,6 +8237,7 @@ mod frontiers_tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["branch 1".to_string()],
             terminator: Terminator::Goto { target: 3 },
@@ -8029,6 +8249,7 @@ mod frontiers_tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["branch 2".to_string()],
             terminator: Terminator::Goto { target: 3 },
@@ -8040,6 +8261,7 @@ mod frontiers_tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -8113,6 +8335,7 @@ mod frontiers_tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -8124,6 +8347,7 @@ mod frontiers_tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
@@ -8135,6 +8359,7 @@ mod frontiers_tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
@@ -8146,6 +8371,7 @@ mod frontiers_tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
@@ -8179,6 +8405,7 @@ mod frontiers_tests {
 
         let b0 = g.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -8190,6 +8417,7 @@ mod frontiers_tests {
 
         let b1 = g.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -8204,6 +8432,7 @@ mod frontiers_tests {
 
         let b2 = g.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -8215,6 +8444,7 @@ mod frontiers_tests {
 
         let b3 = g.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,

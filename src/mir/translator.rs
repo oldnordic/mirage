@@ -45,6 +45,7 @@ pub fn translate_function(decl: &FunDecl, files: &[File]) -> Cfg {
 
         let block = BasicBlock {
             id: block_data.id as usize,
+            db_id: None,
             kind,
             statements,
             terminator: translate_terminator(&block_data.terminator),

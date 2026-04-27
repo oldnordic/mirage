@@ -217,6 +217,11 @@ impl StorageTrait for GeometricStorage {
         // Path caching not implemented for Geometric backend yet
         Ok(None)
     }
+
+    fn get_callees(&self, function_id: i64) -> Result<Vec<i64>> {
+        let callees = self.inner.get_callees(function_id as u64);
+        Ok(callees.into_iter().map(|id| id as i64).collect())
+    }
 }
 
 /// Convert a terminator string to the Terminator enum

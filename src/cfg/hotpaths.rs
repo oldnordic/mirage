@@ -228,6 +228,7 @@ mod tests {
         // Block 0: entry
         let b0 = graph.add_node(BasicBlock {
             id: 0,
+            db_id: None,
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
@@ -240,6 +241,7 @@ mod tests {
         // Block 1: loop header
         let b1 = graph.add_node(BasicBlock {
             id: 1,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::SwitchInt {
@@ -255,6 +257,7 @@ mod tests {
         // Block 2: loop body
         let b2 = graph.add_node(BasicBlock {
             id: 2,
+            db_id: None,
             kind: BlockKind::Normal,
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
@@ -267,6 +270,7 @@ mod tests {
         // Block 3: exit
         let b3 = graph.add_node(BasicBlock {
             id: 3,
+            db_id: None,
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,

@@ -5,6 +5,7 @@ use mirage_analyzer::cfg::{BasicBlock, BlockKind, Terminator};
 fn test_noise_reduction() {
     let block = BasicBlock {
         id: 0,
+        db_id: None,
         kind: BlockKind::Normal,
         statements: vec![
             "StorageLive(Local(1))".to_string(),
@@ -29,6 +30,7 @@ fn test_noise_reduction() {
 fn test_call_extraction() {
     let block = BasicBlock {
         id: 1,
+        db_id: None,
         kind: BlockKind::Normal,
         statements: vec!["Assign(Local(2), Call(auth::verify, [Local(1)]))".to_string()],
         terminator: Terminator::Return,
@@ -49,6 +51,7 @@ fn test_call_extraction() {
 fn test_path_linearization() {
     let b1 = BasicBlock {
         id: 0,
+        db_id: None,
         kind: BlockKind::Entry,
         statements: vec!["Assign(Local(0), Constant(true))".to_string()],
         terminator: Terminator::Goto { target: 1 },
@@ -60,6 +63,7 @@ fn test_path_linearization() {
 
     let b2 = BasicBlock {
         id: 1,
+        db_id: None,
         kind: BlockKind::Exit,
         statements: vec![],
         terminator: Terminator::Return,
@@ -80,6 +84,7 @@ fn test_path_linearization() {
 fn test_robustness() {
     let block = BasicBlock {
         id: 0,
+        db_id: None,
         kind: BlockKind::Normal,
         statements: vec![
             "  Assign(  Local(1)  ,   Constant(  42  )  )  ".to_string(),
@@ -101,6 +106,7 @@ fn test_robustness() {
 fn test_fakeread_filter() {
     let block = BasicBlock {
         id: 0,
+        db_id: None,
         kind: BlockKind::Normal,
         statements: vec!["FakeRead(ForLet, Local(1))".to_string()],
         terminator: Terminator::Return,

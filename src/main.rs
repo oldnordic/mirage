@@ -6,16 +6,6 @@
 
 #![allow(dead_code)]
 
-// Compile-time guard: prevent enabling both backends simultaneously
-#[cfg(all(feature = "backend-sqlite", feature = "backend-native-v3"))]
-compile_error!(
-    "Features 'backend-sqlite' and 'backend-native-v3' are mutually exclusive. \
-     Enable only one backend feature. Use either: \
-     \
-     SQLite (default): cargo build \
-     Native-V3: cargo build --features backend-native-v3 --no-default-features"
-);
-
 use anyhow::Result;
 use clap::Parser;
 
@@ -65,7 +55,6 @@ fn run_command(cli: Cli) -> Result<()> {
 
         let backend_str = match format {
             BackendFormat::SQLite => "sqlite",
-            BackendFormat::NativeV3 => "native-v3",
             BackendFormat::Geometric => "geometric",
             BackendFormat::Unknown => "unknown",
         };
@@ -106,6 +95,7 @@ fn run_command(cli: Cli) -> Result<()> {
             Commands::Hotpaths(ref args) => cli::cmds::hotpaths(args, &cli),
             Commands::Diff(ref args) => cli::cmds::diff(args, &cli),
             Commands::Icfg(ref args) => cli::cmds::icfg(args, &cli),
+            Commands::Coverage(ref args) => cli::cmds::coverage(args, &cli),
             // Commands::ComplexBlocks(ref args) => cli::cmds::complex_blocks(args, &cli),
             // Commands::SpatialAnalysis(ref args) => cli::cmds::spatial_analysis(args, &cli),
             Commands::Migrate(ref args) => cli::cmds::migrate(args, &cli),

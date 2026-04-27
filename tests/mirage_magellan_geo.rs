@@ -6,6 +6,8 @@
 //! - Explicit ambiguity handling (GEO_QUERY_CONTRACT §Ambiguity Handling)
 //! - Graph query operations (reachability, cycles, dead code, path enumeration)
 
+#![cfg(feature = "backend-geometric")]
+
 use std::path::PathBuf;
 use tempfile::TempDir;
 

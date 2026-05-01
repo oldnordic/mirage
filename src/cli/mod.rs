@@ -3606,7 +3606,7 @@ pub mod cmds {
 
         // Open Mirage database for intra-procedural analysis
         #[cfg(feature = "sqlite")]
-        let db = match MirageDb::open(&db_path) {
+        let mut db = match MirageDb::open(&db_path) {
             Ok(db) => db,
             Err(e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {

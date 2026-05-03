@@ -364,8 +364,13 @@ pub struct HotspotsArgs {
     pub verbose: bool,
 
     /// Use inter-procedural analysis (requires Magellan DB)
-    #[arg(long)]
+    /// Enabled by default. Use --intra-procedural to force intra-procedural analysis.
+    #[arg(long, default_value = "true")]
     pub inter_procedural: bool,
+
+    /// Use intra-procedural analysis only (faster, but may show 0 functions if cfg_blocks not populated)
+    #[arg(long, conflicts_with = "inter_procedural")]
+    pub intra_procedural: bool,
 }
 
 /// Hot path detection arguments
@@ -553,9 +558,7 @@ fn auto_discover_db() -> Option<String> {
                 .filter_map(|e| e.ok())
                 .filter(|e| {
                     let path = e.path();
-                    path.extension()
-                        .map(|ext| ext == "db")
-                        .unwrap_or(false)
+                    path.extension().map(|ext| ext == "db").unwrap_or(false)
                 })
                 .map(|e| e.path())
                 .collect();
@@ -3346,7 +3349,9 @@ pub mod cmds {
                 output::error(
                     "The 'cycles' command with --function-loops requires SQLite backend.",
                 );
-                output::info("retired binary backend backend is not yet supported for this feature.");
+                output::info(
+                    "retired binary backend backend is not yet supported for this feature.",
+                );
                 std::process::exit(output::EXIT_USAGE);
             }
 
@@ -3627,7 +3632,6 @@ pub mod cmds {
         };
 
         let mut hotspots: Vec<HotspotEntry> = Vec::new();
-        #[cfg(feature = "sqlite")]
         let mut function_count = 0;
 
         if args.inter_procedural {
@@ -3679,6 +3683,9 @@ pub mod cmds {
                                     });
                                 }
                             }
+
+                            // Count total functions found in inter-procedural analysis
+                            function_count = path_counts.len();
                         }
                     }
                 }
@@ -3748,11 +3755,6 @@ pub mod cmds {
         // Limit to top N
         hotspots.truncate(args.top);
 
-        #[cfg(feature = "sqlite")]
-        let function_count = function_count;
-        #[cfg(not(feature = "sqlite"))]
-        let function_count = 0;
-
         let response = HotspotsResponse {
             entry_point: args.entry.clone(),
             total_functions: function_count,
@@ -3771,6 +3773,16 @@ pub mod cmds {
                     "Hotspots Analysis (entry: {})",
                     response.entry_point
                 ));
+                
+                // Add helpful hint if 0 functions found with intra-procedural mode
+                if response.total_functions == 0 && response.mode == "intra-procedural" {
+                    output::warn("No functions found. This may be because:");
+                    output::info("  1. The database hasn't been indexed yet");
+                    output::info("  2. You need to run: magellan watch --db <path>");
+                    output::info("  3. Try --inter-procedural for call-graph-based analysis");
+                    println!();
+                }
+                
                 output::info(&format!(
                     "Found {} hotspots out of {} functions",
                     hotspots.len(),
@@ -8531,6 +8543,7 @@ mod frontiers_tests {
             min_paths: Some(5),
             verbose: true,
             inter_procedural: false,
+            intra_procedural: false,
         };
 
         assert_eq!(args.entry, "main");
@@ -8549,6 +8562,7 @@ mod frontiers_tests {
             min_paths: None,
             verbose: false,
             inter_procedural: false,
+            intra_procedural: false,
         };
 
         assert_eq!(args.entry, "main");

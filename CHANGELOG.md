@@ -42,14 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Truth-Based AI Engineering Vision**: Established a new paradigm for code intelligence centered on deterministic, graph-based reasoning.
-  - Created **`THE_VISION.md`**: Outlines the 4D Voxel World and Minecraft-style block streaming to reduce LLM context usage by 90%.
+  - Created **`THE_VISION.md`**: Outlines the 4D Voxel World and Minecraft-style block streaming to reduce context usage by 90%.
   - Created **`ECOSYSTEM_SYNERGY.md`**: Documents the integration with GeoMetriDB 4D research (Sparse Inference as Cognition).
   - Created **`MIR_INTEGRATION_PLAN.md`**: File-by-file roadmap for high-fidelity MIR extraction.
   - Created **`PATH_SUMMARIZATION_PLAN.md`**: TDD plan for distilling raw MIR into "Truth Proofs."
 - **High-Fidelity MIR Integration**:
   - Implemented **`src/mir/`** module for parsing Charon LLBC (Low-Level Borrow Calculus) JSON format.
   - Implemented TDD-verified translation from MIR basic blocks to Mirage Control Flow Graphs.
-  - Supported high-fidelity instructions (Assign, Call, Drop, Assert) to eliminate LLM guesswork.
+  - Supported high-fidelity instructions (Assign, Call, Drop, Assert) to eliminate guesswork.
 - **Path Summarization (Truth Proofs)**:
   - Implemented **`src/cfg/summary.rs`**: A depth-aware distillation engine that filters compiler noise (StorageLive, Nop) and highlights logical effects.
   - Added **`--summarize`** flag to the `paths` command, providing compact logic sequences in both Human and JSON formats.
@@ -59,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ecosystem Synchronization**:
   - Updated **Magellan** to Schema Version 9, adding the `statements` column to the `cfg_blocks` table for instruction persistence.
   - Updated **geographdb-core** to support binary serialization of MIR fields (`cfg_hash`, `statements`), ensuring data preservation in `.geo` files.
-  - Updated **`GEMINI.md`**: Documented a cohesive LLM workflow for discovery (Magellan), search (llmgrep), and reasoning (Mirage).
+  - Updated **`GEMINI.md`**: Documented a cohesive workflow for discovery (Magellan), search (llmgrep), and reasoning (Mirage).
 - **Architecture**:
   - Refactored `src/cfg/summary.rs` into a robust `PathSummarizer` struct with better error resilience and fallback handling for AST-only data.
 

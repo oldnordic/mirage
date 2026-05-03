@@ -38,6 +38,7 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
             id INTEGER PRIMARY KEY,
             kind TEXT NOT NULL,
             name TEXT NOT NULL,
+            file_path TEXT,
             data TEXT NOT NULL DEFAULT '{}'
         )",
         [],
@@ -46,8 +47,8 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
 
     // Insert a test function entity
     conn.execute(
-        "INSERT INTO graph_entities (id, kind, name, data)
-         VALUES (1, 'Symbol', 'test_function', '{\"kind\": \"Function\", \"file_path\": \"src/test.rs\"}')",
+        "INSERT INTO graph_entities (id, kind, name, file_path, data)
+         VALUES (1, 'Symbol', 'test_function', 'src/test.rs', '{\"kind\": \"Function\"}')",
         [],
     )
     .unwrap();

@@ -71,3 +71,19 @@ MODULARIZATION_SCRIPT.sh
 REFACTORING_STATUS.md
 WORK_SUMMARY.md
 .magellan/
+
+# Internal working documents (never public)
+GEMINI.md
+INVARIANTS.md
+MIRAGE_FIX_SUMMARY.md
+THE_VISION.md
+ECOSYSTEM_SYNERGY.md
+
+# Internal working documents (never public)
+GEMINI.md
+INVARIANTS.md
+MIRAGE_FIX_SUMMARY.md
+THE_VISION.md
+ECOSYSTEM_SYNERGY.md
+test_metadata.rs
+test_parse.sh

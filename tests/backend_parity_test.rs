@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 
 // Import storage items
-use mirage_analyzer::storage::{Backend, CfgBlockData, StorageTrait};
+use mirage::storage::{Backend, CfgBlockData, StorageTrait};
 
 /// Create a test SQLite database with CFG data
 ///

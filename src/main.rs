@@ -49,7 +49,7 @@ fn run_command(cli: Cli) -> Result<()> {
             .ok_or_else(|| anyhow::anyhow!("--db required for --detect-backend"))?;
         let db_path = std::path::Path::new(&db_str);
 
-        use mirage_analyzer::storage::BackendFormat;
+        use crate::storage::BackendFormat;
         let format = BackendFormat::detect(db_path)
             .map_err(|e| anyhow::anyhow!("Backend detection failed: {}", e))?;
 

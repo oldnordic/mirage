@@ -1,5 +1,5 @@
-use mirage_analyzer::cfg::summary::{summarize_path, PathSummarizer};
-use mirage_analyzer::cfg::{BasicBlock, BlockKind, Cfg, Path, PathKind, Terminator};
+use mirage::cfg::summary::{summarize_path, PathSummarizer};
+use mirage::cfg::{BasicBlock, BlockKind, Cfg, Path, PathKind, Terminator};
 
 #[test]
 fn test_summary_empty_statements() {

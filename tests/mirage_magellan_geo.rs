@@ -177,11 +177,11 @@ impl GeoIntegrationContext {
 fn test_1_normalized_path_resolution() {
     let ctx = GeoIntegrationContext::new();
     let backend = ctx.open_backend();
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
 
     // Path normalization should make ./src/main.rs equivalent to src/main.rs
     let normalized =
-        mirage_analyzer::integrations::magellan::normalize_path_for_query("./src/main.rs");
+        mirage::integrations::magellan::normalize_path_for_query("./src/main.rs");
     assert!(
         normalized.contains("src/main.rs"),
         "Path should be normalized"
@@ -189,7 +189,7 @@ fn test_1_normalized_path_resolution() {
 
     // Looking up by normalized path should work
     match adapter.lookup_symbol_by_fqn("main") {
-        mirage_analyzer::integrations::magellan::FqnLookupResult::Unique(info) => {
+        mirage::integrations::magellan::FqnLookupResult::Unique(info) => {
             assert_eq!(info.name, "main");
             assert_eq!(info.fqn, "main");
         }
@@ -201,7 +201,7 @@ fn test_1_normalized_path_resolution() {
 fn test_2_unique_symbol_resolution() {
     let ctx = GeoIntegrationContext::new();
     let backend = ctx.open_backend();
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
 
     // Unique FQN should resolve directly
     match adapter.resolve_function_id("main") {
@@ -216,7 +216,7 @@ fn test_2_unique_symbol_resolution() {
 
     // Unique FQN with module path
     let backend = ctx.open_backend();
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
 
     match adapter.resolve_function_id("helpers::helper_a") {
         Ok(id) => {
@@ -232,11 +232,11 @@ fn test_2_unique_symbol_resolution() {
 fn test_3_ambiguity_is_surfaced_explicitly() {
     let ctx = GeoIntegrationContext::new();
     let backend = ctx.open_backend();
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
 
     // "process" is ambiguous - two functions with that name
     match adapter.resolve_function_id("process") {
-        Err(mirage_analyzer::integrations::magellan::ResolveError::Ambiguous {
+        Err(mirage::integrations::magellan::ResolveError::Ambiguous {
             identifier,
             candidates,
             hint,
@@ -268,7 +268,7 @@ fn test_4_callers_query_works() {
         .unwrap()
         .id;
 
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
     let callers = adapter.callers_of_symbol(helper_b_id);
 
     // The call graph API works - it returns 0 because no call refs were indexed
@@ -285,7 +285,7 @@ fn test_5_callees_query_works() {
     let backend = ctx.open_backend();
     let main_id = backend.find_symbol_by_fqn_info("main").unwrap().id;
 
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
     let callees = adapter.callees_of_symbol(main_id);
 
     // The call graph API works - it returns 0 because no call refs were indexed
@@ -302,7 +302,7 @@ fn test_6_reachability_query_works() {
     let backend = ctx.open_backend();
     let main_id = backend.find_symbol_by_fqn_info("main").unwrap().id;
 
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
     let reachable = adapter.reachable_from(main_id);
 
     // Reachability uses call graph which is built from indexed call refs.
@@ -327,7 +327,7 @@ fn test_7_reverse_reachability_works() {
         .unwrap()
         .id;
 
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
     let reverse_reachable = adapter.reverse_reachable_from(helper_b_id);
 
     // Reverse reachability uses call graph which is built from indexed call refs.
@@ -348,7 +348,7 @@ fn test_8_cycles_query_works() {
     let ctx = GeoIntegrationContext::new();
     let backend = ctx.open_backend();
 
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
     let cycles = adapter.find_call_graph_cycles();
 
     // Cycle detection uses call graph which is built from indexed call refs.
@@ -366,7 +366,7 @@ fn test_9_dead_code_detection_works() {
     let backend = ctx.open_backend();
     let main_id = backend.find_symbol_by_fqn_info("main").unwrap().id;
 
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
     let dead = adapter.dead_code_from_entries(&[main_id]);
 
     assert!(!dead.is_empty(), "Should detect dead code");
@@ -382,7 +382,7 @@ fn test_10_path_enumeration_works() {
     let backend = ctx.open_backend();
     let main_id = backend.find_symbol_by_fqn_info("main").unwrap().id;
 
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
     let result = adapter.enumerate_paths(main_id, None, 10, 100);
 
     // Should find at least one path (main -> helper_a -> helper_b)
@@ -452,7 +452,7 @@ fn test_12_chunk_retrieval_not_required_by_mirage() {
     let ctx = GeoIntegrationContext::new();
 
     // Verify MagellanBridge can query .geo without chunk retrieval
-    let bridge = mirage_analyzer::analysis::MagellanBridge::open(ctx.geo_path.to_str().unwrap())
+    let bridge = mirage::analysis::MagellanBridge::open(ctx.geo_path.to_str().unwrap())
         .expect("Failed to open bridge");
 
     // Test reachable_symbols (graph query, not content retrieval)
@@ -480,7 +480,7 @@ fn test_12_chunk_retrieval_not_required_by_mirage() {
 #[test]
 fn test_13_path_equivalence_detection() {
     // Test path normalization equivalence
-    use mirage_analyzer::integrations::magellan::paths_equivalent;
+    use mirage::integrations::magellan::paths_equivalent;
 
     assert!(paths_equivalent("./src/main.rs", "src/main.rs"));
     assert!(paths_equivalent("src//main.rs", "src/main.rs"));
@@ -496,7 +496,7 @@ fn test_14_numeric_id_resolution() {
     let backend = ctx.open_backend();
     let main_id = backend.find_symbol_by_fqn_info("main").unwrap().id;
 
-    let adapter = mirage_analyzer::integrations::magellan::MagellanAdapter::new(&backend);
+    let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
 
     // Resolve by numeric ID should work
     match adapter.resolve_function_id(&main_id.to_string()) {

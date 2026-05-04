@@ -244,7 +244,9 @@ impl Backend {
             if sqlite_detected {
                 return SqliteStorage::open(db_path).map(Backend::Sqlite);
             } else {
-                return Err(anyhow::anyhow!("Unsupported database format; use a SQLite .db"));
+                return Err(anyhow::anyhow!(
+                    "Unsupported database format; use a SQLite .db"
+                ));
             }
         }
 
@@ -658,7 +660,6 @@ impl MirageDb {
     pub fn is_sqlite(&self) -> bool {
         self.conn.is_some()
     }
-
 }
 
 /// Create a stub GraphBackend for geometric backend
@@ -1153,10 +1154,7 @@ impl MirageDb {
     /// Get database statistics (geometric backend)
     ///
     /// Uses GeometricBackend methods to query symbol and CFG data.
-    #[cfg(all(
-        feature = "backend-geometric",
-        not(feature = "backend-sqlite")
-    ))]
+    #[cfg(all(feature = "backend-geometric", not(feature = "backend-sqlite")))]
     pub fn status(&self) -> Result<DatabaseStatus> {
         // For geometric backend, we need to query through the storage
         // Since we don't have direct SQLite access, use the GeometricStorage methods

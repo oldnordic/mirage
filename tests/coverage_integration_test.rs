@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-use mirage_analyzer::cfg::{export_json, BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
+use mirage::cfg::{export_json, BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
 use petgraph::graph::DiGraph;
 
 /// Create a test SQLite database with CFG and coverage data

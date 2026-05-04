@@ -68,7 +68,7 @@ impl TestContext {
         }
     }
 
-    /// Create a minimal test database with Magellan v7 schema
+    /// Create a minimal test database with Magellan v11 schema
     fn create_test_database(db_path: &PathBuf) {
         use rusqlite::Connection;
         use std::fs;
@@ -92,7 +92,7 @@ impl TestContext {
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
-             VALUES (1, 7, 3, 0)",
+             VALUES (1, 11, 3, 0)",
             [],
         ).unwrap();
 
@@ -109,7 +109,7 @@ impl TestContext {
         )
         .unwrap();
 
-        // Create cfg_blocks table (Magellan v10+ with 4D coordinates)
+        // Create cfg_blocks table (Magellan v11 schema)
         conn.execute(
             "CREATE TABLE cfg_blocks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,10 +122,13 @@ impl TestContext {
                 start_col INTEGER NOT NULL,
                 end_line INTEGER NOT NULL,
                 end_col INTEGER NOT NULL,
-                coord_x INTEGER NOT NULL DEFAULT 0,
-                coord_y INTEGER NOT NULL DEFAULT 0,
-                coord_z INTEGER NOT NULL DEFAULT 0,
-                FOREIGN KEY (function_id) REFERENCES graph_entities(id)
+                cfg_hash TEXT,
+                statements TEXT,
+                coord_x INTEGER DEFAULT 0,
+                coord_y INTEGER DEFAULT 0,
+                coord_z INTEGER DEFAULT 0,
+                coord_t TEXT DEFAULT NULL,
+                FOREIGN KEY (function_id) REFERENCES graph_entities(id) ON DELETE CASCADE
             )",
             [],
         )
@@ -163,7 +166,7 @@ impl TestContext {
 
         conn.execute(
             "INSERT INTO mirage_meta (id, mirage_schema_version, magellan_schema_version)
-             VALUES (1, 1, 7)",
+             VALUES (1, 1, 11)",
             [],
         )
         .unwrap();
@@ -186,15 +189,15 @@ impl TestContext {
         )
         .unwrap();
 
-        // Create cfg_edges table for Mirage
+        // Create cfg_edges table (Magellan v11 schema)
         conn.execute(
             "CREATE TABLE cfg_edges (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                from_id INTEGER NOT NULL,
-                to_id INTEGER NOT NULL,
+                function_id INTEGER NOT NULL,
+                source_idx INTEGER NOT NULL,
+                target_idx INTEGER NOT NULL,
                 edge_type TEXT NOT NULL,
-                FOREIGN KEY (from_id) REFERENCES cfg_blocks(id),
-                FOREIGN KEY (to_id) REFERENCES cfg_blocks(id)
+                FOREIGN KEY (function_id) REFERENCES graph_entities(id) ON DELETE CASCADE
             )",
             [],
         )

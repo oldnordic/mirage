@@ -1,5 +1,5 @@
-use mirage_analyzer::cfg::summary::PathSummarizer;
-use mirage_analyzer::cfg::{BasicBlock, BlockKind, Terminator};
+use mirage::cfg::summary::PathSummarizer;
+use mirage::cfg::{BasicBlock, BlockKind, Terminator};
 
 #[test]
 fn test_noise_reduction() {

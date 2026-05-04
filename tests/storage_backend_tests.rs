@@ -5,7 +5,7 @@
 //! - GeometricDB (.geo files)
 //! - Native V3
 
-use mirage_analyzer::storage::{BackendFormat, MirageDb};
+use mirage::storage::{BackendFormat, MirageDb};
 use tempfile::TempDir;
 
 #[cfg(feature = "backend-sqlite")]

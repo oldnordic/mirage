@@ -5,7 +5,7 @@
 
 #![cfg(feature = "backend-geometric")]
 
-use mirage_analyzer::storage::{Backend, GeometricStorage, StorageTrait};
+use mirage::storage::{Backend, GeometricStorage, StorageTrait};
 use tempfile::TempDir;
 
 fn create_temp_geo_file() -> (TempDir, std::path::PathBuf) {
@@ -118,7 +118,7 @@ fn test_geometric_backend_symbol_methods() {
 
 #[test]
 fn test_backend_format_detects_geometric() {
-    use mirage_analyzer::storage::BackendFormat;
+    use mirage::storage::BackendFormat;
 
     let (_temp, geo_path) = create_temp_geo_file();
 
@@ -132,7 +132,7 @@ fn test_backend_format_detects_geometric() {
 
 #[test]
 fn test_backend_format_detects_sqlite() {
-    use mirage_analyzer::storage::BackendFormat;
+    use mirage::storage::BackendFormat;
     use rusqlite::Connection;
 
     let temp_dir = TempDir::new().unwrap();
@@ -150,7 +150,7 @@ fn test_backend_format_detects_sqlite() {
 
 #[test]
 fn test_backend_format_unknown_for_nonexistent() {
-    use mirage_analyzer::storage::BackendFormat;
+    use mirage::storage::BackendFormat;
 
     let temp_dir = TempDir::new().unwrap();
     let nonexistent = temp_dir.path().join("nonexistent.geo");

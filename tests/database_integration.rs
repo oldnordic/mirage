@@ -137,7 +137,7 @@ fn insert_test_function(conn: &Connection, name: &str, file_path: &str) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mirage_analyzer::storage::{
+    use mirage::storage::{
         create_schema, MirageDb, MIRAGE_SCHEMA_VERSION, REQUIRED_MAGELLAN_SCHEMA_VERSION,
     };
 

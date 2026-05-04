@@ -12,7 +12,7 @@
 
 #![cfg(feature = "backend-geometric")]
 
-use mirage_analyzer::router::{BackendRouter, GeometricRouter, SliceDirection};
+use mirage::router::{BackendRouter, GeometricRouter, SliceDirection};
 use tempfile::TempDir;
 
 /// Create a test .geo database with a function that has:

@@ -1,4 +1,4 @@
-use mirage_analyzer::mir::charon_llbc::Crate;
+use mirage::mir::charon_llbc::Crate;
 use std::fs;
 
 #[test]
@@ -30,13 +30,13 @@ fn test_parse_if_else_llbc() {
     assert_eq!(unstructured.blocks.len(), 3);
     assert!(matches!(
         unstructured.blocks[0].terminator,
-        mirage_analyzer::mir::charon_llbc::Terminator::SwitchInt { .. }
+        mirage::mir::charon_llbc::Terminator::SwitchInt { .. }
     ));
 }
 
 #[test]
 fn test_translate_if_else() {
-    use mirage_analyzer::mir::translator::translate_function;
+    use mirage::mir::translator::translate_function;
 
     let json_content =
         fs::read_to_string("tests/data/if_else.llbc").expect("Failed to read test data");

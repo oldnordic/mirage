@@ -1,8 +1,8 @@
 #![allow(deprecated)]
 
-use mirage_analyzer::mir::charon_llbc::Crate;
-use mirage_analyzer::mir::translator::translate_function;
-use mirage_analyzer::storage::{store_cfg, MirageDb};
+use mirage::mir::charon_llbc::Crate;
+use mirage::mir::translator::translate_function;
+use mirage::storage::{store_cfg, MirageDb};
 use rusqlite::Connection;
 use std::fs;
 use tempfile::NamedTempFile;
@@ -46,7 +46,7 @@ fn test_full_mir_to_db_flow() {
         .expect("Failed to initialize Magellan schema");
 
         // Initialize Mirage schema
-        mirage_analyzer::storage::create_schema(&mut conn, 7)
+        mirage::storage::create_schema(&mut conn, 7)
             .expect("Failed to create Mirage schema");
 
         // Add function entity

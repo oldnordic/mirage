@@ -27,7 +27,7 @@ pub use crate::storage::{
 pub use analysis::{find_entry, find_exits};
 
 #[cfg(feature = "sqlite")]
-pub use crate::storage::{load_cfg_from_db_with_conn, resolve_function_name_with_conn};
+pub use crate::storage::load_cfg_from_db_with_conn;
 pub use dominance_frontiers::compute_dominance_frontiers;
 pub use dominators::DominatorTree;
 pub use edge::EdgeType;

@@ -1186,7 +1186,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mirage"
+name = "mirage-analyzer"
 version = "1.2.7"
 dependencies = [
  "anyhow",

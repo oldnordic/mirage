@@ -5,6 +5,23 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-05-06
+
+### Added
+- **`cycles --type` filter** — Call graph cycle detection now supports filtering by cycle type:
+  - `--type all` (default) — All cycles
+  - `--type inter-function` — Cycles spanning multiple functions
+  - `--type self-loop` — Functions that call themselves
+
+### Fixed
+- **Path enumeration for implicit returns** — Functions without explicit `return` terminators (magellan stores these as "fallthrough") caused `find_exits()` to return empty, producing 0 paths for ~90% of functions:
+  - Added dead-end block fallback in `enumerate_paths()`, `enumerate_paths_iterative()`, and `EnumerationContext::new()`
+  - When no exit blocks found via terminators, blocks with no outgoing edges are treated as implicit exits
+  - Verified with `?` operator self-loop test and implicit return dead-end test
+
+### Changed
+- Updated Magellan dependency to `3.2.0`.
+
 ## [1.2.7] - 2026-05-06
 
 ### Changed

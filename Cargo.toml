@@ -1,5 +1,5 @@
 [package]
-name = "mirage"
+name = "mirage-analyzer"
 version = "1.2.7"
 edition = "2021"
 rust-version = "1.70"

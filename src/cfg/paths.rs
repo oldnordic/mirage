@@ -725,7 +725,18 @@ impl EnumerationContext {
         let loop_headers = crate::cfg::loops::find_loop_headers(cfg);
 
         // Compute exit nodes
-        let exits = crate::cfg::analysis::find_exits(cfg).into_iter().collect();
+        let mut exits: HashSet<NodeIndex> =
+            crate::cfg::analysis::find_exits(cfg).into_iter().collect();
+
+        // Fallback: if no explicit exits, treat dead-end blocks as implicit exits.
+        // Magellan often stores the final block with "fallthrough" instead of "return".
+        if exits.is_empty() {
+            for node in cfg.node_indices() {
+                if cfg.neighbors(node).next().is_none() {
+                    exits.insert(node);
+                }
+            }
+        }
 
         Self {
             reachable_blocks,
@@ -958,7 +969,19 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
     };
 
     // Get exit blocks
-    let exits: HashSet<NodeIndex> = crate::cfg::analysis::find_exits(cfg).into_iter().collect();
+    let mut exits: HashSet<NodeIndex> = crate::cfg::analysis::find_exits(cfg).into_iter().collect();
+
+    // Fallback: if no explicit return/abort/unreachable exits, treat dead-end
+    // blocks (no outgoing edges) as implicit exits. This handles CFGs where
+    // magellan stores the final block with a "fallthrough" terminator instead
+    // of "return" (common for implicit returns in Rust).
+    if exits.is_empty() {
+        for node in cfg.node_indices() {
+            if cfg.neighbors(node).next().is_none() {
+                exits.insert(node);
+            }
+        }
+    }
 
     if exits.is_empty() {
         return vec![]; // No exits means no complete paths
@@ -1168,7 +1191,19 @@ pub fn enumerate_paths_iterative(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
     };
 
     // Get exit blocks
-    let exits: HashSet<NodeIndex> = crate::cfg::analysis::find_exits(cfg).into_iter().collect();
+    let mut exits: HashSet<NodeIndex> = crate::cfg::analysis::find_exits(cfg).into_iter().collect();
+
+    // Fallback: if no explicit return/abort/unreachable exits, treat dead-end
+    // blocks (no outgoing edges) as implicit exits. This handles CFGs where
+    // magellan stores the final block with a "fallthrough" terminator instead
+    // of "return" (common for implicit returns in Rust).
+    if exits.is_empty() {
+        for node in cfg.node_indices() {
+            if cfg.neighbors(node).next().is_none() {
+                exits.insert(node);
+            }
+        }
+    }
 
     if exits.is_empty() {
         return vec![]; // No exits means no complete paths
@@ -2756,6 +2791,145 @@ mod tests {
                 path.blocks, path.kind, expected_kind
             );
         }
+    }
+
+    #[test]
+    fn test_enumerate_paths_try_operator_self_loop() {
+        // Reproduces issue #6: ? operator creates a self-loop "return" edge
+        // from the try block to itself. The Ok path continues to the next block.
+        // CFG: 0(entry) -> 1(try, conditional) -> 1(self-loop, return edge)
+        //                              \\-> 2(normal) -> 3(return)
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            db_id: None,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            db_id: None,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::SwitchInt {
+                targets: vec![2],
+                otherwise: 2,
+            },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            db_id: None,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 3 },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b3 = g.add_node(BasicBlock {
+            id: 3,
+            db_id: None,
+            kind: BlockKind::Exit,
+            statements: vec![],
+            terminator: Terminator::Return,
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b1, EdgeType::Return); // Error path: self-loop
+        g.add_edge(b1, b2, EdgeType::Fallthrough); // Ok path
+        g.add_edge(b2, b3, EdgeType::Fallthrough);
+
+        let paths = enumerate_paths(&g, &PathLimits::default());
+
+        // Should have at least 1 path (the Ok path)
+        // Ideally 2: Ok path (0->1->2->3) and error path (0->1->1)
+        assert!(
+            !paths.is_empty(),
+            "Should find at least one path through try operator CFG, found 0"
+        );
+
+        // The Ok path should exist
+        let ok_path: Vec<usize> = vec![0, 1, 2, 3];
+        let has_ok = paths.iter().any(|p| p.blocks == ok_path);
+        assert!(has_ok, "Should find Ok path {:?}", ok_path);
+    }
+
+    #[test]
+    fn test_enumerate_paths_implicit_return_dead_end() {
+        // Reproduces issue #6: magellan stores implicit return blocks with
+        // "fallthrough" terminator instead of "return". Without the fallback,
+        // enumerate_paths would return 0 because find_exits finds nothing.
+        // CFG: 0(entry) -> 1(normal, fallthrough) -> 2(normal, fallthrough/no edges)
+        let mut g = DiGraph::new();
+
+        let b0 = g.add_node(BasicBlock {
+            id: 0,
+            db_id: None,
+            kind: BlockKind::Entry,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 1 },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        let b1 = g.add_node(BasicBlock {
+            id: 1,
+            db_id: None,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 2 },
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        // Last block: no successors, terminator is Goto (loaded from "fallthrough")
+        let b2 = g.add_node(BasicBlock {
+            id: 2,
+            db_id: None,
+            kind: BlockKind::Normal,
+            statements: vec![],
+            terminator: Terminator::Goto { target: 0 }, // loaded from "fallthrough"
+            source_location: None,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
+        });
+
+        g.add_edge(b0, b1, EdgeType::Fallthrough);
+        g.add_edge(b1, b2, EdgeType::Fallthrough);
+        // b2 has no outgoing edges
+
+        let paths = enumerate_paths(&g, &PathLimits::default());
+
+        assert_eq!(
+            paths.len(),
+            1,
+            "Should find 1 path via dead-end fallback, found {}",
+            paths.len()
+        );
+        assert_eq!(paths[0].blocks, vec![0, 1, 2]);
     }
 
     // Task 1: PathLimits enforcement tests

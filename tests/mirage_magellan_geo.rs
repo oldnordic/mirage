@@ -180,8 +180,7 @@ fn test_1_normalized_path_resolution() {
     let adapter = mirage::integrations::magellan::MagellanAdapter::new(&backend);
 
     // Path normalization should make ./src/main.rs equivalent to src/main.rs
-    let normalized =
-        mirage::integrations::magellan::normalize_path_for_query("./src/main.rs");
+    let normalized = mirage::integrations::magellan::normalize_path_for_query("./src/main.rs");
     assert!(
         normalized.contains("src/main.rs"),
         "Path should be normalized"

@@ -46,8 +46,7 @@ fn test_full_mir_to_db_flow() {
         .expect("Failed to initialize Magellan schema");
 
         // Initialize Mirage schema
-        mirage::storage::create_schema(&mut conn, 7)
-            .expect("Failed to create Mirage schema");
+        mirage::storage::create_schema(&mut conn, 7).expect("Failed to create Mirage schema");
 
         // Add function entity
         conn.execute(

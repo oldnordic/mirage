@@ -311,6 +311,17 @@ pub struct BlastZoneArgs {
     pub use_call_graph: bool,
 }
 
+/// Cycle type filter for the cycles command
+#[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CycleTypeArg {
+    /// Show all cycles (default)
+    All,
+    /// Show only inter-function cycles (mutual recursion, size > 1)
+    InterFunction,
+    /// Show only self-loops (single recursive function)
+    SelfLoop,
+}
+
 #[derive(Parser, Debug, Clone)]
 pub struct CyclesArgs {
     /// Show call graph cycles (mutual recursion between functions)
@@ -324,6 +335,10 @@ pub struct CyclesArgs {
     /// Show both types of cycles (default)
     #[arg(long)]
     pub both: bool,
+
+    /// Filter cycle type: all, inter-function, or self-loop
+    #[arg(long, value_enum, default_value = "all")]
+    pub cycle_type: CycleTypeArg,
 
     /// Verbose output (show cycle members/loop bodies)
     #[arg(long)]
@@ -3299,7 +3314,7 @@ pub mod cmds {
             || (!args.call_graph && !args.function_loops && !args.both);
 
         // Detect call graph cycles if requested
-        let call_graph_cycles: Vec<CycleInfo> = if show_call_graph {
+        let mut call_graph_cycles: Vec<CycleInfo> = if show_call_graph {
             match MagellanBridge::open(&db_path) {
                 Ok(bridge) => match bridge.detect_cycles() {
                     Ok(report) => report.cycles.iter().map(|c| c.into()).collect(),
@@ -3320,6 +3335,13 @@ pub mod cmds {
         } else {
             vec![]
         };
+
+        // Filter call graph cycles by type
+        call_graph_cycles.retain(|c| match args.cycle_type {
+            CycleTypeArg::All => true,
+            CycleTypeArg::InterFunction => c.cycle_type == "MutualRecursion",
+            CycleTypeArg::SelfLoop => c.cycle_type == "SelfLoop",
+        });
 
         // Detect function loops if requested
         let mut function_loops_map: std::collections::HashMap<String, Vec<LoopInfo>> =
@@ -3773,7 +3795,7 @@ pub mod cmds {
                     "Hotspots Analysis (entry: {})",
                     response.entry_point
                 ));
-                
+
                 // Add helpful hint if 0 functions found with intra-procedural mode
                 if response.total_functions == 0 && response.mode == "intra-procedural" {
                     output::warn("No functions found. This may be because:");
@@ -3782,7 +3804,7 @@ pub mod cmds {
                     output::info("  3. Try --inter-procedural for call-graph-based analysis");
                     println!();
                 }
-                
+
                 output::info(&format!(
                     "Found {} hotspots out of {} functions",
                     hotspots.len(),

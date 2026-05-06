@@ -12,6 +12,10 @@ license = "GPL-3.0"
 keywords = ["code-analysis", "cfg", "path-enumeration", "mir", "control-flow"]
 categories = ["development-tools", "development-tools::testing", "command-line-utilities"]
 
+[lib]
+name = "mirage"
+path = "src/lib.rs"
+
 [[bin]]
 name = "mirage"
 path = "src/main.rs"

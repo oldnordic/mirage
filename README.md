@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/mirage-analyzer)](https://crates.io/crates/mirage-analyzer)
 [![Documentation](https://docs.rs/mirage-analyzer/badge.svg)](https://docs.rs/mirage-analyzer)
 
-**Version:** 1.2.4
+**Version:** 1.3.1
 
 Path-aware code intelligence engine for Rust. Analyzes control-flow graphs from Magellan databases.
 
@@ -16,6 +16,7 @@ Mirage reads Magellan code graphs and provides control-flow analysis:
 - Dead code detection
 - Call graph cycle detection
 - Inter-procedural reachability
+- Source document listing from graph memory tables
 
 ## Quick Start
 
@@ -30,6 +31,7 @@ magellan watch --root ./src --db .magellan/mirage.db
 mirage --db .magellan/mirage.db paths --function "main"
 mirage --db .magellan/mirage.db cfg --function "process"
 mirage --db .magellan/mirage.db cycles
+mirage --db .magellan/mirage.db docs --kind wiki
 ```
 
 ## Backends
@@ -52,7 +54,7 @@ cargo install mirage-analyzer --features backend-geometric --no-default-features
 
 ## Requirements
 
-- **[Magellan](https://github.com/oldnordic/magellan)** 3.1.7+ / Schema v11 (or v10 with 4D coordinate columns)
+- **[Magellan](https://github.com/oldnordic/magellan)** 3.3.3+ / Schema v14 (or v11+ for basic CFG, v13+ for source documents)
 - Rust 1.70+ (for MIR parsing)
 - Magellan database (`.db`) created by `magellan watch`
 

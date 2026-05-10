@@ -42,4 +42,7 @@ pub mod router;
 pub mod storage;
 
 // Public API exports
-pub use storage::{create_schema, Backend, CfgBlockData, DatabaseStatus, MirageDb, StorageTrait};
+pub use storage::{
+    create_schema, Backend, CfgBlockData, DatabaseStatus, DocumentInfo, FactInfo, MirageDb,
+    StorageTrait,
+};

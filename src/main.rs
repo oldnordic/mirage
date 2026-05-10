@@ -99,6 +99,7 @@ fn run_command(cli: Cli) -> Result<()> {
             // Commands::ComplexBlocks(ref args) => cli::cmds::complex_blocks(args, &cli),
             // Commands::SpatialAnalysis(ref args) => cli::cmds::spatial_analysis(args, &cli),
             Commands::Migrate(ref args) => cli::cmds::migrate(args, &cli),
+            Commands::Docs(ref args) => cli::cmds::docs(args, &cli),
         },
     }
 }

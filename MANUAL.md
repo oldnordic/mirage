@@ -1,6 +1,6 @@
 # Mirage User Manual
 
-Version 1.2.4
+Version 1.3.1
 
 ---
 
@@ -42,7 +42,7 @@ cargo install --path .
 
 ### Requirements
 
-- **Magellan 3.1.7+ / Schema v11** (or v10 with 4D coordinates)
+- **Magellan 3.3.3+ / Schema v14** (or v11+ for basic CFG, v13+ for source documents)
   - For CFG extraction and 4D spatial coordinates
   - Run `magellan watch --root ./src --db .magellan/mirage.db` first
 - **Rust 1.70+** (for MIR parsing)
@@ -690,6 +690,36 @@ mirage migrate --from sqlite --to geometric --db .magellan/mirage.db
 | `--db <PATH>` | Database path to migrate |
 | `--backup` | Create backup before migrating |
 | `--dry-run` | Detect format only, do not migrate |
+
+---
+
+### `docs` - Source Documents
+
+List source documents from Magellan's graph memory tables (requires schema 13+).
+
+```bash
+mirage docs --db .magellan/mirage.db
+```
+
+| Option | Description |
+|--------|-------------|
+| `--kind <KIND>` | Filter by source kind (wiki, code, message, etc.) |
+| `--tag <TAG>` | Filter by tag |
+| `--limit <N>` | Maximum results (default: 50) |
+
+**Examples:**
+```bash
+# List all source documents
+mirage docs --db .magellan/mirage.db
+
+# Filter by kind
+mirage docs --db .magellan/mirage.db --kind wiki
+
+# Filter by tag, JSON output
+mirage docs --db .magellan/mirage.db --tag rust --output json
+```
+
+Graceful degradation: returns "No source documents found" when the `source_documents` table is missing (pre-schema-13 databases).
 
 ---
 

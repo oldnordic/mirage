@@ -5,6 +5,26 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-05-10
+
+### Added
+- **`docs` command** — List source documents from Magellan's graph memory tables:
+  - `mirage docs --db code.db` — List all source documents
+  - `--kind <kind>` — Filter by source kind (wiki, code, message, etc.)
+  - `--tag <tag>` — Filter by tag
+  - `--limit <n>` — Maximum results (default: 50)
+  - Supports `--output human`, `--output json`, `--output pretty`
+  - Graceful degradation: returns empty when `source_documents` table is missing
+
+- **DocumentInfo and FactInfo structs** — New data types in `storage::StorageTrait`:
+  - `DocumentInfo` — path, kind, title, tags, wikilinks
+  - `FactInfo` — candidate_id, subject, predicate, object, status
+  - `get_documents_for_function()`, `get_facts_for_function()`, `list_source_documents()` — StorageTrait methods with SQLite implementations
+  - Default implementations return empty (no breakage for geometric backend)
+
+### Changed
+- Updated Magellan dependency to `3.3.3` (schema 14).
+
 ## [1.3.0] - 2026-05-06
 
 ### Added

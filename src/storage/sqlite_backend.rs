@@ -22,10 +22,10 @@
 //! ```
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path as StdPath;
 
-use super::{CfgBlockData, StorageTrait};
+use super::{CfgBlockData, DocumentInfo, FactInfo, StorageTrait};
 use crate::cfg::Path;
 
 /// Convert string from database to PathKind
@@ -274,6 +274,150 @@ impl StorageTrait for SqliteStorage {
             .map_err(|e| anyhow::anyhow!("Failed to collect callee rows: {}", e))?;
 
         Ok(callees)
+    }
+
+    fn get_documents_for_function(&self, function_id: i64) -> Result<Vec<DocumentInfo>> {
+        let tables_ok: bool = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('source_documents', 'candidate_facts')",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+            == 2;
+
+        if !tables_ok {
+            return Ok(Vec::new());
+        }
+
+        let func_name: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT name FROM graph_entities WHERE id = ?",
+                rusqlite::params![function_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("query function name")?
+            .flatten();
+
+        let name = match func_name {
+            Some(n) => n,
+            None => return Ok(Vec::new()),
+        };
+
+        self.conn
+            .prepare(
+                "SELECT DISTINCT sd.id, sd.path_or_uri, sd.source_kind, sd.title, sd.tags, sd.wikilinks
+                 FROM source_documents sd
+                 INNER JOIN candidate_facts cf ON cf.source_document_id = sd.id
+                 WHERE cf.subject_key = ? AND cf.subject_type = 'function'
+                 ORDER BY sd.path_or_uri",
+            )?
+            .query_map(rusqlite::params![name], |row| {
+                Ok(DocumentInfo {
+                    id: row.get(0)?,
+                    path_or_uri: row.get(1)?,
+                    source_kind: row.get(2)?,
+                    title: row.get(3)?,
+                    tags: row.get(4)?,
+                    wikilinks: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("collect document rows: {}", e))
+    }
+
+    fn get_facts_for_function(&self, function_id: i64) -> Result<Vec<FactInfo>> {
+        let table_exists: bool = self
+            .conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='candidate_facts'",
+                [],
+                |row| row.get::<_, i32>(0),
+            )
+            .optional()
+            .context("check candidate_facts table")?
+            .is_some();
+
+        if !table_exists {
+            return Ok(Vec::new());
+        }
+
+        let func_name: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT name FROM graph_entities WHERE id = ?",
+                rusqlite::params![function_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("query function name")?
+            .flatten();
+
+        let name = match func_name {
+            Some(n) => n,
+            None => return Ok(Vec::new()),
+        };
+
+        self.conn
+            .prepare(
+                "SELECT candidate_id, subject_type, subject_key, predicate,
+                        object_type, object_key, status, source_document_id
+                 FROM candidate_facts
+                 WHERE subject_key = ? AND subject_type = 'function'
+                 ORDER BY predicate",
+            )?
+            .query_map(rusqlite::params![name], |row| {
+                Ok(FactInfo {
+                    candidate_id: row.get(0)?,
+                    subject_type: row.get(1)?,
+                    subject_key: row.get(2)?,
+                    predicate: row.get(3)?,
+                    object_type: row.get(4)?,
+                    object_key: row.get(5)?,
+                    status: row.get(6)?,
+                    source_document_id: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("collect fact rows: {}", e))
+    }
+
+    fn list_source_documents(&self) -> Result<Vec<DocumentInfo>> {
+        let table_exists: bool = self
+            .conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_documents'",
+                [],
+                |row| row.get::<_, i32>(0),
+            )
+            .optional()
+            .context("check source_documents table")?
+            .is_some();
+
+        if !table_exists {
+            return Ok(Vec::new());
+        }
+
+        self.conn
+            .prepare(
+                "SELECT id, path_or_uri, source_kind, title, tags, wikilinks
+                 FROM source_documents ORDER BY path_or_uri",
+            )?
+            .query_map([], |row| {
+                Ok(DocumentInfo {
+                    id: row.get(0)?,
+                    path_or_uri: row.get(1)?,
+                    source_kind: row.get(2)?,
+                    title: row.get(3)?,
+                    tags: row.get(4)?,
+                    wikilinks: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("collect document rows: {}", e))
     }
 }
 

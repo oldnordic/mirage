@@ -50,8 +50,16 @@ SymbolLookupResult::NotFound
 - `get_callees(symbol_id)` — Direct callees
 - `find_call_graph_cycles()` — Find SCCs
 
+## Graph Memory Operations (Schema 13+)
+
+- `list_source_documents()` — All source documents from `source_documents` table
+- `get_documents_for_function(function_id)` — Documents referencing a function
+- `get_facts_for_function(function_id)` — Candidate facts about a function
+
+All methods degrade gracefully: return empty `Vec` when tables are missing.
+
 ## Version Requirements
 
-- **Magellan**: 3.0+
+- **Magellan**: 3.3.3+ (schema 14 for graph memory tables)
 - **sqlitegraph**: 2.0+
 - **GeoGraphDB**: Optional (for spatial features)

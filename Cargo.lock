@@ -1099,9 +1099,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "magellan"
-version = "3.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37a38f62bcadbf24c442e3dec7788bdc752f80723a84ca19f9c4fb2d0a14cf9d"
+version = "3.3.3"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1111,6 +1109,7 @@ dependencies = [
  "camino",
  "chrono",
  "csv",
+ "fixedbitset 0.4.2",
  "geographdb-core",
  "git2",
  "glam",
@@ -1119,6 +1118,7 @@ dependencies = [
  "ignore",
  "indicatif",
  "lcov",
+ "memchr",
  "notify",
  "notify-debouncer-mini",
  "protobuf",
@@ -1187,7 +1187,7 @@ dependencies = [
 
 [[package]]
 name = "mirage-analyzer"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "anyhow",
  "blake3",

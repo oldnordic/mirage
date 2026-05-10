@@ -146,6 +146,18 @@ pub trait StorageTrait {
     fn get_callees(&self, _function_id: i64) -> Result<Vec<i64>> {
         Ok(Vec::new())
     }
+
+    fn get_documents_for_function(&self, _function_id: i64) -> Result<Vec<DocumentInfo>> {
+        Ok(Vec::new())
+    }
+
+    fn get_facts_for_function(&self, _function_id: i64) -> Result<Vec<FactInfo>> {
+        Ok(Vec::new())
+    }
+
+    fn list_source_documents(&self) -> Result<Vec<DocumentInfo>> {
+        Ok(Vec::new())
+    }
 }
 
 /// CFG block data (backend-agnostic representation)
@@ -180,6 +192,30 @@ pub struct CfgBlockData {
     pub coord_y: i64,
     /// Z coordinate: branch distance from entry point
     pub coord_z: i64,
+}
+
+/// Source document metadata from graph memory tables.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DocumentInfo {
+    pub id: i64,
+    pub path_or_uri: String,
+    pub source_kind: String,
+    pub title: Option<String>,
+    pub tags: Option<String>,
+    pub wikilinks: Option<String>,
+}
+
+/// Candidate fact from graph memory tables.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FactInfo {
+    pub candidate_id: String,
+    pub subject_type: String,
+    pub subject_key: String,
+    pub predicate: String,
+    pub object_type: Option<String>,
+    pub object_key: Option<String>,
+    pub status: String,
+    pub source_document_id: i64,
 }
 
 /// Storage backend enum (Phase 069-01)
@@ -320,6 +356,18 @@ impl Backend {
             Backend::Sqlite(s) => s.get_callees(function_id),
             #[cfg(feature = "backend-geometric")]
             Backend::Geometric(g) => g.get_callees(function_id),
+            #[allow(unreachable_patterns)]
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    /// Delegate list_source_documents to inner backend
+    pub fn list_source_documents(&self) -> Result<Vec<DocumentInfo>> {
+        match self {
+            #[cfg(feature = "backend-sqlite")]
+            Backend::Sqlite(s) => s.list_source_documents(),
+            #[cfg(feature = "backend-geometric")]
+            Backend::Geometric(g) => g.list_source_documents(),
             #[allow(unreachable_patterns)]
             _ => Ok(Vec::new()),
         }
@@ -1056,6 +1104,11 @@ pub struct DatabaseStatus {
 }
 
 impl MirageDb {
+    /// List source documents from graph memory tables
+    pub fn list_source_documents(&self) -> Result<Vec<DocumentInfo>> {
+        self.storage.list_source_documents()
+    }
+
     /// Get database statistics
     ///
     /// Note: cfg_edges count is included for backward compatibility but edges

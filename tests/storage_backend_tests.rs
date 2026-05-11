@@ -78,7 +78,8 @@ fn test_open_sqlite_database() {
                 end_col INTEGER,
                 coord_x INTEGER DEFAULT 0,
                 coord_y INTEGER DEFAULT 0,
-                coord_z INTEGER DEFAULT 0
+                coord_z INTEGER DEFAULT 0,
+                cfg_condition TEXT
             );",
         )
         .unwrap();
@@ -162,7 +163,8 @@ fn test_get_cfg_blocks_from_sqlite() {
                 end_col INTEGER,
                 coord_x INTEGER DEFAULT 0,
                 coord_y INTEGER DEFAULT 0,
-                coord_z INTEGER DEFAULT 0
+                coord_z INTEGER DEFAULT 0,
+                cfg_condition TEXT
             );",
         )
         .unwrap();

@@ -108,7 +108,7 @@ impl StorageTrait for SqliteStorage {
             .prepare_cached(
                 "SELECT id, kind, terminator, byte_start, byte_end,
                     start_line, start_col, end_line, end_col,
-                    coord_x, coord_y, coord_z
+                    coord_x, coord_y, coord_z, cfg_condition
              FROM cfg_blocks
              WHERE function_id = ?
              ORDER BY id ASC",
@@ -131,6 +131,7 @@ impl StorageTrait for SqliteStorage {
                     coord_x: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
                     coord_y: row.get::<_, Option<i64>>(10)?.unwrap_or(0),
                     coord_z: row.get::<_, Option<i64>>(11)?.unwrap_or(0),
+                    cfg_condition: row.get(12)?,
                 })
             })
             .map_err(|e| anyhow::anyhow!("Failed to execute cfg_blocks query: {}", e))?
@@ -477,6 +478,7 @@ mod tests {
                 coord_x INTEGER DEFAULT 0,
                 coord_y INTEGER DEFAULT 0,
                 coord_z INTEGER DEFAULT 0,
+                cfg_condition TEXT,
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id)
             )",
             [],

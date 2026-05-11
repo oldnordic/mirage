@@ -67,6 +67,7 @@ fn create_test_magellan_db() -> tempfile::NamedTempFile {
             start_col INTEGER NOT NULL,
             end_line INTEGER NOT NULL,
             end_col INTEGER NOT NULL,
+            cfg_condition TEXT,
             FOREIGN KEY (function_id) REFERENCES graph_entities(id)
         )",
         [],

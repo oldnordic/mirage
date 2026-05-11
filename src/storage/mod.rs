@@ -192,6 +192,8 @@ pub struct CfgBlockData {
     pub coord_y: i64,
     /// Z coordinate: branch distance from entry point
     pub coord_z: i64,
+    /// Optional #[cfg(...)] condition for feature-gated branch elimination
+    pub cfg_condition: Option<String>,
 }
 
 /// Source document metadata from graph memory tables.
@@ -999,6 +1001,7 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
             coord_x INTEGER NOT NULL DEFAULT 0,
             coord_y INTEGER NOT NULL DEFAULT 0,
             coord_z INTEGER NOT NULL DEFAULT 0,
+            cfg_condition TEXT,
             FOREIGN KEY (function_id) REFERENCES graph_entities(id)
         )",
         [],

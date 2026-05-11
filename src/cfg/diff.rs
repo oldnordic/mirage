@@ -492,6 +492,7 @@ mod tests {
                 coord_x: 0,
                 coord_y: 0,
                 coord_z: 0,
+                cfg_condition: None,
             },
             CfgBlockData {
                 id: 1,
@@ -506,6 +507,7 @@ mod tests {
                 coord_x: 0,
                 coord_y: 0,
                 coord_z: 0,
+                cfg_condition: None,
             },
         ];
 

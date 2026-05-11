@@ -68,7 +68,8 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
             end_col INTEGER,
             coord_x INTEGER DEFAULT 0,
             coord_y INTEGER DEFAULT 0,
-            coord_z INTEGER DEFAULT 0
+            coord_z INTEGER DEFAULT 0,
+            cfg_condition TEXT
         )",
         [],
     )
@@ -203,6 +204,7 @@ fn test_cfg_block_data_fields() {
         coord_x: 0,
         coord_y: 0,
         coord_z: 0,
+        cfg_condition: None,
     };
 
     assert_eq!(block.kind, "entry");

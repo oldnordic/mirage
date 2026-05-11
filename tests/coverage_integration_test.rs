@@ -61,7 +61,8 @@ fn create_test_db_with_coverage() -> (TempDir, PathBuf) {
             end_col INTEGER NOT NULL,
             coord_x INTEGER NOT NULL DEFAULT 0,
             coord_y INTEGER NOT NULL DEFAULT 0,
-            coord_z INTEGER NOT NULL DEFAULT 0
+            coord_z INTEGER NOT NULL DEFAULT 0,
+            cfg_condition TEXT
         )",
         [],
     )

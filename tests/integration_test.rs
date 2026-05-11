@@ -92,7 +92,7 @@ impl TestContext {
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
-             VALUES (1, 11, 3, 0)",
+             VALUES (1, 11, 4, 0)",
             [],
         ).unwrap();
 
@@ -127,6 +127,7 @@ impl TestContext {
                 coord_x INTEGER DEFAULT 0,
                 coord_y INTEGER DEFAULT 0,
                 coord_z INTEGER DEFAULT 0,
+                cfg_condition TEXT,
                 coord_t TEXT DEFAULT NULL,
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id) ON DELETE CASCADE
             )",
@@ -184,7 +185,7 @@ impl TestContext {
 
         conn.execute(
             "INSERT INTO graph_meta (id, schema_version, created_at)
-             VALUES (1, 3, 0)",
+             VALUES (1, 4, 0)",
             [],
         )
         .unwrap();

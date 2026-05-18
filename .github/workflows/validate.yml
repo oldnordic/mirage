@@ -45,9 +45,30 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: cargo check
         run: cargo check --all-targets
 
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
       - name: cargo test
         run: cargo test --all-targets
+
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+
+  semgrep:
+    name: Semgrep Security Scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Semgrep OSS scan
+        run: semgrep ci --oss-only --config .semgrep/rules/

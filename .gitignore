@@ -87,3 +87,14 @@ THE_VISION.md
 ECOSYSTEM_SYNERGY.md
 test_metadata.rs
 test_parse.sh
+
+# AI assistant config files (may contain secrets)
+.mcp.json
+AGENTS.md
+GEMINI.md
+CLAUDE.md
+
+# AI assistant working directories
+.magellan/
+.hermes/
+.claude/

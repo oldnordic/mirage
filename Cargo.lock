@@ -1123,9 +1123,9 @@ dependencies = [
 
 [[package]]
 name = "magellan"
-version = "3.3.10"
+version = "3.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b4f1161b46808abc9e45becb8cc8a074100db7ea868ef2d70d8c16527527261"
+checksum = "0ea18f04df502edf1284906402d463a5e55dc7c558688e09f1f86179b1363b47"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1213,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "mirage-analyzer"
-version = "1.4.3"
+version = "1.4.5"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1889,9 +1889,9 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "sqlitegraph"
-version = "3.0.1"
+version = "3.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f5e2a3d0d4735ef444bcb737bce045cc22fe11dd97d6b354f0f0ff98102b87e"
+checksum = "b9130129f2494cb7d00c1996e97a1fed3a078a327e2e43173506f65e838bc74a"
 dependencies = [
  "ahash",
  "arc-swap",

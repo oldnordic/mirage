@@ -169,13 +169,7 @@ impl PostDominatorTree {
         let a_pdoms: std::collections::HashSet<NodeIndex> = self.post_dominators(a).collect();
 
         // Find first (nearest) post-dominator of b that's also in a's post-dominators
-        for pdom in self.post_dominators(b) {
-            if a_pdoms.contains(&pdom) {
-                return Some(pdom);
-            }
-        }
-
-        None
+        self.post_dominators(b).find(|pdom| a_pdoms.contains(pdom))
     }
 
     /// Get depth of node in post-dominator tree

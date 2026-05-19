@@ -1334,10 +1334,8 @@ pub mod cmds {
                     });
                     let mut map = std::collections::HashMap::new();
                     if let Ok(iter) = rows {
-                        for item in iter {
-                            if let Ok((block_id, hit_count)) = item {
-                                map.insert(block_id, hit_count);
-                            }
+                        for (block_id, hit_count) in iter.flatten() {
+                            map.insert(block_id, hit_count);
                         }
                     }
                     if map.is_empty() {
@@ -1528,10 +1526,8 @@ pub mod cmds {
                 });
                 let mut map = std::collections::HashMap::new();
                 if let Ok(iter) = rows {
-                    for item in iter {
-                        if let Ok((block_id, hit_count)) = item {
-                            map.insert(block_id, hit_count);
-                        }
+                    for (block_id, hit_count) in iter.flatten() {
+                        map.insert(block_id, hit_count);
                     }
                 }
                 if map.is_empty() {
@@ -2108,7 +2104,7 @@ pub mod cmds {
 
         if let Some(&target_scc_id) = symbol_to_scc.get(&args.function) {
             // Find all SCCs that can reach the target SCC
-            for (&scc_id, _) in &scc_members {
+            for &scc_id in scc_members.keys() {
                 if scc_id != target_scc_id {
                     let mut visited = HashSet::new();
                     if can_reach_scc(scc_id, target_scc_id, &adjacency, &mut visited) {
@@ -2620,7 +2616,7 @@ pub mod cmds {
                     functions_with_unreachable,
                     unreachable_count: total_blocks,
                     blocks: all_blocks,
-                    uncalled_functions: uncalled_functions,
+                    uncalled_functions,
                 };
                 let wrapper = output::JsonResponse::new(response);
 
@@ -3325,12 +3321,8 @@ pub mod cmds {
         let db_path = super::resolve_db_path(cli.db.clone())?;
 
         // Default: show both types if no flag specified
-        let show_call_graph = args.call_graph
-            || args.both
-            || (!args.call_graph && !args.function_loops && !args.both);
-        let show_function_loops = args.function_loops
-            || args.both
-            || (!args.call_graph && !args.function_loops && !args.both);
+        let show_call_graph = args.call_graph || args.both || !args.function_loops;
+        let show_function_loops = args.function_loops || args.both || !args.call_graph;
 
         // Detect call graph cycles if requested
         let mut call_graph_cycles: Vec<CycleInfo> = if show_call_graph {
@@ -3423,35 +3415,30 @@ pub mod cmds {
 
             match rows_result {
                 Ok(rows) => {
-                    for row in rows {
-                        if let Ok((function_name, function_id)) = row {
-                            // Load CFG for this function
-                            if let Ok(cfg) = load_cfg_from_db(&db, function_id) {
-                                // Detect natural loops
-                                let natural_loops = detect_natural_loops(&cfg);
+                    for (function_name, function_id) in rows.flatten() {
+                        // Load CFG for this function
+                        if let Ok(cfg) = load_cfg_from_db(&db, function_id) {
+                            // Detect natural loops
+                            let natural_loops = detect_natural_loops(&cfg);
 
-                                if !natural_loops.is_empty() {
-                                    let loop_infos: Vec<LoopInfo> = natural_loops
-                                        .iter()
-                                        .map(|loop_| {
-                                            let nesting_level = loop_.nesting_level(&natural_loops);
-                                            let body_blocks: Vec<usize> = loop_
-                                                .body
-                                                .iter()
-                                                .map(|&node| cfg[node].id)
-                                                .collect();
-                                            LoopInfo {
-                                                header: cfg[loop_.header].id,
-                                                back_edge_from: cfg[loop_.back_edge.0].id,
-                                                body_size: loop_.size(),
-                                                nesting_level,
-                                                body_blocks,
-                                            }
-                                        })
-                                        .collect();
+                            if !natural_loops.is_empty() {
+                                let loop_infos: Vec<LoopInfo> = natural_loops
+                                    .iter()
+                                    .map(|loop_| {
+                                        let nesting_level = loop_.nesting_level(&natural_loops);
+                                        let body_blocks: Vec<usize> =
+                                            loop_.body.iter().map(|&node| cfg[node].id).collect();
+                                        LoopInfo {
+                                            header: cfg[loop_.header].id,
+                                            back_edge_from: cfg[loop_.back_edge.0].id,
+                                            body_size: loop_.size(),
+                                            nesting_level,
+                                            body_blocks,
+                                        }
+                                    })
+                                    .collect();
 
-                                    function_loops_map.insert(function_name, loop_infos);
-                                }
+                                function_loops_map.insert(function_name, loop_infos);
                             }
                         }
                     }
@@ -7852,9 +7839,7 @@ mod output_format_tests {
 
         for format in &formats {
             match format {
-                CfgFormat::Human => assert!(true),
-                CfgFormat::Dot => assert!(true),
-                CfgFormat::Json => assert!(true),
+                CfgFormat::Human | CfgFormat::Dot | CfgFormat::Json => {}
             }
         }
 

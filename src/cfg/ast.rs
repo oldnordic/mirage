@@ -245,6 +245,7 @@ impl<'a> CFGBuilder<'a> {
     }
 
     /// Get the first statement from a block
+    #[allow(clippy::manual_find)]
     fn first_statement(&self, block: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = block.walk();
         for child in block.children(&mut cursor) {

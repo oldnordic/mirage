@@ -63,7 +63,7 @@ pub fn export_dot_with_coords(cfg: &Cfg) -> String {
     }
 
     // Define edges
-    dot.push_str("\n");
+    dot.push('\n');
     for edge_idx in cfg.edge_indices() {
         let (from, to) = cfg.edge_endpoints(edge_idx).unwrap();
         if let Some(edge_type) = cfg.edge_weight(edge_idx) {

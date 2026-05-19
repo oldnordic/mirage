@@ -121,7 +121,7 @@ impl PathSummarizer {
 
                 // Clean up RHS: Constant(42) -> 42
                 let rhs_display = if rhs.starts_with("Constant(") && rhs.ends_with(')') {
-                    &rhs[9..rhs.len() - 1].trim()
+                    rhs[9..rhs.len() - 1].trim()
                 } else {
                     rhs
                 };

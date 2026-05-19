@@ -207,13 +207,7 @@ impl DominatorTree {
         let a_doms: std::collections::HashSet<NodeIndex> = self.dominators(a).collect();
 
         // Find first (nearest) dominator of b that's also in a's dominators
-        for dom in self.dominators(b) {
-            if a_doms.contains(&dom) {
-                return Some(dom);
-            }
-        }
-
-        None
+        self.dominators(b).find(|dom| a_doms.contains(dom))
     }
 
     /// Get depth of node in dominator tree

@@ -91,6 +91,7 @@ pub struct BlockChange {
 
 /// Type of change detected for a block
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::enum_variant_names)]
 pub enum ChangeType {
     /// Terminator instruction changed
     TerminatorChanged { before: String, after: String },
@@ -331,6 +332,7 @@ fn compute_edge_diff(
 /// This is a simplified implementation that creates edges based on
 /// terminator kind and sequential block ordering.
 /// Future versions will query actual edge data from the database.
+#[allow(clippy::collapsible_match)]
 fn derive_edges(blocks: &HashMap<i64, BlockDiff>) -> Vec<EdgeDiff> {
     let mut edges = Vec::new();
     let mut block_ids: Vec<_> = blocks.keys().copied().collect();
@@ -404,6 +406,7 @@ fn derive_edges(blocks: &HashMap<i64, BlockDiff>) -> Vec<EdgeDiff> {
 /// # Returns
 ///
 /// * `DiGraph<i64, ()>` - Graph where nodes are block IDs and edges are unlabeled
+#[allow(clippy::collapsible_match)]
 pub fn blocks_to_petgraph(blocks: &[CfgBlockData]) -> DiGraph<i64, ()> {
     let mut graph = DiGraph::new();
 

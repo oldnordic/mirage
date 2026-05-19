@@ -845,6 +845,7 @@ pub fn enumerate_paths_with_context(
 }
 
 /// Recursive DFS helper for path enumeration with pre-computed context
+#[allow(clippy::too_many_arguments)]
 fn dfs_enumerate_with_context(
     cfg: &Cfg,
     current: NodeIndex,
@@ -1023,6 +1024,7 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
 /// Explores all paths from the current node to exit blocks, tracking
 /// visited nodes to prevent cycles and respecting loop unroll limits.
 /// Uses pre-computed reachable set for efficient path classification.
+#[allow(clippy::too_many_arguments)]
 fn dfs_enumerate(
     cfg: &Cfg,
     current: NodeIndex,
@@ -3259,7 +3261,7 @@ mod tests {
             "Nested loops should be bounded: got {} paths",
             paths.len()
         );
-        assert!(paths.len() > 0, "Should have at least some paths");
+        assert!(!paths.is_empty(), "Should have at least some paths");
     }
 
     #[test]
@@ -3386,7 +3388,7 @@ mod tests {
         let paths = enumerate_paths(&cfg, &limits);
 
         // Verify paths are bounded (not exponential explosion)
-        assert!(paths.len() > 0, "Should have some paths");
+        assert!(!paths.is_empty(), "Should have some paths");
         assert!(
             paths.len() <= 9,
             "Should be bounded by (limit+1)^nesting_depth"
@@ -4423,7 +4425,7 @@ mod tests {
         let paths = enumerate_paths_with_context(&cfg, &limits, &ctx);
 
         // With loop_unroll_limit=3, should have bounded paths
-        assert!(paths.len() > 0);
+        assert!(!paths.is_empty());
         assert!(paths.len() <= 4); // Entry + up to 3 loop iterations
     }
 
@@ -5026,7 +5028,7 @@ mod tests {
         let duration = start.elapsed();
 
         // 10 branches = 2^10 = 1024 paths
-        assert!(paths.len() > 0);
+        assert!(!paths.is_empty());
         assert!(
             duration < Duration::from_millis(50),
             "Diamond CFG should be <50ms, took {:?}",
@@ -5051,7 +5053,7 @@ mod tests {
         let paths = enumerate_paths(&cfg, &limits);
         let duration = start.elapsed();
 
-        assert!(paths.len() > 0);
+        assert!(!paths.is_empty());
         assert!(
             duration < Duration::from_millis(100),
             "Single loop should be <100ms, took {:?}",
@@ -5152,7 +5154,7 @@ mod tests {
         let paths = enumerate_paths(&g, &limits);
         let duration = start.elapsed();
 
-        assert!(paths.len() > 0);
+        assert!(!paths.is_empty());
         assert!(
             duration < Duration::from_millis(500),
             "Nested loops should be <500ms, took {:?}",

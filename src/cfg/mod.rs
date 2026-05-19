@@ -53,6 +53,22 @@ use petgraph::graph::DiGraph;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Row tuple from cfg_blocks table queries
+type CfgBlockRow = (
+    i64,
+    String,
+    Option<String>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+);
+
 /// Control Flow Graph
 pub type Cfg = DiGraph<BasicBlock, EdgeType>;
 
@@ -87,45 +103,17 @@ pub type Cfg = DiGraph<BasicBlock, EdgeType>;
 /// - Uses byte offsets to determine control flow order (not sequential indices)
 /// - Blocks are sorted by byte_start to determine execution order
 /// - Loop back-edges will be detected during loop analysis phase
+#[allow(clippy::type_complexity, clippy::collapsible_match)]
 pub fn build_edges_from_terminators(
     graph: &mut Cfg,
-    blocks: &[(
-        i64,
-        String,
-        Option<String>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-    )],
+    blocks: &[CfgBlockRow],
     db_id_to_node: &HashMap<i64, usize>,
 ) -> Result<()> {
     use petgraph::graph::NodeIndex;
 
     // Sort blocks by byte_start to get execution order
     // This is crucial because block IDs are not necessarily in control flow order
-    let mut blocks_with_idx: Vec<(
-        usize,
-        &(
-            i64,
-            String,
-            Option<String>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-        ),
-    )> = blocks.iter().enumerate().collect();
+    let mut blocks_with_idx: Vec<(usize, &CfgBlockRow)> = blocks.iter().enumerate().collect();
     blocks_with_idx.sort_by_key(|(_, (_, _, _, byte_start, _, _, _, _, _, _, _, _))| *byte_start);
 
     // Build a map from position in sorted order to node index

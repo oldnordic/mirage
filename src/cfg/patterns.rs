@@ -323,7 +323,7 @@ pub fn detect_match_patterns(cfg: &Cfg) -> Vec<MatchPattern> {
 /// Helper: find NodeIndex by BlockId
 fn find_node_by_id(cfg: &Cfg, id: BlockId) -> Option<NodeIndex> {
     cfg.node_indices()
-        .find(|&n| cfg.node_weight(n).map_or(false, |b| b.id == id))
+        .find(|&n| cfg.node_weight(n).is_some_and(|b| b.id == id))
 }
 
 /// Get all branching patterns in the CFG

@@ -212,6 +212,7 @@ pub fn build_icfg(
         }
 
         // Add intra-procedural edges
+        #[allow(clippy::collapsible_match)]
         for (idx, block) in blocks.iter().enumerate() {
             let from_idx = icfg.node_map[&(function_id, block.id)];
 
@@ -275,10 +276,7 @@ pub fn build_icfg(
         };
         let calls_result = backend.neighbors(snapshot, function_id, query);
 
-        let mut callee_ids = match calls_result {
-            Ok(ids) => ids,
-            Err(_) => Vec::new(),
-        };
+        let mut callee_ids = calls_result.unwrap_or_default();
 
         // Fallback: if GraphBackend returns empty, try storage.get_callees.
         if callee_ids.is_empty() {
@@ -289,7 +287,7 @@ pub fn build_icfg(
 
         // Queue callees for expansion
         for callee_id in &callee_ids {
-            if depth + 1 <= options.max_depth && !visited.contains(callee_id) {
+            if depth < options.max_depth && !visited.contains(callee_id) {
                 queue.push((*callee_id, depth + 1));
             }
         }

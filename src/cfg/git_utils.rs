@@ -63,7 +63,7 @@ pub fn get_changed_rust_files(repo_path: &Path, since_revision: &str) -> Result<
     diff.foreach(
         &mut |delta, _progress| {
             if let Some(new_file) = delta.new_file().path() {
-                if new_file.extension().map_or(false, |e| e == "rs") {
+                if new_file.extension().is_some_and(|e| e == "rs") {
                     if let Some(path_str) = new_file.to_str() {
                         changed_files.insert(path_str.to_string());
                     }
@@ -127,7 +127,7 @@ pub fn get_changed_functions(
                     .data
                     .get("kind")
                     .and_then(|v| v.as_str())
-                    .map_or(false, |k| k == "Function");
+                    .is_some_and(|k| k == "Function");
 
             if is_function {
                 // Check if function is in a changed file

@@ -28,6 +28,22 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
 
+/// Row tuple from cfg_blocks table queries
+type CfgBlockRow = (
+    i64,
+    String,
+    Option<String>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+);
+
 // GraphBackend imports for dual backend support
 use sqlitegraph::{open_graph, GraphBackend, GraphConfig, SnapshotId};
 
@@ -280,11 +296,11 @@ impl Backend {
         #[cfg(feature = "backend-sqlite")]
         {
             if sqlite_detected {
-                return SqliteStorage::open(db_path).map(Backend::Sqlite);
+                SqliteStorage::open(db_path).map(Backend::Sqlite)
             } else {
-                return Err(anyhow::anyhow!(
+                Err(anyhow::anyhow!(
                     "Unsupported database format; use a SQLite .db"
-                ));
+                ))
             }
         }
 
@@ -1534,20 +1550,7 @@ impl MirageDb {
         let file_path = self.get_function_file(function_id);
 
         // Convert CfgBlockData to the tuple format expected by load_cfg_from_rows
-        let block_rows: Vec<(
-            i64,
-            String,
-            Option<String>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-            Option<i64>,
-        )> = blocks
+        let block_rows: Vec<CfgBlockRow> = blocks
             .into_iter()
             .enumerate()
             .map(|(idx, b)| {
@@ -1665,7 +1668,7 @@ impl MirageDb {
     pub fn function_exists(&self, function_id: i64) -> bool {
         use crate::storage::function_exists;
         self.conn()
-            .and_then(|conn| Ok(function_exists(conn, function_id)))
+            .map(|conn| function_exists(conn, function_id))
             .unwrap_or(false)
     }
 
@@ -1685,7 +1688,7 @@ impl MirageDb {
     pub fn get_function_hash(&self, function_id: i64) -> Option<String> {
         use crate::storage::get_function_hash;
         self.conn()
-            .and_then(|conn| Ok(get_function_hash(conn, function_id)))
+            .map(|conn| get_function_hash(conn, function_id))
             .ok()
             .flatten()
     }
@@ -1799,20 +1802,7 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
         )
         .context("Failed to prepare cfg_blocks query")?;
 
-    let block_rows: Vec<(
-        i64,
-        String,
-        Option<String>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-    )> = stmt
+    let block_rows: Vec<CfgBlockRow> = stmt
         .query_map(params![function_id], |row| {
             Ok((
                 row.get(0)?,  // id (database primary key)
@@ -1864,20 +1854,7 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
 ///
 /// This function takes pre-fetched block rows and builds the CFG structure.
 fn load_cfg_from_rows(
-    block_rows: Vec<(
-        i64,
-        String,
-        Option<String>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-        Option<i64>,
-    )>,
+    block_rows: Vec<CfgBlockRow>,
     file_path: Option<std::path::PathBuf>,
     cfg_edges: Vec<(i64, i64, String)>,
 ) -> Result<crate::cfg::Cfg> {
@@ -2591,10 +2568,8 @@ pub fn get_changed_functions(
                 )
                 .context("Failed to execute function lookup")?;
 
-            for row in rows {
-                if let Ok(func_name) = row {
-                    changed.insert(func_name);
-                }
+            for func_name in rows.flatten() {
+                changed.insert(func_name);
             }
         }
     }

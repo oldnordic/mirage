@@ -92,7 +92,7 @@ impl TestContext {
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
-             VALUES (1, 11, 4, 0)",
+             VALUES (1, 11, 5, 0)",
             [],
         ).unwrap();
 
@@ -106,6 +106,33 @@ impl TestContext {
                 data TEXT NOT NULL
             )",
             [],
+        )
+        .unwrap();
+
+        // Create sqlitegraph base tables (required by open_graph)
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS graph_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_id INTEGER NOT NULL,
+                to_id INTEGER NOT NULL,
+                edge_type TEXT NOT NULL,
+                data TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS graph_labels (
+                entity_id INTEGER NOT NULL,
+                label TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS graph_properties (
+                entity_id INTEGER NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_edges_from ON graph_edges(from_id);
+            CREATE INDEX IF NOT EXISTS idx_edges_to ON graph_edges(to_id);
+            CREATE INDEX IF NOT EXISTS idx_edges_type ON graph_edges(edge_type);
+            CREATE INDEX IF NOT EXISTS idx_labels_label ON graph_labels(label);
+            CREATE INDEX IF NOT EXISTS idx_props_key_value ON graph_properties(key, value);
+            CREATE INDEX IF NOT EXISTS idx_entities_kind_id ON graph_entities(kind, id);",
         )
         .unwrap();
 
@@ -173,19 +200,20 @@ impl TestContext {
         .unwrap();
 
         // Create graph_meta table for sqlitegraph compatibility
+        // Start at schema_version 1 so sqlitegraph migrations create all
+        // intermediate tables (graph_meta_history, hnsw_*, indexes, etc.)
         conn.execute(
             "CREATE TABLE graph_meta (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
-                schema_version INTEGER NOT NULL,
-                created_at INTEGER NOT NULL
+                schema_version INTEGER NOT NULL
             )",
             [],
         )
         .unwrap();
 
         conn.execute(
-            "INSERT INTO graph_meta (id, schema_version, created_at)
-             VALUES (1, 4, 0)",
+            "INSERT INTO graph_meta (id, schema_version)
+             VALUES (1, 1)",
             [],
         )
         .unwrap();

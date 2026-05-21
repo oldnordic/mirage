@@ -1,6 +1,6 @@
 [package]
 name = "mirage-analyzer"
-version = "1.4.5"
+version = "1.4.6"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Mirage Contributors"]
@@ -32,7 +32,7 @@ magellan = { version = "3.3.9", default-features = false, features = ["sqlite-ba
 geographdb-core = { version = "0.1.0", optional = true }
 
 # sqlitegraph for GraphBackend trait
-sqlitegraph = { version = "3.0.2", default-features = false, features = ["sqlite-backend"] }
+sqlitegraph = { version = "3.0.3", default-features = false, features = ["sqlite-backend"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

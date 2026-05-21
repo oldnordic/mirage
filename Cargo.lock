@@ -1213,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "mirage-analyzer"
-version = "1.4.5"
+version = "1.4.6"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1889,9 +1889,9 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "sqlitegraph"
-version = "3.0.2"
+version = "3.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9130129f2494cb7d00c1996e97a1fed3a078a327e2e43173506f65e838bc74a"
+checksum = "dc25499021e7c4b75025fa46ba8bdc34b6c97e1ae4b195a803889fca8d4e628b"
 dependencies = [
  "ahash",
  "arc-swap",

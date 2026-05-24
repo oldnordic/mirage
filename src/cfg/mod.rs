@@ -54,6 +54,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Row tuple from cfg_blocks table queries
+/// Fields: id, kind, terminator, byte_start, byte_end,
+///         start_line, start_col, end_line, end_col,
+///         coord_x, coord_y, coord_z, cfg_condition
 type CfgBlockRow = (
     i64,
     String,
@@ -67,6 +70,7 @@ type CfgBlockRow = (
     Option<i64>,
     Option<i64>,
     Option<i64>,
+    Option<String>,
 );
 
 /// Control Flow Graph
@@ -114,11 +118,12 @@ pub fn build_edges_from_terminators(
     // Sort blocks by byte_start to get execution order
     // This is crucial because block IDs are not necessarily in control flow order
     let mut blocks_with_idx: Vec<(usize, &CfgBlockRow)> = blocks.iter().enumerate().collect();
-    blocks_with_idx.sort_by_key(|(_, (_, _, _, byte_start, _, _, _, _, _, _, _, _))| *byte_start);
+    blocks_with_idx
+        .sort_by_key(|(_, (_, _, _, byte_start, _, _, _, _, _, _, _, _, _))| *byte_start);
 
     // Build a map from position in sorted order to node index
     let mut sorted_pos_to_node: HashMap<usize, usize> = HashMap::new();
-    for (sorted_pos, (_original_idx, (db_id, _, _, _, _, _, _, _, _, _, _, _))) in
+    for (sorted_pos, (_original_idx, (db_id, _, _, _, _, _, _, _, _, _, _, _, _))) in
         blocks_with_idx.iter().enumerate()
     {
         if let Some(&node_idx) = db_id_to_node.get(db_id) {
@@ -127,7 +132,7 @@ pub fn build_edges_from_terminators(
     }
 
     // For each block in sorted order, analyze terminator to find successors
-    for (sorted_pos, (_original_idx, (_, _kind, terminator_opt, _, _, _, _, _, _, _, _, _))) in
+    for (sorted_pos, (_original_idx, (_, _kind, terminator_opt, _, _, _, _, _, _, _, _, _, _))) in
         blocks_with_idx.iter().enumerate()
     {
         let terminator = terminator_opt.as_deref().unwrap_or("");

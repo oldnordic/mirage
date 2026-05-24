@@ -29,6 +29,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
 
 /// Row tuple from cfg_blocks table queries
+/// Row tuple from cfg_blocks table queries
+/// Fields: id, kind, terminator, byte_start, byte_end,
+///         start_line, start_col, end_line, end_col,
+///         coord_x, coord_y, coord_z, cfg_condition
 type CfgBlockRow = (
     i64,
     String,
@@ -42,6 +46,7 @@ type CfgBlockRow = (
     Option<i64>,
     Option<i64>,
     Option<i64>,
+    Option<String>,
 );
 
 // GraphBackend imports for dual backend support
@@ -1567,6 +1572,7 @@ impl MirageDb {
                     Some(b.coord_x),
                     Some(b.coord_y),
                     Some(b.coord_z),
+                    b.cfg_condition,
                 )
             })
             .collect();
@@ -1769,6 +1775,86 @@ fn resolve_function_name_sqlite(
     ))
 }
 
+/// Return the set of active Cargo feature names from `magellan_meta.project_metadata`.
+///
+/// Returns an empty set when the column is absent, NULL, or unparseable — which
+/// keeps the filter conservative (unknown condition → live).
+#[cfg(feature = "backend-sqlite")]
+fn get_active_features_from_conn(conn: &Connection) -> std::collections::HashSet<String> {
+    use rusqlite::OptionalExtension;
+    let meta_json: Option<String> = conn
+        .query_row(
+            "SELECT project_metadata FROM magellan_meta WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap_or(None)
+        .flatten();
+
+    let mut features = std::collections::HashSet::new();
+    if let Some(json) = meta_json {
+        #[derive(serde::Deserialize)]
+        struct Meta {
+            features: Option<std::collections::HashMap<String, serde_json::Value>>,
+        }
+        if let Ok(meta) = serde_json::from_str::<Meta>(&json) {
+            if let Some(map) = meta.features {
+                for key in map.into_keys() {
+                    features.insert(key);
+                }
+            }
+        }
+    }
+    features
+}
+
+/// Evaluate a simple `#[cfg(...)]` condition against a set of active features.
+///
+/// Mirrors `magellan::evaluate_cfg_condition`. Supports `feature = "name"`,
+/// `all(...)`, `any(...)`, and `not(...)`.
+/// Unknown conditions conservatively return `true` (block is live).
+fn evaluate_cfg_condition(
+    condition: &str,
+    active_features: &std::collections::HashSet<String>,
+) -> bool {
+    let condition = condition.trim();
+
+    if let Some(name) = condition
+        .strip_prefix("feature = \"")
+        .and_then(|s| s.strip_suffix('"'))
+    {
+        return active_features.contains(name);
+    }
+
+    if let Some(inner) = condition
+        .strip_prefix("all(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        return inner
+            .split(',')
+            .all(|c| evaluate_cfg_condition(c.trim(), active_features));
+    }
+
+    if let Some(inner) = condition
+        .strip_prefix("any(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        return inner
+            .split(',')
+            .any(|c| evaluate_cfg_condition(c.trim(), active_features));
+    }
+
+    if let Some(inner) = condition
+        .strip_prefix("not(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        return !evaluate_cfg_condition(inner.trim(), active_features);
+    }
+
+    true
+}
+
 /// Load CFG blocks from SQLite backend
 ///
 /// This helper function loads CFG blocks using SQL queries from the cfg_blocks table.
@@ -1788,18 +1874,32 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
 
     let file_path = file_path.map(PathBuf::from);
 
-    // Query all blocks for this function from Magellan's cfg_blocks table
-    // Magellan schema v7+ uses: kind (not block_kind), terminator as TEXT, and line/col columns
-    // Also includes 4D spatial coordinates: coord_x (dominator depth), coord_y (loop nesting), coord_z (branch distance)
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT id, kind, terminator, byte_start, byte_end,
-                start_line, start_col, end_line, end_col,
-                coord_x, coord_y, coord_z
-         FROM cfg_blocks
-         WHERE function_id = ?
-         ORDER BY id ASC",
+    // Query all blocks for this function from Magellan's cfg_blocks table.
+    // cfg_condition was added in a later schema version; fall back to NULL if absent.
+    let has_cfg_condition: bool = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('cfg_blocks') WHERE name='cfg_condition' LIMIT 1",
+            [],
+            |_| Ok(true),
         )
+        .optional()
+        .unwrap_or(None)
+        .unwrap_or(false);
+
+    let query = if has_cfg_condition {
+        "SELECT id, kind, terminator, byte_start, byte_end,
+             start_line, start_col, end_line, end_col,
+             coord_x, coord_y, coord_z, cfg_condition
+         FROM cfg_blocks WHERE function_id = ? ORDER BY id ASC"
+    } else {
+        "SELECT id, kind, terminator, byte_start, byte_end,
+             start_line, start_col, end_line, end_col,
+             coord_x, coord_y, coord_z, NULL
+         FROM cfg_blocks WHERE function_id = ? ORDER BY id ASC"
+    };
+
+    let mut stmt = conn
+        .prepare_cached(query)
         .context("Failed to prepare cfg_blocks query")?;
 
     let block_rows: Vec<CfgBlockRow> = stmt
@@ -1817,11 +1917,24 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
                 row.get(9)?,  // coord_x (dominator depth)
                 row.get(10)?, // coord_y (loop nesting depth)
                 row.get(11)?, // coord_z (branch distance)
+                row.get(12)?, // cfg_condition (#[cfg(...)] guard, if any)
             ))
         })
         .context("Failed to execute cfg_blocks query")?
         .collect::<Result<Vec<_>, _>>()
         .context("Failed to collect cfg_blocks rows")?;
+
+    // Drop blocks whose cfg_condition evaluates false against the project's active features.
+    let active_features = get_active_features_from_conn(conn);
+    let block_rows: Vec<CfgBlockRow> = block_rows
+        .into_iter()
+        .filter(|(.., cfg_condition)| {
+            cfg_condition
+                .as_ref()
+                .map(|c| evaluate_cfg_condition(c, &active_features))
+                .unwrap_or(true)
+        })
+        .collect();
 
     if block_rows.is_empty() {
         anyhow::bail!(
@@ -1883,6 +1996,7 @@ fn load_cfg_from_rows(
             coord_x,
             coord_y,
             coord_z,
+            _cfg_condition,
         ),
     ) in block_rows.iter().enumerate()
     {
@@ -1960,7 +2074,7 @@ fn load_cfg_from_rows(
 
     // Build mapping from vector index to graph node index (for cfg_edges)
     let mut index_to_node: HashMap<usize, usize> = HashMap::new();
-    for (idx, (db_id, _, _, _, _, _, _, _, _, _, _, _)) in block_rows.iter().enumerate() {
+    for (idx, (db_id, _, _, _, _, _, _, _, _, _, _, _, _)) in block_rows.iter().enumerate() {
         if let Some(&node_idx) = db_id_to_node.get(db_id) {
             index_to_node.insert(idx, node_idx);
         }
@@ -3062,6 +3176,9 @@ mod tests {
             kind: BlockKind::Entry,
             statements: vec!["let x = 1".to_string()],
             terminator: Terminator::Goto { target: 1 },
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
 
@@ -3071,6 +3188,9 @@ mod tests {
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Return,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
 
@@ -3161,6 +3281,9 @@ mod tests {
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
         let b1 = cfg1.add_node(BasicBlock {
@@ -3169,6 +3292,9 @@ mod tests {
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
         cfg1.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -3193,6 +3319,9 @@ mod tests {
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
         let b1 = cfg2.add_node(BasicBlock {
@@ -3201,6 +3330,9 @@ mod tests {
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
         let b2 = cfg2.add_node(BasicBlock {
@@ -3209,6 +3341,9 @@ mod tests {
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
         cfg2.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -3610,6 +3745,9 @@ mod tests {
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
         let b1 = cfg.add_node(BasicBlock {
@@ -3618,6 +3756,9 @@ mod tests {
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
         let b2 = cfg.add_node(BasicBlock {
@@ -3626,6 +3767,9 @@ mod tests {
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
         let b3 = cfg.add_node(BasicBlock {
@@ -3634,6 +3778,9 @@ mod tests {
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
+            coord_x: 0,
+            coord_y: 0,
+            coord_z: 0,
             source_location: None,
         });
         cfg.add_edge(b0, b1, crate::cfg::EdgeType::Fallthrough);
@@ -3953,5 +4100,77 @@ mod tests {
         assert_eq!(BackendFormat::Unknown, BackendFormat::Unknown);
 
         assert_ne!(BackendFormat::SQLite, BackendFormat::Unknown);
+    }
+
+    /// Regression for cfg-aware branch elimination:
+    /// A block whose `cfg_condition` evaluates false against the active features
+    /// must be absent from the loaded CFG; a block with no condition must be kept.
+    #[test]
+    fn test_load_cfg_drops_dead_cfg_condition_blocks() {
+        let conn = create_test_db_with_schema();
+
+        // Add cfg_condition column to cfg_blocks (the feature being tested)
+        conn.execute("ALTER TABLE cfg_blocks ADD COLUMN cfg_condition TEXT", [])
+            .unwrap();
+
+        // Add project_metadata column to magellan_meta so active features can be read
+        conn.execute(
+            "ALTER TABLE magellan_meta ADD COLUMN project_metadata TEXT",
+            [],
+        )
+        .unwrap();
+
+        // Record active features: only "enabled_feat" is on; "disabled_feat" is absent
+        let metadata_json =
+            r#"{"name":"test","version":"0.1.0","features":{"enabled_feat":[]},"dependencies":[]}"#;
+        conn.execute(
+            "UPDATE magellan_meta SET project_metadata = ? WHERE id = 1",
+            params![metadata_json],
+        )
+        .unwrap();
+
+        // Insert a test function
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            params!("function", "cfg_branch_func", "test.rs", "{}"),
+        )
+        .unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Block 1 – always live (no cfg_condition)
+        conn.execute(
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col, cfg_condition)
+             VALUES (?, 'entry', 'fallthrough', 0, 10, 1, 0, 1, 10, NULL)",
+            params![function_id],
+        )
+        .unwrap();
+
+        // Block 2 – live because its feature is enabled
+        conn.execute(
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col, cfg_condition)
+             VALUES (?, 'block', 'return', 11, 20, 2, 0, 2, 10, 'feature = \"enabled_feat\"')",
+            params![function_id],
+        )
+        .unwrap();
+
+        // Block 3 – dead because its feature is NOT in active features
+        conn.execute(
+            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                     start_line, start_col, end_line, end_col, cfg_condition)
+             VALUES (?, 'block', 'return', 21, 30, 3, 0, 3, 10, 'feature = \"disabled_feat\"')",
+            params![function_id],
+        )
+        .unwrap();
+
+        let cfg = load_cfg_from_db_with_conn(&conn, function_id).unwrap();
+
+        assert_eq!(
+            cfg.node_count(),
+            2,
+            "dead cfg_condition block should be filtered out; expected 2 live blocks, got {}",
+            cfg.node_count()
+        );
     }
 }

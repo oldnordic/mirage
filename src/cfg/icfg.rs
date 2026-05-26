@@ -489,56 +489,6 @@ impl IcfgJson {
             function_count: function_ids.len(),
         }
     }
-
-    /// Convert the rich petgraph-based ICFG to the flat router representation.
-    ///
-    /// Assigns sequential IDs starting from 0 in petgraph node index order.
-    pub fn to_inter_procedural_cfg(icfg: &Icfg) -> crate::router::InterProceduralCfg {
-        let mut node_id_map = std::collections::HashMap::new();
-        let mut next_id: i64 = 0;
-
-        let nodes: Vec<crate::router::IcfgNode> = icfg
-            .graph
-            .node_indices()
-            .map(|idx| {
-                let node = &icfg.graph[idx];
-                let id = next_id;
-                node_id_map.insert(idx, id);
-                next_id += 1;
-                crate::router::IcfgNode {
-                    id,
-                    function_id: node.function_id,
-                    block_id: node.block_id,
-                }
-            })
-            .collect();
-
-        let edges: Vec<crate::router::IcfgEdge> = icfg
-            .graph
-            .edge_indices()
-            .filter_map(|idx| {
-                let (from, to) = icfg.graph.edge_endpoints(idx)?;
-                let edge = &icfg.graph[idx];
-                let kind = match edge {
-                    IcfgEdge::IntraProcedural { .. } => "intra-procedural",
-                    IcfgEdge::Call { .. } => "call",
-                    IcfgEdge::Return { .. } => "return",
-                }
-                .to_string();
-                Some(crate::router::IcfgEdge {
-                    from_node: *node_id_map.get(&from)?,
-                    to_node: *node_id_map.get(&to)?,
-                    kind,
-                })
-            })
-            .collect();
-
-        crate::router::InterProceduralCfg {
-            entry_function: icfg.entry_function,
-            nodes,
-            edges,
-        }
-    }
 }
 
 #[cfg(test)]

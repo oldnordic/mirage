@@ -56,10 +56,8 @@
 //! ```
 
 pub mod adapter;
-pub mod bridge;
 
 pub use adapter::*;
-pub use bridge::*;
 
 #[cfg(test)]
 mod tests {

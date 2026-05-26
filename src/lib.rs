@@ -38,7 +38,6 @@ pub mod integrations;
 pub mod mir;
 pub mod output;
 pub mod platform;
-pub mod router;
 pub mod storage;
 
 // Public API exports

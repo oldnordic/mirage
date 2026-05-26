@@ -530,13 +530,13 @@ pub struct DiffArgs {
     #[arg(long)]
     pub function: String,
 
-    /// Before snapshot ID (transaction ID or "current")
+    /// Path to the "before" database (.db from a previous magellan scan)
     #[arg(long)]
-    pub before: String,
+    pub before_db: String,
 
-    /// After snapshot ID (transaction ID or "current")
+    /// Path to the "after" database (.db from the current magellan scan)
     #[arg(long)]
-    pub after: String,
+    pub after_db: String,
 
     /// Show edge differences
     #[arg(long)]

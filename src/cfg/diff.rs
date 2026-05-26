@@ -1,14 +1,15 @@
 //! CFG diff algorithms for comparing control flow graphs
 //!
-//! This module provides functionality to compare CFGs between two snapshots,
-//! detecting added/deleted/modified blocks and edges with structural similarity scores.
+//! This module provides functionality to compare CFGs between two database
+//! snapshots, detecting added/deleted/modified blocks and edges with structural
+//! similarity scores.
 //!
 //! # Design
 //!
 //! - Uses petgraph for graph representation and algorithms
 //! - Computes set differences for blocks and edges
 //! - Calculates structural similarity based on graph edit distance
-//! - Supports SQLite and geometric backends via StorageTrait
+//! - Accepts two separate `Backend` instances (before/after databases)
 //!
 //! # Examples
 //!
@@ -17,8 +18,9 @@
 //! # use mirage_analyzer::storage::Backend;
 //! # use anyhow::Result;
 //! # fn main() -> Result<()> {
-//! let backend = Backend::detect_and_open("codegraph.db")?;
-//! let diff = compute_cfg_diff(&backend, 123, "current", "current")?;
+//! let before = Backend::detect_and_open("codegraph-before.db")?;
+//! let after = Backend::detect_and_open("codegraph-after.db")?;
+//! let diff = compute_cfg_diff(&before, &after, 123)?;
 //! println!("Similarity: {:.1}%", diff.structural_similarity * 100.0);
 //! # Ok(())
 //! # }
@@ -35,9 +37,9 @@ use crate::storage::{Backend, CfgBlockData};
 // Diff Output Structures
 // ============================================================================
 
-/// CFG diff result comparing two snapshots of a function
+/// CFG diff result comparing two database snapshots of a function
 ///
-/// Contains all changes detected between the before and after snapshots,
+/// Contains all changes detected between the before and after databases,
 /// including added/deleted/modified blocks and edges, plus a similarity score.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CfgDiff {
@@ -45,19 +47,19 @@ pub struct CfgDiff {
     pub function_id: i64,
     /// Function fully-qualified name
     pub function_name: String,
-    /// Before snapshot identifier (transaction ID or "current")
-    pub before_snapshot: String,
-    /// After snapshot identifier (transaction ID or "current")
-    pub after_snapshot: String,
-    /// Blocks added in after snapshot
+    /// Path or identifier for the "before" database
+    pub before_source: String,
+    /// Path or identifier for the "after" database
+    pub after_source: String,
+    /// Blocks added in after database
     pub added_blocks: Vec<BlockDiff>,
-    /// Blocks deleted from before snapshot
+    /// Blocks deleted from before database
     pub deleted_blocks: Vec<BlockDiff>,
-    /// Blocks modified between snapshots
+    /// Blocks modified between databases
     pub modified_blocks: Vec<BlockChange>,
-    /// Edges added in after snapshot
+    /// Edges added in after database
     pub added_edges: Vec<EdgeDiff>,
-    /// Edges deleted from before snapshot
+    /// Edges deleted from before database
     pub deleted_edges: Vec<EdgeDiff>,
     /// Structural similarity score (0.0 = completely different, 1.0 = identical)
     pub structural_similarity: f64,
@@ -76,7 +78,7 @@ pub struct BlockDiff {
     pub source_location: String,
 }
 
-/// Block change detected between two snapshots
+/// Representation of a block change detected between two databases
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockChange {
     /// Block unique identifier
@@ -118,44 +120,43 @@ pub struct EdgeDiff {
 // Diff Computation
 // ============================================================================
 
-/// Compute CFG diff between two snapshots
+/// Compute CFG diff between two database snapshots
 ///
-/// This function compares the CFG of a function at two different snapshots,
-/// detecting structural changes and computing a similarity score.
+/// Compares the CFG of a function across two separate databases (e.g., before
+/// and after a code change). Each database is a separate Magellan scan output.
 ///
 /// # Arguments
 ///
-/// * `backend` - Storage backend for querying CFG data
-/// * `function_id` - Function entity ID to compare
-/// * `before_snapshot` - Snapshot identifier for "before" state (transaction ID or "current")
-/// * `after_snapshot` - Snapshot identifier for "after" state (transaction ID or "current")
+/// * `before` - Storage backend for the "before" database
+/// * `after` - Storage backend for the "after" database
+/// * `function_id` - Function entity ID to compare (must exist in both databases)
 ///
 /// # Returns
 ///
 /// * `Ok(CfgDiff)` - Diff result with all detected changes
 /// * `Err(...)` - Error if query or computation fails
+pub fn compute_cfg_diff(before: &Backend, after: &Backend, function_id: i64) -> Result<CfgDiff> {
+    compute_cfg_diff_with_sources(before, after, function_id, "before", "after")
+}
+
+/// Compute CFG diff with explicit source labels
 ///
-/// # Note
-///
-/// The current implementation queries the current state for both snapshots.
-/// Future versions will support true snapshot-based comparison using SnapshotId.
-pub fn compute_cfg_diff(
-    backend: &Backend,
+/// Like [`compute_cfg_diff`] but allows specifying custom source labels
+/// for the before/after databases (e.g., file paths or branch names).
+pub fn compute_cfg_diff_with_sources(
+    before: &Backend,
+    after: &Backend,
     function_id: i64,
-    before_snapshot: &str,
-    after_snapshot: &str,
+    before_label: &str,
+    after_label: &str,
 ) -> Result<CfgDiff> {
-    // Query function name
-    let function_name = backend
+    let function_name = after
         .get_entity(function_id)
         .map(|e| e.name.clone())
         .unwrap_or_else(|| format!("<function_{}>", function_id));
 
-    // Query CFG blocks
-    // Note: Current implementation uses current state for both snapshots
-    // TODO: Add snapshot_id parameter to StorageTrait::get_cfg_blocks
-    let blocks_before = backend.get_cfg_blocks(function_id)?;
-    let blocks_after = backend.get_cfg_blocks(function_id)?;
+    let blocks_before = before.get_cfg_blocks(function_id)?;
+    let blocks_after = after.get_cfg_blocks(function_id)?;
 
     // Build block maps with sequential IDs for diff
     let before_map: HashMap<i64, BlockDiff> = blocks_before
@@ -284,8 +285,8 @@ pub fn compute_cfg_diff(
     Ok(CfgDiff {
         function_id,
         function_name,
-        before_snapshot: before_snapshot.to_string(),
-        after_snapshot: after_snapshot.to_string(),
+        before_source: before_label.to_string(),
+        after_source: after_label.to_string(),
         added_blocks,
         deleted_blocks,
         modified_blocks,
@@ -295,10 +296,9 @@ pub fn compute_cfg_diff(
     })
 }
 
-/// Compute edge differences between two CFG snapshots
+/// Compute edge differences between two CFG states
 ///
 /// Derives edges from terminator information and compares them.
-/// Uses a simplified representation since explicit edge storage is not available.
 ///
 /// # Returns
 ///

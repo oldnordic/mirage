@@ -1,33 +1,41 @@
-use crate::cli::{resolve_db_path, Cli, DiffArgs, OutputFormat};
+use crate::cli::{Cli, DiffArgs, OutputFormat};
 use crate::output;
 use anyhow::Result;
 
 pub fn diff(args: &DiffArgs, cli: &Cli) -> Result<()> {
-    use crate::cfg::diff::compute_cfg_diff;
-    use crate::storage::MirageDb;
+    use crate::storage::Backend;
 
-    // Resolve database path
-    let db_path = resolve_db_path(cli.db.clone())?;
-
-    // Open database
-    let db = match MirageDb::open(&db_path) {
-        Ok(db) => db,
-        Err(_e) => {
+    let before = match Backend::detect_and_open(std::path::Path::new(&args.before_db)) {
+        Ok(b) => b,
+        Err(e) => {
             if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::database_not_found(&db_path);
+                let error = output::JsonError::database_not_found(&args.before_db);
                 let wrapper = output::JsonResponse::new(error);
                 println!("{}", wrapper.to_json());
                 std::process::exit(output::EXIT_DATABASE);
             } else {
-                output::error(&format!("Failed to open database: {}", db_path));
-                output::info("Hint: Run 'magellan watch' to create the database");
+                output::error(&format!("Failed to open before database: {}", e));
                 std::process::exit(output::EXIT_DATABASE);
             }
         }
     };
 
-    // Resolve function name/ID to function_id
-    let function_id = match db.resolve_function_name(&args.function) {
+    let after = match Backend::detect_and_open(std::path::Path::new(&args.after_db)) {
+        Ok(b) => b,
+        Err(e) => {
+            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                let error = output::JsonError::database_not_found(&args.after_db);
+                let wrapper = output::JsonResponse::new(error);
+                println!("{}", wrapper.to_json());
+                std::process::exit(output::EXIT_DATABASE);
+            } else {
+                output::error(&format!("Failed to open after database: {}", e));
+                std::process::exit(output::EXIT_DATABASE);
+            }
+        }
+    };
+
+    let function_id = match resolve_function_id(&after, &args.function) {
         Ok(id) => id,
         Err(e) => {
             if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -42,8 +50,13 @@ pub fn diff(args: &DiffArgs, cli: &Cli) -> Result<()> {
         }
     };
 
-    // Compute diff
-    let diff = match compute_cfg_diff(db.storage(), function_id, &args.before, &args.after) {
+    let diff = match crate::cfg::diff::compute_cfg_diff_with_sources(
+        &before,
+        &after,
+        function_id,
+        &args.before_db,
+        &args.after_db,
+    ) {
         Ok(diff) => diff,
         Err(e) => {
             if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
@@ -57,7 +70,6 @@ pub fn diff(args: &DiffArgs, cli: &Cli) -> Result<()> {
         }
     };
 
-    // Output based on format
     match cli.output {
         OutputFormat::Human => print_diff_human(&diff, args.show_edges, args.verbose),
         OutputFormat::Json => {
@@ -72,12 +84,39 @@ pub fn diff(args: &DiffArgs, cli: &Cli) -> Result<()> {
 
     Ok(())
 }
+
+fn resolve_function_id(backend: &crate::storage::Backend, ident: &str) -> Result<i64> {
+    if let Ok(id) = ident.parse::<i64>() {
+        if backend.get_entity(id).is_some() {
+            return Ok(id);
+        }
+    }
+    match backend {
+        crate::storage::Backend::Sqlite(s) => {
+            let rowid: i64 = s.conn().query_row(
+                "SELECT id FROM graph_entities WHERE name = ?1 OR fqn = ?1 LIMIT 1",
+                rusqlite::params![ident],
+                |row| row.get(0),
+            )?;
+            Ok(rowid)
+        }
+        #[cfg(feature = "backend-geometric")]
+        crate::storage::Backend::Geometric(g) => {
+            let sym = g
+                .find_symbols_by_name(ident)
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("Function '{}' not found", ident))?;
+            Ok(sym.id as i64)
+        }
+    }
+}
 fn print_diff_human(diff: &crate::cfg::diff::CfgDiff, show_edges: bool, verbose: bool) {
     use crate::output::{info, success, warn};
 
     info(&format!("CFG Diff: {}", diff.function_name));
-    println!("  Before: {}", diff.before_snapshot);
-    println!("  After: {}", diff.after_snapshot);
+    println!("  Before: {}", diff.before_source);
+    println!("  After: {}", diff.after_source);
 
     // Color-code similarity
     let similarity_pct = diff.structural_similarity * 100.0;

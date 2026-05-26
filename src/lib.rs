@@ -35,7 +35,6 @@ pub mod analysis;
 pub mod cfg;
 pub mod cli;
 pub mod integrations;
-pub mod mir;
 pub mod output;
 pub mod platform;
 pub mod storage;

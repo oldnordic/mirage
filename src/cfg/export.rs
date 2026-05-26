@@ -65,7 +65,9 @@ pub fn export_dot_with_coords(cfg: &Cfg) -> String {
     // Define edges
     dot.push('\n');
     for edge_idx in cfg.edge_indices() {
-        let (from, to) = cfg.edge_endpoints(edge_idx).unwrap();
+        let (from, to) = cfg
+            .edge_endpoints(edge_idx)
+            .expect("invariant: edge_idx from cfg.edge_indices()");
         if let Some(edge_type) = cfg.edge_weight(edge_idx) {
             let color = edge_type.dot_color();
             let label = edge_type.dot_label();
@@ -381,7 +383,9 @@ pub fn export_json(
     let blocks: Vec<_> = cfg
         .node_indices()
         .map(|idx| {
-            let block = cfg.node_weight(idx).unwrap();
+            let block = cfg
+                .node_weight(idx)
+                .expect("invariant: idx from cfg.node_indices()");
             let block_coverage = coverage.and_then(|cov_map| {
                 block
                     .db_id
@@ -405,8 +409,12 @@ pub fn export_json(
     let edges: Vec<_> = cfg
         .edge_indices()
         .map(|idx| {
-            let (from, to) = cfg.edge_endpoints(idx).unwrap();
-            let edge_type = cfg.edge_weight(idx).unwrap();
+            let (from, to) = cfg
+                .edge_endpoints(idx)
+                .expect("invariant: idx from cfg.edge_indices()");
+            let edge_type = cfg
+                .edge_weight(idx)
+                .expect("invariant: idx from cfg.edge_indices()");
             EdgeExport {
                 from: from.index(),
                 to: to.index(),

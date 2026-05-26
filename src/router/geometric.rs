@@ -543,7 +543,9 @@ impl BackendRouter for GeometricRouter {
         hotspots.sort_by(|a, b| {
             let a_score = a.complexity * a.frequency;
             let b_score = b.complexity * b.frequency;
-            b_score.partial_cmp(&a_score).unwrap()
+            b_score
+                .partial_cmp(&a_score)
+                .expect("invariant: f64 product of two u64s is always comparable")
         });
 
         Ok(hotspots)
@@ -615,7 +617,9 @@ impl BackendRouter for GeometricRouter {
         for func_id in &all_functions {
             if let Ok(cfg) = self.load_cfg(*func_id) {
                 for edge_idx in cfg.edge_indices() {
-                    let (src, dst) = cfg.edge_endpoints(edge_idx).unwrap();
+                    let (src, dst) = cfg
+                        .edge_endpoints(edge_idx)
+                        .expect("invariant: edge_idx from cfg.edge_indices()");
                     let src_id = cfg[src].id as i64;
                     let dst_id = cfg[dst].id as i64;
                     if let (Some(&from), Some(&to)) = (

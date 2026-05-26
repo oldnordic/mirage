@@ -97,7 +97,9 @@ pub fn calculate_loop_nesting_depth(cfg: &Cfg, entry: NodeIndex) -> HashMap<Node
 
         // Increment nesting depth for all blocks in the loop body
         for node in loop_body {
-            *nesting_depths.get_mut(&node).unwrap() += 1;
+            *nesting_depths
+                .get_mut(&node)
+                .expect("invariant: node initialized in nesting_depths map") += 1;
         }
     }
 
@@ -172,7 +174,9 @@ fn find_back_edges(cfg: &Cfg, entry: NodeIndex) -> Vec<(NodeIndex, NodeIndex)> {
 
     // Check each edge for back edge property
     for edge in cfg.edge_indices() {
-        let (source, target) = cfg.edge_endpoints(edge).unwrap();
+        let (source, target) = cfg
+            .edge_endpoints(edge)
+            .expect("invariant: edge indices come from cfg.edge_indices()");
 
         // An edge is a back edge if target dominates source
         if is_dominated_by(source, target, &dominators) {

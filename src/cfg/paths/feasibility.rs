@@ -19,7 +19,12 @@ pub fn is_feasible_path(cfg: &Cfg, blocks: &[BlockId]) -> bool {
         return false;
     }
 
-    let last_idx = match find_node_by_block_id(cfg, *blocks.last().unwrap()) {
+    let last_idx = match find_node_by_block_id(
+        cfg,
+        *blocks
+            .last()
+            .expect("invariant: blocks is non-empty — early return guards empty"),
+    ) {
         Some(idx) => idx,
         None => return false,
     };
@@ -52,22 +57,6 @@ pub fn is_feasible_path(cfg: &Cfg, blocks: &[BlockId]) -> bool {
     true
 }
 
-/// Check if a path is statically feasible using pre-computed reachable set
-///
-/// This is an optimized version of `is_feasible_path` for batch operations.
-/// Instead of calling `is_reachable_from_entry` for each block (which is O(n)
-/// per call), we use a pre-computed HashSet of reachable block IDs, making
-/// reachability checks O(1).
-///
-/// # Arguments
-///
-/// * `cfg` - Control flow graph to analyze
-/// * `blocks` - Block IDs in execution order
-/// * `reachable_blocks` - Pre-computed set of reachable BlockIds
-///
-/// # Returns
-///
-/// `true` if the path is statically feasible, `false` otherwise
 pub fn is_feasible_path_precomputed(
     cfg: &Cfg,
     blocks: &[BlockId],
@@ -93,7 +82,12 @@ pub fn is_feasible_path_precomputed(
         }
     }
 
-    let last_idx = match find_node_by_block_id(cfg, *blocks.last().unwrap()) {
+    let last_idx = match find_node_by_block_id(
+        cfg,
+        *blocks
+            .last()
+            .expect("invariant: blocks is non-empty — early return guards empty"),
+    ) {
         Some(idx) => idx,
         None => return false,
     };
@@ -126,7 +120,6 @@ pub fn is_feasible_path_precomputed(
     true
 }
 
-/// Classify a path based on its terminators and reachability
 ///
 /// **Classification rules (in priority order):**
 ///

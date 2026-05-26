@@ -380,7 +380,10 @@ pub fn to_dot(icfg: &Icfg) -> String {
 
     // Add edges
     for edge in icfg.graph.edge_indices() {
-        let (from, to) = icfg.graph.edge_endpoints(edge).unwrap();
+        let (from, to) = icfg
+            .graph
+            .edge_endpoints(edge)
+            .expect("invariant: edge from graph.edge_indices()");
         let edge_data = &icfg.graph[edge];
 
         let label = match edge_data {
@@ -460,7 +463,10 @@ impl IcfgJson {
             .graph
             .edge_indices()
             .map(|idx| {
-                let (from, to) = icfg.graph.edge_endpoints(idx).unwrap();
+                let (from, to) = icfg
+                    .graph
+                    .edge_endpoints(idx)
+                    .expect("invariant: idx from graph.edge_indices()");
                 let edge = &icfg.graph[idx];
                 let (edge_type, label) = match edge {
                     IcfgEdge::IntraProcedural { edge_type } => ("intra", edge_type.clone()),

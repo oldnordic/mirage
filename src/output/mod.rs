@@ -126,7 +126,7 @@ impl<T: serde::Serialize> JsonResponse<T> {
             "{:x}-{}",
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .expect("invariant: system time is always >= UNIX_EPOCH")
                 .as_secs(),
             std::process::id()
         );

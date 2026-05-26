@@ -273,9 +273,8 @@ pub fn create_minimal_database<P: AsRef<Path>>(path: P) -> Result<()> {
 pub(crate) fn create_test_db_with_schema() -> rusqlite::Connection {
     use rusqlite::Connection;
 
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = Connection::open_in_memory().expect("test setup: in-memory DB always succeeds");
 
-    // Create Magellan v7 tables
     conn.execute(
         "CREATE TABLE magellan_meta (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -285,7 +284,7 @@ pub(crate) fn create_test_db_with_schema() -> rusqlite::Connection {
         )",
         [],
     )
-    .unwrap();
+    .expect("test setup: CREATE TABLE magellan_meta");
 
     conn.execute(
         "CREATE TABLE graph_entities (
@@ -297,16 +296,14 @@ pub(crate) fn create_test_db_with_schema() -> rusqlite::Connection {
         )",
         [],
     )
-    .unwrap();
+    .expect("test setup: CREATE TABLE graph_entities");
 
-    // Insert Magellan v7 meta
     conn.execute(
         "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
          VALUES (1, ?, ?, ?)",
         rusqlite::params![7, 3, 0],
-    ).unwrap();
+    ).expect("test setup: INSERT magellan_meta");
 
-    // Create Magellan's cfg_blocks table (v7 schema)
     conn.execute(
         "CREATE TABLE cfg_blocks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -326,9 +323,8 @@ pub(crate) fn create_test_db_with_schema() -> rusqlite::Connection {
         )",
         [],
     )
-    .unwrap();
+    .expect("test setup: CREATE TABLE cfg_blocks");
 
-    // Create graph_edges for CFG edges
     conn.execute(
         "CREATE TABLE graph_edges (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -339,13 +335,12 @@ pub(crate) fn create_test_db_with_schema() -> rusqlite::Connection {
         )",
         [],
     )
-    .unwrap();
+    .expect("test setup: CREATE TABLE graph_edges");
 
-    // Create Mirage schema (mirage_meta and additional tables)
-    create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).unwrap();
+    create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION).expect("test setup: create_schema");
 
-    // Enable foreign key enforcement for tests
-    conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+    conn.execute("PRAGMA foreign_keys = ON", [])
+        .expect("test setup: PRAGMA foreign_keys");
 
     conn
 }

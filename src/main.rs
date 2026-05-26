@@ -4,28 +4,49 @@
 // Extracts CFGs from Magellan (Rust via MIR, C/C++ via AST), enumerates execution paths,
 // and provides graph-based reasoning capabilities.
 
-#![allow(dead_code)]
-
 use anyhow::Result;
 use clap::Parser;
 
-mod analysis;
-mod cfg;
-mod cli;
-mod integrations;
-mod mir;
-mod output;
-mod platform;
-mod router;
-mod storage;
+use mirage::analysis::telemetry::{is_telemetry_enabled, TelemetryGuard};
+use mirage::cli::{Cli, Commands, OutputFormat};
+use mirage::storage::BackendFormat;
 
-use cli::{Cli, Commands};
+fn command_name(cmd: &Option<Commands>) -> &'static str {
+    match cmd {
+        None => "none",
+        Some(Commands::Status(_)) => "status",
+        Some(Commands::Paths(_)) => "paths",
+        Some(Commands::Cfg(_)) => "cfg",
+        Some(Commands::Dominators(_)) => "dominators",
+        Some(Commands::Loops(_)) => "loops",
+        Some(Commands::Unreachable(_)) => "unreachable",
+        Some(Commands::Patterns(_)) => "patterns",
+        Some(Commands::Frontiers(_)) => "frontiers",
+        Some(Commands::Verify(_)) => "verify",
+        Some(Commands::BlastZone(_)) => "blast-zone",
+        Some(Commands::Cycles(_)) => "cycles",
+        Some(Commands::Slice(_)) => "slice",
+        Some(Commands::Hotspots(_)) => "hotspots",
+        Some(Commands::Hotpaths(_)) => "hotpaths",
+        Some(Commands::Diff(_)) => "diff",
+        Some(Commands::Icfg(_)) => "icfg",
+        Some(Commands::Coverage(_)) => "coverage",
+        Some(Commands::Migrate(_)) => "migrate",
+        Some(Commands::Docs(_)) => "docs",
+        Some(Commands::Risk(_)) => "risk",
+        Some(Commands::Suggest(_)) => "suggest",
+        Some(Commands::Stats(_)) => "stats",
+    }
+}
 
 fn main() -> Result<()> {
     // Check platform and warn about limitations
-    platform::check_platform_support();
+    mirage::platform::check_platform_support();
 
     let cli = Cli::parse();
+
+    let telemetry_enabled = is_telemetry_enabled(cli.record);
+    let _telemetry = TelemetryGuard::new(telemetry_enabled)?;
 
     // Initialize tracing
     tracing_subscriber::fmt()
@@ -36,7 +57,9 @@ fn main() -> Result<()> {
         .init();
 
     // Run the appropriate command
+    let cmd_name = command_name(&cli.command);
     run_command(cli)?;
+    _telemetry.record(cmd_name, None);
 
     Ok(())
 }
@@ -49,7 +72,6 @@ fn run_command(cli: Cli) -> Result<()> {
             .ok_or_else(|| anyhow::anyhow!("--db required for --detect-backend"))?;
         let db_path = std::path::Path::new(&db_str);
 
-        use crate::storage::BackendFormat;
         let format = BackendFormat::detect(db_path)
             .map_err(|e| anyhow::anyhow!("Backend detection failed: {}", e))?;
 
@@ -59,10 +81,7 @@ fn run_command(cli: Cli) -> Result<()> {
             BackendFormat::Unknown => "unknown",
         };
 
-        if matches!(
-            cli.output,
-            cli::OutputFormat::Json | cli::OutputFormat::Pretty
-        ) {
+        if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
             let output = serde_json::json!({
                 "backend": backend_str,
                 "database": db_str,
@@ -79,27 +98,28 @@ fn run_command(cli: Cli) -> Result<()> {
             "No subcommand provided. Use --help for usage information."
         )),
         Some(ref cmd) => match cmd {
-            Commands::Status(args) => cli::cmds::status(args, &cli),
-            Commands::Paths(ref args) => cli::cmds::paths(args, &cli),
-            Commands::Cfg(ref args) => cli::cmds::cfg(args, &cli),
-            Commands::Dominators(ref args) => cli::cmds::dominators(args, &cli),
-            Commands::Loops(ref args) => cli::cmds::loops(args, &cli),
-            Commands::Unreachable(ref args) => cli::cmds::unreachable(args, &cli),
-            Commands::Patterns(ref args) => cli::cmds::patterns(args, &cli),
-            Commands::Frontiers(ref args) => cli::cmds::frontiers(args, &cli),
-            Commands::Verify(ref args) => cli::cmds::verify(args, &cli),
-            Commands::BlastZone(ref args) => cli::cmds::blast_zone(args, &cli),
-            Commands::Cycles(ref args) => cli::cmds::cycles(args, &cli),
-            Commands::Slice(ref args) => cli::cmds::slice(args, &cli),
-            Commands::Hotspots(ref args) => cli::cmds::hotspots(args, &cli),
-            Commands::Hotpaths(ref args) => cli::cmds::hotpaths(args, &cli),
-            Commands::Diff(ref args) => cli::cmds::diff(args, &cli),
-            Commands::Icfg(ref args) => cli::cmds::icfg(args, &cli),
-            Commands::Coverage(ref args) => cli::cmds::coverage(args, &cli),
-            // Commands::ComplexBlocks(ref args) => cli::cmds::complex_blocks(args, &cli),
-            // Commands::SpatialAnalysis(ref args) => cli::cmds::spatial_analysis(args, &cli),
-            Commands::Migrate(ref args) => cli::cmds::migrate(args, &cli),
-            Commands::Docs(ref args) => cli::cmds::docs(args, &cli),
+            Commands::Status(args) => mirage::cli::cmds::status(args, &cli),
+            Commands::Paths(ref args) => mirage::cli::cmds::paths(args, &cli),
+            Commands::Cfg(ref args) => mirage::cli::cmds::cfg(args, &cli),
+            Commands::Dominators(ref args) => mirage::cli::cmds::dominators(args, &cli),
+            Commands::Loops(ref args) => mirage::cli::cmds::loops(args, &cli),
+            Commands::Unreachable(ref args) => mirage::cli::cmds::unreachable(args, &cli),
+            Commands::Patterns(ref args) => mirage::cli::cmds::patterns(args, &cli),
+            Commands::Frontiers(ref args) => mirage::cli::cmds::frontiers(args, &cli),
+            Commands::Verify(ref args) => mirage::cli::cmds::verify(args, &cli),
+            Commands::BlastZone(ref args) => mirage::cli::cmds::blast_zone(args, &cli),
+            Commands::Cycles(ref args) => mirage::cli::cmds::cycles(args, &cli),
+            Commands::Slice(ref args) => mirage::cli::cmds::slice(args, &cli),
+            Commands::Hotspots(ref args) => mirage::cli::cmds::hotspots(args, &cli),
+            Commands::Hotpaths(ref args) => mirage::cli::cmds::hotpaths(args, &cli),
+            Commands::Diff(ref args) => mirage::cli::cmds::diff(args, &cli),
+            Commands::Icfg(ref args) => mirage::cli::cmds::icfg(args, &cli),
+            Commands::Coverage(ref args) => mirage::cli::cmds::coverage(args, &cli),
+            Commands::Migrate(ref args) => mirage::cli::cmds::migrate(args, &cli),
+            Commands::Docs(ref args) => mirage::cli::cmds::docs(args, &cli),
+            Commands::Risk(ref args) => mirage::cli::cmds::risk(args, &cli),
+            Commands::Suggest(ref args) => mirage::cli::cmds::suggest(args, &cli),
+            Commands::Stats(ref args) => mirage::cli::cmds::stats(args, &cli),
         },
     }
 }

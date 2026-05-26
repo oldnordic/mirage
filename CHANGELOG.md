@@ -5,6 +5,20 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-05-26
+
+### Added
+- **`risk` command** — Compute risk scores for functions based on CFG analysis:
+  - `mirage risk --function <name>` — Scores by cyclomatic complexity, path count, error path ratio, nesting depth, block count
+  - Reports risk level (low/medium/high/critical)
+- **`suggest` command** — Suggest refactoring actions for a symbol:
+  - `mirage suggest --symbol <name>` — Detects high complexity, deep nesting, excessive paths, dead code
+  - Severity-tagged suggestions with detail messages
+- **`stats` command** — Show aggregate code statistics from the database:
+  - Function counts, block counts, path counts, complexity distribution
+  - Dead code blocks and coverage gaps
+- **Opt-in telemetry** — `--record` flag or `MIRAGE_TELEMETRY=1` env var writes to `~/.magellan/mirage-telemetry.db`
+
 ## [1.4.6] - 2026-05-21
 
 ### Changed

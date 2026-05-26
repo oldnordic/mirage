@@ -1,28 +1,48 @@
-//! CLI command implementations
-//!
-//! Each command is in its own module for maintainability.
-//! Maximum file size: 600 LOC (exceptions up to 1000 LOC)
-
-pub mod status;
-pub mod paths;
-pub mod cfg;
+pub mod blast_zone;
+pub mod cfg_cmd;
+pub mod coverage;
+pub mod cycles;
+pub mod diff;
+pub mod docs;
 pub mod dominators;
-pub mod loops;
+pub mod frontiers;
+pub mod hotpaths;
+pub mod hotspots;
+pub mod icfg;
+pub mod loops_cmd;
+pub mod migrate;
+pub mod paths;
+pub mod patterns;
+pub mod risk;
+pub mod slice;
+pub mod stats;
+pub mod status;
+pub mod suggest;
 pub mod unreachable;
 pub mod verify;
-pub mod blast_zone;
-pub mod cycles;
-pub mod slice;
-pub mod hotspots;
-pub mod hotpaths;
-pub mod patterns;
-pub mod frontiers;
-pub mod diff;
-pub mod icfg;
-// pub mod complex_blocks;
-// pub mod spatial_analysis;
-pub mod migrate;
 
-// // Re-export command handler functions
-// pub use complex_blocks::complex_blocks;
-// pub use spatial_analysis::spatial_analysis;
+pub use blast_zone::blast_zone;
+pub use cfg_cmd::cfg;
+pub use coverage::coverage;
+pub use cycles::cycles;
+pub use diff::diff;
+pub use docs::docs;
+pub use dominators::dominators;
+pub use frontiers::frontiers;
+pub use hotpaths::hotpaths;
+pub use hotspots::hotspots;
+pub use icfg::icfg;
+pub use loops_cmd::loops;
+pub use migrate::migrate;
+pub use paths::paths;
+pub use patterns::patterns;
+pub use risk::risk;
+pub use slice::slice;
+pub use stats::stats;
+pub use status::status;
+pub use suggest::suggest;
+pub use unreachable::unreachable;
+pub use verify::verify;
+
+#[cfg(test)]
+pub(crate) use cfg_cmd::create_test_cfg;

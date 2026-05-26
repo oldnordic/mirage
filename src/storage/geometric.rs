@@ -76,7 +76,6 @@ impl GeometricStorage {
     ///
     /// * `Ok(GeometricStorage)` - Created storage backend
     /// * `Err(...)` - Error if creation fails
-    #[allow(dead_code)]
     pub fn create(db_path: &Path) -> Result<Self> {
         let inner = MagellanGeometricBackend::create(db_path)
             .map_err(|e| anyhow::anyhow!("Failed to create geometric backend: {}", e))?;

@@ -1,6 +1,6 @@
 # Mirage User Manual
 
-Version 1.3.1
+Version 1.5.0
 
 ---
 
@@ -45,7 +45,7 @@ cargo install --path .
 - **Magellan 3.3.3+ / Schema v14** (or v11+ for basic CFG, v13+ for source documents)
   - For CFG extraction and 4D spatial coordinates
   - Run `magellan watch --root ./src --db .magellan/mirage.db` first
-- **Rust 1.70+** (for MIR parsing)
+- **Rust 1.70+**
 
 ### Magellan v10 → v11 Migration
 
@@ -135,37 +135,6 @@ export MIRAGE_DB=/custom/path/mirage.db
 ---
 
 ## Commands Reference
-
-### `index` - Index a Rust Project
-
-Extracts MIR from Rust source and builds control-flow graphs.
-
-```bash
-mirage index --project /path/to/project
-```
-
-| Option | Description |
-|--------|-------------|
-| `--project <PATH>` | Path to Rust project root |
-| `--crate <NAME>` | Index only this crate |
-| `--incremental` | Only re-index changed functions |
-| `--reindex <ID>` | Re-index specific function by symbol_id |
-
-**What it does:**
-1. Runs `charon` on the project to extract MIR
-2. Converts MIR to CFG for each function
-3. Enumerates execution paths with BLAKE3 hashing
-4. Stores results in SQLite database
-
-**Output:**
-```
-Indexing /path/to/project
-[████████████████████] 100% (45/45 functions)
-
-Processed: 45  Updated: 45  Skipped: 0  Errors: 0
-```
-
----
 
 ### `status` - Database Statistics
 
@@ -558,32 +527,41 @@ mirage icfg --entry "main" --format json
 
 ---
 
-### `diff` - CFG Snapshot Diff
+### `diff` - CFG Diff
 
-Compare control-flow graphs between two database snapshots.
+Compare control-flow graphs between two Magellan database snapshots (e.g., before and after a code change).
 
 ```bash
-mirage diff --function "main" --before "snapshot_1" --after "snapshot_2"
+mirage diff --function "main" --before-db old.db --after-db new.db
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--function <NAME>` | Function to compare |
-| `--before <ID>` | Before snapshot ID or "current" |
-| `--after <ID>` | After snapshot ID or "current" |
+| `--function <NAME>` | Function to compare (symbol ID or name) |
+| `--before-db <PATH>` | Path to "before" database |
+| `--after-db <PATH>` | Path to "after" database |
 | `--show-edges` | Show edge differences |
 | `--verbose` | Show detailed block changes |
 
+**Workflow:**
+1. Run `magellan watch` on the old code, save the `.db`
+2. Make code changes
+3. Run `magellan watch` on the new code, save to a different `.db`
+4. Run `mirage diff --before-db old.db --after-db new.db --function "name"`
+
 **Output:**
 ```
-Diff: main
-==========
+CFG Diff: main
+  Before: old.db
+  After: new.db
+  Similarity: 85.3%
 
-Blocks added: 2
-Blocks removed: 1
-Blocks changed: 3
+Added blocks (2):
+  + Block 5: conditional @ 42:0-48:0
+  + Block 6: return @ 48:0-50:0
 
-Edge changes: +2, -1
+Deleted blocks (1):
+  - Block 4: return @ 38:0-40:0
 ```
 
 ---
@@ -761,13 +739,6 @@ mirage paths --function foo --output pretty
 
 ## Tips & Tricks
 
-### Incremental Updates
-
-After making changes, re-index only what changed:
-```bash
-mirage index --project . --incremental
-```
-
 ### Chaining Commands
 
 Use JSON output to pipe between commands:
@@ -777,20 +748,17 @@ mirage paths --function foo --output json | jq '.paths[].path_id' | xargs -I {} 
 
 ### Working with Large Codebases
 
-For large projects, use specific crate targeting:
+For large projects, use specific function targeting and path limits:
 ```bash
-mirage index --project . --crate my_crate
+mirage paths --function foo --max-length 50
 ```
 
 ---
 
 ## Troubleshooting
 
-### "charon: command not found"
-Install Charon from https://github.com/AeneasVerif/charon and ensure it's in your PATH.
-
 ### "No such function in database"
-The function hasn't been indexed yet. Run `mirage index` first.
+The function hasn't been indexed yet. Run `magellan watch` first.
 
 ### "Magellan database not available"
 Inter-procedural features require Magellan. Run `magellan watch` first or omit those flags.

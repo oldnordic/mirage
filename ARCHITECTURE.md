@@ -5,55 +5,45 @@ Mirage is a control-flow analysis tool that reads Magellan code graphs and provi
 ## Overview
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
-│   Mirage    │────▶│   Router     │────▶│  Magellan DB    │
-│    CLI      │     │  (backend)   │     │  (.geo/.db)     │
-└─────────────┘     └──────────────┘     └─────────────────┘
-                            │
-                            ▼
-                     ┌──────────────┐
-                     │   Magellan   │
-                     │   Adapter    │
-                     └──────────────┘
+┌─────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Mirage    │────▶│   Backend        │────▶│  Magellan DB    │
+│    CLI      │     │  (auto-detect)   │     │  (.geo/.db)     │
+└─────────────┘     └──────────────────┘     └─────────────────┘
 ```
 
 ## Components
 
-### 1. CLI Layer (`src/main.rs`)
+### 1. CLI Layer (`src/cli/`)
 
-Parses commands and dispatches to the appropriate backend router.
+Parses commands and dispatches to the appropriate analysis module. Modular: one file per command in `src/cli/cmds/`.
 
-### 2. Router Layer (`src/router/`)
+### 2. Storage Layer (`src/storage/`)
 
-Backend-agnostic routing that detects database format and delegates:
-- `GeometricRouter` — For `.geo` files
-- `SqliteRouter` — For `.db` files
-- `NativeV3Router` — For `.v3` files (reserved)
+Backend detection and data access:
+- `Backend` — Enum with auto-detection (`Sqlite` / `Geometric`)
+- `StorageTrait` — Backend-agnostic storage interface
+- `SqliteStorage` — SQLite backend (default)
+- `GeometricStorage` — `.geo` backend (feature-gated)
+- `MirageDb` — Legacy wrapper around `Backend`
 
-### 3. Magellan Integration (`src/integrations/magellan.rs`)
+### 3. Magellan Integration (`src/integrations/magellan/`)
 
-Contract-aware adapter with:
+Contract-aware adapter:
 - **Path Normalization**: All paths via `normalize_path_for_query()`
 - **Ambiguity Handling**: `Unique`/`Ambiguous`/`NotFound` results
 - **Symbol Resolution**: ID, FQN, path+name lookup
 
-### 4. Storage Layer (`src/storage/`)
-
-Backend implementations:
-- `GeometricStorage` — `.geo` backend
-- `SqliteStorage` — SQLite backend
-- `KvStorage` — Native-V3 backend (reserved)
-
-### 5. CFG Analysis (`src/cfg/`)
+### 4. CFG Analysis (`src/cfg/`)
 
 Core algorithms:
-- Path enumeration
-- Dominator trees
+- Path enumeration (recursive, iterative, cached)
+- Dominator trees (Lengauer-Tarjan)
 - Post-dominators
 - Natural loop detection
 - Reachability analysis
+- CFG diff (cross-database comparison)
 
-### 6. Analysis Layer (`src/analysis/`)
+### 5. Analysis Layer (`src/analysis/`)
 
 Inter-procedural and intra-procedural analysis:
 - `MagellanBridge` — wraps Magellan's CodeGraph for call graph algorithms
@@ -62,15 +52,16 @@ Inter-procedural and intra-procedural analysis:
 - `stats` — aggregate code statistics (function counts, complexity distribution, dead code)
 - `telemetry` — opt-in local telemetry (`--record` or `MIRAGE_TELEMETRY=1`)
 
-## Backend Detection
+## Data Flow
 
-```rust
-pub fn detect(path: &Path) -> Result<BackendFormat> {
-    if path.extension().and_then(|e| e.to_str()) == Some("geo") {
-        return Ok(BackendFormat::Geometric);
-    }
-    // Check magic bytes for SQLite/NativeV3
-}
+```
+Magellan indexes source → writes .db (cfg_blocks, graph_entities, graph_edges)
+     │
+     ▼
+Mirage opens .db → load_cfg_from_db() → petgraph DiGraph<BasicBlock, EdgeType>
+     │
+     ▼
+cfg:: / analysis:: modules compute in memory → CLI outputs results
 ```
 
 ## Symbol Resolution
@@ -79,7 +70,7 @@ pub fn detect(path: &Path) -> Result<BackendFormat> {
 User Input (ID/FQN/name)
     │
     ▼
-MagellanAdapter::resolve_function_id()
+StorageTrait / MagellanAdapter
     │
     ├─► Numeric ID? → Direct lookup
     ├─► FQN lookup?

@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/mirage-analyzer)](https://crates.io/crates/mirage-analyzer)
 [![Documentation](https://docs.rs/mirage-analyzer/badge.svg)](https://docs.rs/mirage-analyzer)
 
-**Version:** 1.3.1
+**Version:** 1.5.0
 
 Path-aware code intelligence engine for Rust. Analyzes control-flow graphs from Magellan databases.
 
@@ -55,7 +55,7 @@ cargo install mirage-analyzer --features backend-geometric --no-default-features
 ## Requirements
 
 - **[Magellan](https://github.com/oldnordic/magellan)** 3.3.3+ / Schema v14 (or v11+ for basic CFG, v13+ for source documents)
-- Rust 1.70+ (for MIR parsing)
+- Rust 1.70+
 - Magellan database (`.db`) created by `magellan watch`
 
 **Database Location:** Default is `.magellan/mirage.db` (auto-discovered)

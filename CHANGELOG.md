@@ -18,6 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Function counts, block counts, path counts, complexity distribution
   - Dead code blocks and coverage gaps
 - **Opt-in telemetry** — `--record` flag or `MIRAGE_TELEMETRY=1` env var writes to `~/.magellan/mirage-telemetry.db`
+- **`diff` command rewrite** — CFG diff now compares two separate Magellan databases (`--before-db`/`--after-db`) instead of querying the same data with fake snapshot IDs
+
+### Changed
+- **CLI modularization** — `cli/mod.rs` split from 9114 LOC into 22 command files and 9 test files
+- **6 files over 1K LOC modularized** — `cfg/paths.rs`, `storage/mod.rs`, `analysis/mod.rs`, `storage/paths.rs`, `integrations/magellan.rs`, `cfg/reachability.rs`
+- **Production unwrap cleanup** — 21 `.unwrap()` replaced with `.expect("invariant: ...")` in non-test code
+- **Binary dead_code fix** — `main.rs` links library directly, eliminating 168 dead_code warnings at the root cause
+
+### Removed
+- **`src/router/` module** — Abandoned BackendRouter abstraction (1111 LOC). CLI uses `MirageDb`/`Backend` directly
+- **`integrations/magellan/bridge.rs`** — Dead `GeometricBridge` only referenced by deleted router (155 LOC)
+- **`cfg/icfg.rs::to_inter_procedural_cfg()`** — Dead function only called from deleted router (50 LOC)
+- **`src/mir/` module** — Stub MIR/Charon extraction returning `Ok(vec![])` (376 LOC). If MIR support ships, Magellan will index it
+- **2 integration tests** — `charon_extraction_test.rs`, `mir_to_db_integration.rs` (140 LOC)
+
+### Fixed
+- **`is_feasible_path()` bug** — Mixed precomputed/non-precomputed logic; restored `is_feasible_path_precomputed()` lost during extraction
 
 ## [1.4.6] - 2026-05-21
 
@@ -112,7 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed `get_or_enumerate_paths()` to re-enumerate when cached paths table is empty (prevents stale 0-path caches)
   - Falls back to `build_edges_from_terminators()` for pre-Magellan-v11 databases without `cfg_edges`
   - **Impact**: Path enumeration now returns > 0 paths for functions with proper edge data; loop detection works; dominator trees are correct
-- **Geometric backend edge type mapping** in `src/router/geometric.rs` — maps `edge_type` u32 discriminants to Mirage `EdgeType` enum instead of hardcoding `Fallthrough` for all edges
+- **Geometric backend edge type mapping** — maps `edge_type` u32 discriminants to Mirage `EdgeType` enum instead of hardcoding `Fallthrough` for all edges
 
 ### Changed
 - **Database schema requirement** — Now requires Magellan v11+ (or v10 with 4D coordinate columns)
@@ -121,36 +138,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation updates**:
   - `MANUAL.md`: Updated version to 1.2.4, added `icfg`, `hotpaths`, `diff`, and `migrate` commands; added `--file` option to all function-disambiguating commands; updated all database path examples from `.codemcp/project.db` to `.magellan/mirage.db`; simplified function name examples (use simple names, not crate-qualified)
   - `README.md`: Fixed version to 1.2.4 and removed internal automation references
-
-## [1.3.0] - 2026-04-12
-
-### Added
-- **Truth-Based AI Engineering Vision**: Established a new paradigm for code intelligence centered on deterministic, graph-based reasoning.
-  - Created **`THE_VISION.md`**: Outlines the 4D Voxel World and Minecraft-style block streaming to reduce context usage by 90%.
-  - Created **`ECOSYSTEM_SYNERGY.md`**: Documents the integration with GeoMetriDB 4D research (Sparse Inference as Cognition).
-  - Created **`MIR_INTEGRATION_PLAN.md`**: File-by-file roadmap for high-fidelity MIR extraction.
-  - Created **`PATH_SUMMARIZATION_PLAN.md`**: TDD plan for distilling raw MIR into "Truth Proofs."
-- **High-Fidelity MIR Integration**:
-  - Implemented **`src/mir/`** module for parsing Charon LLBC (Low-Level Borrow Calculus) JSON format.
-  - Implemented TDD-verified translation from MIR basic blocks to Mirage Control Flow Graphs.
-  - Supported high-fidelity instructions (Assign, Call, Drop, Assert) to eliminate guesswork.
-- **Path Summarization (Truth Proofs)**:
-  - Implemented **`src/cfg/summary.rs`**: A depth-aware distillation engine that filters compiler noise (StorageLive, Nop) and highlights logical effects.
-  - Added **`--summarize`** flag to the `paths` command, providing compact logic sequences in both Human and JSON formats.
-  - Example output: `[Entry] -> [Call: auth::verify] -> [State: Local(0) = true] -> [Return]`.
-
-### Changed
-- **Ecosystem Synchronization**:
-  - Updated **Magellan** to Schema Version 9, adding the `statements` column to the `cfg_blocks` table for instruction persistence.
-  - Updated **geographdb-core** to support binary serialization of MIR fields (`cfg_hash`, `statements`), ensuring data preservation in `.geo` files.
-  - Updated **`GEMINI.md`**: Documented a cohesive workflow for discovery (Magellan), search (llmgrep), and reasoning (Mirage).
-- **Architecture**:
-  - Refactored `src/cfg/summary.rs` into a robust `PathSummarizer` struct with better error resilience and fallback handling for AST-only data.
-
-### Verified
-- **Strict TDD**: All new features verified with passing unit and integration tests (`tests/path_summary_tdd.rs`, `tests/mir_to_db_integration.rs`).
-- **Subagent Audits**: Completed soundness, security, and performance reviews using specialized AI subagents.
-- **Database Integrity**: Proved physical storage of MIR JSON in the `statements` column via direct SQL audit.
 
 ## [1.2.4] - 2026-03-20
 
@@ -195,19 +182,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Geometric Backend Support**: `.geo` file format via Magellan 3.1.0+
-- **GeometricRouter**: Full `BackendRouter` trait implementation for `.geo` databases
-  - `enumerate_paths()` - Path enumeration through CFG
-  - `get_loops()` - Natural loop detection with back edges
-  - `get_dominators()` - Dominance tree computation
-  - `get_blast_zone()` - Reachability-based impact analysis
-  - `find_cycles()` - Call graph cycle detection
-  - `slice_forward/backward()` - Program slicing
-  - `compute_hotspots()` - Risk scoring analysis
-  - `compute_icfg()` - Inter-procedural CFG construction
-  - All 17 tests passing in `tests/geometric_router_features_test.rs`
-- **MagellanAdapter**: Contract-aware integration with path normalization and ambiguity handling
-- **GeometricBridge**: Dedicated bridge type for .geo databases
-- **backend-geometric**: Feature flag for .geo backend support
+- **Backend detection** — `Backend::detect_and_open()` auto-detects `.db` vs `.geo`
+- **`backend-geometric`**: Feature flag for `.geo` backend support
+- **`MagellanAdapter`**: Contract-aware integration with path normalization and ambiguity handling
+- **StorageTrait**: Backend-agnostic storage interface (`get_cfg_blocks`, `get_entity`, etc.)
+- **GeometricStorage**: `.geo` backend implementing `StorageTrait`
 
 ### Changed
 - **Magellan dependency**: Updated to 3.1.0+ with geometric-backend feature
@@ -217,7 +196,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ARCHITECTURE.md**: Design documentation and component overview
 - **API_INTEGRATION.md**: Magellan contract documentation
 - **INVARIANTS.md**: Behavioral guarantees documentation
-- **Geometric Router Tests**: `tests/geometric_router_features_test.rs` with 17 comprehensive tests
 
 ## [1.1.0] - 2026-02-27
 
@@ -323,7 +301,6 @@ Windows builds are supported for analysis and exploration. Some Unix-only capabi
 ## [1.0.0] - 2026-02-03
 
 ### Added
-- **MIR Extraction:** Extract control-flow graphs from Rust MIR via Charon integration
 - **Path Enumeration:** Enumerate all execution paths through functions with caching (BLAKE3)
 - **Dominance Analysis:** Compute dominators, post-dominators, and dominance frontiers
 - **Loop Detection:** Identify natural loops within functions
@@ -338,7 +315,6 @@ Windows builds are supported for analysis and exploration. Some Unix-only capabi
 - **Incremental Indexing:** Git diff-based smart re-indexing
 
 ### CLI Commands (14 total)
-- `index` - Index Rust projects via MIR extraction
 - `status` - Database statistics
 - `paths` - Execution path enumeration and queries
 - `cfg` - Control-flow graph visualization (human/dot/json)

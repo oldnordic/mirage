@@ -3,14 +3,13 @@
 ## Backend Opening
 
 ```rust
-use magellan::graph::GeometricBackend;
+use mirage_analyzer::Backend;
 
-let backend = GeometricBackend::open(db_path)?;
+let backend = Backend::detect_and_open(db_path)?;
 ```
 
 **Rules:**
-- File must be valid `.geo` format
-- Backend handles file locking
+- Auto-detects `.db` (SQLite) or `.geo` (geometric) from file extension
 - Read-only connections are safe
 
 ## Path Normalization
@@ -61,5 +60,5 @@ All methods degrade gracefully: return empty `Vec` when tables are missing.
 ## Version Requirements
 
 - **Magellan**: 3.3.3+ (schema 14 for graph memory tables)
-- **sqlitegraph**: 2.0+
+- **sqlitegraph**: 3.0+
 - **GeoGraphDB**: Optional (for spatial features)

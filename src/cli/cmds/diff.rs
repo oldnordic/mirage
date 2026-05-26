@@ -100,15 +100,6 @@ fn resolve_function_id(backend: &crate::storage::Backend, ident: &str) -> Result
             )?;
             Ok(rowid)
         }
-        #[cfg(feature = "backend-geometric")]
-        crate::storage::Backend::Geometric(g) => {
-            let sym = g
-                .find_symbols_by_name(ident)
-                .into_iter()
-                .next()
-                .ok_or_else(|| anyhow::anyhow!("Function '{}' not found", ident))?;
-            Ok(sym.id as i64)
-        }
     }
 }
 fn print_diff_human(diff: &crate::cfg::diff::CfgDiff, show_edges: bool, verbose: bool) {

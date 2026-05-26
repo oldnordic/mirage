@@ -18,7 +18,6 @@ pub fn migrate(args: &MigrateArgs, cli: &Cli) -> Result<()> {
     // Convert storage BackendFormat to cli BackendFormat for comparison
     let actual_format_cli = match actual_format {
         StorageBackendFormat::SQLite => BackendFormat::Sqlite,
-        StorageBackendFormat::Geometric => BackendFormat::Geometric,
         StorageBackendFormat::Unknown => {
             return Err(anyhow::anyhow!(
                 "Cannot detect backend format: unknown format"

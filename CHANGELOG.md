@@ -5,6 +5,21 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-05-26
+
+### Changed
+- **Magellan dependency**: Updated to `4.1.0` (geometric-backend removed from defaults).
+- **Geometric backend removed**: `backend-geometric` and `geometric` features deleted; `.geo` file support dropped. All code was compile-gated and unused in production (no `.geo` databases touched since March 2026).
+
+### Removed
+- `src/storage/geometric.rs` (319 LOC) and `src/integrations/magellan/adapter.rs` (389 LOC) — geometric-only modules
+- `src/integrations/mod.rs` geometric feature gate
+- `backend-geometric` / `geometric` feature flags in `Cargo.toml`
+- `geographdb-core` optional dependency
+- All `#[cfg(feature = "backend-geometric")]` branches throughout the codebase
+- `BackendFormat::Geometric` variant and `Backend::Geometric` variant
+- `create_geometric_stub_backend()` helper
+
 ## [1.5.0] - 2026-05-26
 
 ### Added

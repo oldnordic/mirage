@@ -13,14 +13,10 @@
 pub mod paths;
 
 // Backend-agnostic storage trait and implementations (Phase 069-01)
-#[cfg(feature = "backend-geometric")]
-pub mod geometric;
 #[cfg(feature = "backend-sqlite")]
 pub mod sqlite_backend;
 
 // Also support the aliased feature names for convenience
-#[cfg(all(feature = "geometric", not(feature = "backend-geometric")))]
-pub mod geometric;
 #[cfg(all(feature = "sqlite", not(feature = "backend-sqlite")))]
 pub mod sqlite_backend;
 
@@ -33,10 +29,6 @@ pub mod schema;
 use anyhow::Result;
 
 // Backend implementations (Phase 069-01)
-#[cfg(feature = "backend-geometric")]
-pub use backend::create_geometric_stub_backend;
-#[cfg(feature = "backend-geometric")]
-pub use geometric::GeometricStorage;
 #[cfg(feature = "backend-sqlite")]
 pub use sqlite_backend::SqliteStorage;
 

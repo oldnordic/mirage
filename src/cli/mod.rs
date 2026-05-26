@@ -552,15 +552,12 @@ pub struct DiffArgs {
 pub enum BackendFormat {
     /// SQLite database (traditional backend)
     Sqlite,
-    /// Geometric database (.geo files, Magellan 3.0+)
-    Geometric,
 }
 
 impl std::fmt::Display for BackendFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Sqlite => write!(f, "sqlite"),
-            Self::Geometric => write!(f, "geometric"),
         }
     }
 }

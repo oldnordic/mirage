@@ -1,6 +1,6 @@
 [package]
 name = "mirage-analyzer"
-version = "1.5.0"
+version = "1.5.1"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Mirage Contributors"]
@@ -29,7 +29,6 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Magellan for inter-procedural analysis (required for CFG data)
 magellan = { version = "4.1.0", default-features = false, features = ["sqlite-backend"] }
-geographdb-core = { version = "0.1.0", optional = true }
 
 # sqlitegraph for GraphBackend trait
 sqlitegraph = { version = "3.0.3", default-features = false, features = ["sqlite-backend"] }
@@ -71,9 +70,6 @@ windows = []
 # Backend selection
 backend-sqlite = ["sqlitegraph/sqlite-backend"]
 sqlite = ["backend-sqlite"]
-# Geometric backend support through Magellan
-backend-geometric = ["magellan/geometric-backend", "dep:geographdb-core"]
-geometric = ["backend-geometric"]
 system-tests = []
 
 # MIR extraction features will be added in Milestone 1

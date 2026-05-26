@@ -3,15 +3,12 @@ use std::path::Path;
 
 use super::{CfgBlockData, DocumentInfo, StorageTrait};
 
-#[cfg(feature = "backend-geometric")]
-use super::geometric::GeometricStorage;
-
 #[cfg(feature = "backend-sqlite")]
 use super::sqlite_backend::SqliteStorage;
 
 /// Storage backend enum (Phase 069-01)
 ///
-/// This enum wraps SqliteStorage or GeometricStorage and delegates
+/// This enum wraps SqliteStorage and delegates
 /// StorageTrait methods to the appropriate implementation.
 ///
 /// Follows llmgrep's Backend pattern for consistency across tools.
@@ -21,9 +18,6 @@ pub enum Backend {
     /// SQLite storage backend (traditional, always available)
     #[cfg(feature = "backend-sqlite")]
     Sqlite(SqliteStorage),
-    /// Geometric storage backend for .geo files (Magellan 3.0+)
-    #[cfg(feature = "backend-geometric")]
-    Geometric(GeometricStorage),
 }
 
 impl Backend {
@@ -52,17 +46,6 @@ impl Backend {
     pub fn detect_and_open(db_path: &Path) -> Result<Self> {
         use magellan::migrate_backend_cmd::detect_backend_format;
 
-        // Check for .geo extension first (Magellan 3.0+ geometric backend)
-        #[cfg(feature = "backend-geometric")]
-        let is_geo = db_path.extension().and_then(|e| e.to_str()) == Some("geo");
-
-        #[cfg(feature = "backend-geometric")]
-        {
-            if is_geo {
-                return GeometricStorage::open(db_path).map(Backend::Geometric);
-            }
-        }
-
         // For non-.geo files, use Magellan's SQLite detection.
         let sqlite_detected = detect_backend_format(db_path).is_ok();
 
@@ -77,19 +60,10 @@ impl Backend {
             }
         }
 
-        #[cfg(not(any(feature = "backend-sqlite", feature = "backend-geometric")))]
+        #[cfg(not(feature = "backend-sqlite"))]
         {
             let _ = sqlite_detected;
             Err(anyhow::anyhow!("No storage backend feature enabled"))
-        }
-    }
-
-    /// Check if this is a Geometric backend
-    pub fn is_geometric(&self) -> bool {
-        match self {
-            #[cfg(feature = "backend-geometric")]
-            Backend::Geometric(_) => true,
-            _ => false,
         }
     }
 
@@ -98,10 +72,6 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(_) => true,
-            #[cfg(feature = "backend-geometric")]
-            Backend::Geometric(_) => false,
-            #[cfg(not(feature = "backend-sqlite"))]
-            _ => false,
         }
     }
 
@@ -110,10 +80,6 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(s) => s.get_cfg_blocks(function_id),
-            #[cfg(feature = "backend-geometric")]
-            Backend::Geometric(g) => g.get_cfg_blocks(function_id),
-            #[allow(unreachable_patterns)]
-            _ => Err(anyhow::anyhow!("No storage backend available")),
         }
     }
 
@@ -122,10 +88,6 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(s) => s.get_entity(entity_id),
-            #[cfg(feature = "backend-geometric")]
-            Backend::Geometric(g) => g.get_entity(entity_id),
-            #[allow(unreachable_patterns)]
-            _ => None,
         }
     }
 
@@ -134,10 +96,6 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(s) => s.get_cached_paths(function_id),
-            #[cfg(feature = "backend-geometric")]
-            Backend::Geometric(g) => g.get_cached_paths(function_id),
-            #[allow(unreachable_patterns)]
-            _ => Err(anyhow::anyhow!("No storage backend available")),
         }
     }
 
@@ -146,10 +104,6 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(s) => s.get_callees(function_id),
-            #[cfg(feature = "backend-geometric")]
-            Backend::Geometric(g) => g.get_callees(function_id),
-            #[allow(unreachable_patterns)]
-            _ => Ok(Vec::new()),
         }
     }
 
@@ -158,10 +112,6 @@ impl Backend {
         match self {
             #[cfg(feature = "backend-sqlite")]
             Backend::Sqlite(s) => s.list_source_documents(),
-            #[cfg(feature = "backend-geometric")]
-            Backend::Geometric(g) => g.list_source_documents(),
-            #[allow(unreachable_patterns)]
-            _ => Ok(Vec::new()),
         }
     }
 }
@@ -193,8 +143,6 @@ impl StorageTrait for Backend {
 pub enum BackendFormat {
     /// SQLite-based backend (default, backward compatible)
     SQLite,
-    /// Geometric backend (.geo files, Magellan 3.0+)
-    Geometric,
     /// Unknown or unrecognized format
     Unknown,
 }
@@ -212,11 +160,6 @@ impl BackendFormat {
             return Ok(BackendFormat::Unknown);
         }
 
-        // Check for .geo extension first (Magellan 3.0+ geometric backend)
-        if path.extension().and_then(|e| e.to_str()) == Some("geo") {
-            return Ok(BackendFormat::Geometric);
-        }
-
         let mut file = std::fs::File::open(path)?;
         let mut header = [0u8; 16];
         let bytes_read = std::io::Read::read(&mut file, &mut header)?;
@@ -232,194 +175,6 @@ impl BackendFormat {
             BackendFormat::Unknown
         })
     }
-}
-
-/// Create a stub GraphBackend for geometric backend
-///
-/// Geometric backend doesn't use sqlitegraph's GraphBackend trait.
-/// Instead, it provides its own query methods directly via GeometricBackend.
-/// This stub is used to satisfy the MirageDb struct's graph_backend field.
-///
-/// Any code that tries to use GraphBackend methods on a geometric database
-/// will get appropriate errors directing them to use the geometric-specific
-/// methods instead.
-#[cfg(feature = "backend-geometric")]
-pub(super) fn create_geometric_stub_backend() -> Box<dyn GraphBackend> {
-    use sqlitegraph::backend::{
-        BackendDirection, BackupResult, EdgeSpec, ImportMetadata, NeighborQuery, NodeSpec,
-        SnapshotMetadata,
-    };
-    use sqlitegraph::multi_hop::ChainStep;
-    use sqlitegraph::pattern::{PatternMatch, PatternQuery};
-    use sqlitegraph::{GraphBackend, GraphEntity, SqliteGraphError};
-
-    /// Stub GraphBackend implementation for geometric backend
-    /// All methods return errors since geometric uses its own API
-    struct GeometricStubBackend;
-
-    impl GraphBackend for GeometricStubBackend {
-        fn insert_node(&self, _node: NodeSpec) -> Result<i64, SqliteGraphError> {
-            Err(SqliteGraphError::unsupported(
-                "GraphBackend operations not supported for geometric backend. Use GeometricBackend methods directly."
-            ))
-        }
-
-        fn insert_edge(&self, _edge: EdgeSpec) -> Result<i64, SqliteGraphError> {
-            Err(SqliteGraphError::unsupported(
-                "GraphBackend operations not supported for geometric backend. Use GeometricBackend methods directly."
-            ))
-        }
-
-        fn update_node(&self, _node_id: i64, _node: NodeSpec) -> Result<i64, SqliteGraphError> {
-            Err(SqliteGraphError::unsupported(
-                "GraphBackend operations not supported for geometric backend. Use GeometricBackend methods directly."
-            ))
-        }
-
-        fn delete_entity(&self, _id: i64) -> Result<(), SqliteGraphError> {
-            Err(SqliteGraphError::unsupported(
-                "GraphBackend operations not supported for geometric backend. Use GeometricBackend methods directly."
-            ))
-        }
-
-        fn entity_ids(&self) -> Result<Vec<i64>, SqliteGraphError> {
-            Ok(vec![])
-        }
-
-        fn get_node(
-            &self,
-            _snapshot_id: SnapshotId,
-            _id: i64,
-        ) -> Result<GraphEntity, SqliteGraphError> {
-            Err(SqliteGraphError::unsupported(
-                "GraphBackend operations not supported for geometric backend. Use GeometricBackend methods directly."
-            ))
-        }
-
-        fn neighbors(
-            &self,
-            _snapshot_id: SnapshotId,
-            _node: i64,
-            _query: NeighborQuery,
-        ) -> Result<Vec<i64>, SqliteGraphError> {
-            Ok(vec![])
-        }
-
-        fn bfs(
-            &self,
-            _snapshot_id: SnapshotId,
-            _start: i64,
-            _depth: u32,
-        ) -> Result<Vec<i64>, SqliteGraphError> {
-            Ok(vec![])
-        }
-
-        fn shortest_path(
-            &self,
-            _snapshot_id: SnapshotId,
-            _start: i64,
-            _end: i64,
-        ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
-            Ok(None)
-        }
-
-        fn node_degree(
-            &self,
-            _snapshot_id: SnapshotId,
-            _node: i64,
-        ) -> Result<(usize, usize), SqliteGraphError> {
-            Ok((0, 0))
-        }
-
-        fn k_hop(
-            &self,
-            _snapshot_id: SnapshotId,
-            _start: i64,
-            _depth: u32,
-            _direction: BackendDirection,
-        ) -> Result<Vec<i64>, SqliteGraphError> {
-            Ok(vec![])
-        }
-
-        fn k_hop_filtered(
-            &self,
-            _snapshot_id: SnapshotId,
-            _start: i64,
-            _depth: u32,
-            _direction: BackendDirection,
-            _allowed_edge_types: &[&str],
-        ) -> Result<Vec<i64>, SqliteGraphError> {
-            Ok(vec![])
-        }
-
-        fn chain_query(
-            &self,
-            _snapshot_id: SnapshotId,
-            _start: i64,
-            _chain: &[ChainStep],
-        ) -> Result<Vec<i64>, SqliteGraphError> {
-            Ok(vec![])
-        }
-
-        fn pattern_search(
-            &self,
-            _snapshot_id: SnapshotId,
-            _start: i64,
-            _pattern: &PatternQuery,
-        ) -> Result<Vec<PatternMatch>, SqliteGraphError> {
-            Ok(vec![])
-        }
-
-        fn checkpoint(&self) -> Result<(), SqliteGraphError> {
-            Ok(())
-        }
-
-        fn flush(&self) -> Result<(), SqliteGraphError> {
-            Ok(())
-        }
-
-        fn backup(&self, _backup_dir: &std::path::Path) -> Result<BackupResult, SqliteGraphError> {
-            Err(SqliteGraphError::unsupported(
-                "Backup not supported for geometric backend",
-            ))
-        }
-
-        fn snapshot_export(
-            &self,
-            _export_dir: &std::path::Path,
-        ) -> Result<SnapshotMetadata, SqliteGraphError> {
-            Err(SqliteGraphError::unsupported(
-                "Snapshot export not supported for geometric backend",
-            ))
-        }
-
-        fn snapshot_import(
-            &self,
-            _import_dir: &std::path::Path,
-        ) -> Result<ImportMetadata, SqliteGraphError> {
-            Err(SqliteGraphError::unsupported(
-                "Snapshot import not supported for geometric backend",
-            ))
-        }
-
-        fn query_nodes_by_kind(
-            &self,
-            _snapshot_id: SnapshotId,
-            _kind: &str,
-        ) -> Result<Vec<i64>, SqliteGraphError> {
-            Ok(vec![])
-        }
-
-        fn query_nodes_by_name_pattern(
-            &self,
-            _snapshot_id: SnapshotId,
-            _pattern: &str,
-        ) -> Result<Vec<i64>, SqliteGraphError> {
-            Ok(vec![])
-        }
-    }
-
-    Box::new(GeometricStubBackend)
 }
 
 #[cfg(all(test, feature = "sqlite"))]

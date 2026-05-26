@@ -42,8 +42,13 @@ fn test_resolve_db_path_with_env_var() {
     clear_env();
     // Env var set -> returns env var value
     std::env::set_var("MIRAGE_DB", "/env/path.db");
-    let result = resolve_db_path(None).unwrap();
-    assert_eq!(result, "/env/path.db");
+    let result = resolve_db_path(None);
+    assert!(
+        result.is_ok(),
+        "Expected Ok with MIRAGE_DB set, got: {:?}",
+        result
+    );
+    assert_eq!(result.unwrap(), "/env/path.db");
     std::env::remove_var("MIRAGE_DB");
 }
 

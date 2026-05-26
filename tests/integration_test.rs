@@ -529,9 +529,7 @@ fn test_detect_backend_flag() {
 
     assert!(output.success(), "--detect-backend should succeed");
     assert!(
-        output.stdout_contains("sqlite")
-            || output.stdout_contains("geometric")
-            || output.stdout.contains("{"),
+        output.stdout_contains("sqlite") || output.stdout.contains("{"),
         "--detect-backend should output backend type"
     );
 }

@@ -77,7 +77,6 @@ fn run_command(cli: Cli) -> Result<()> {
 
         let backend_str = match format {
             BackendFormat::SQLite => "sqlite",
-            BackendFormat::Geometric => "geometric",
             BackendFormat::Unknown => "unknown",
         };
 

@@ -7,9 +7,6 @@ use super::{
     Backend, BackendFormat, CfgBlockRow, MIN_MAGELLAN_SCHEMA_VERSION, MIRAGE_SCHEMA_VERSION,
 };
 
-#[cfg(feature = "backend-geometric")]
-use super::backend::create_geometric_stub_backend;
-
 #[cfg(feature = "backend-sqlite")]
 use super::schema::{create_schema, migrate_schema};
 
@@ -24,7 +21,7 @@ use super::operations::load_cfg_from_rows;
 /// This dual-backend approach allows gradual migration from direct Connection usage.
 pub struct MirageDb {
     /// Storage backend for CFG queries (Phase 069-02)
-    /// Wraps either SqliteStorage or KvStorage for backend-agnostic CFG access.
+    /// Wraps SqliteStorage for backend-agnostic CFG access.
     storage: Backend,
 
     /// Backend-agnostic graph interface for entity queries
@@ -72,29 +69,9 @@ impl MirageDb {
         let detected_backend =
             BackendFormat::detect(path).context("Failed to detect backend format")?;
 
-        // Handle geometric backend specially - it doesn't use GraphBackend
-        #[cfg(feature = "backend-geometric")]
-        if detected_backend == BackendFormat::Geometric {
-            let snapshot_id = SnapshotId::current();
-
-            let graph_backend = create_geometric_stub_backend();
-
-            #[cfg(feature = "backend-sqlite")]
-            let conn = None;
-
-            return Ok(Self {
-                storage,
-                graph_backend,
-                snapshot_id,
-                #[cfg(feature = "backend-sqlite")]
-                conn,
-            });
-        }
-
         // Select appropriate GraphConfig based on detected backend
         let cfg = match detected_backend {
             BackendFormat::SQLite => GraphConfig::sqlite(),
-            BackendFormat::Geometric => GraphConfig::native(),
             BackendFormat::Unknown => {
                 anyhow::bail!(
                     "Unknown database format: {}. Cannot determine backend.",
@@ -325,21 +302,6 @@ impl MirageDb {
     /// Helper function to get status via storage backend (for non-SQLite backends)
     #[cfg(feature = "backend-sqlite")]
     fn status_via_storage(&self) -> Result<DatabaseStatus> {
-        #[cfg(feature = "backend-geometric")]
-        {
-            if let Backend::Geometric(ref geometric) = self.storage {
-                let stats = geometric.get_stats()?;
-                return Ok(DatabaseStatus {
-                    cfg_blocks: stats.cfg_block_count as i64,
-                    cfg_edges: 0,
-                    cfg_paths: 0,
-                    cfg_dominators: 0,
-                    mirage_schema_version: MIRAGE_SCHEMA_VERSION,
-                    magellan_schema_version: MIN_MAGELLAN_SCHEMA_VERSION,
-                });
-            }
-        }
-
         #[allow(deprecated)]
         Ok(DatabaseStatus {
             cfg_blocks: 0,
@@ -351,38 +313,7 @@ impl MirageDb {
         })
     }
 
-    /// Get database statistics (geometric backend)
-    ///
-    /// Uses GeometricBackend methods to query symbol and CFG data.
-    #[cfg(all(feature = "backend-geometric", not(feature = "backend-sqlite")))]
-    pub fn status(&self) -> Result<DatabaseStatus> {
-        let cfg_blocks: i64 = if let Backend::Geometric(ref geometric) = self.storage {
-            0
-        } else {
-            0
-        };
-
-        let cfg_edges: i64 = 0;
-        let cfg_paths: i64 = 0;
-        let cfg_dominators: i64 = 0;
-
-        let mirage_schema_version = MIRAGE_SCHEMA_VERSION;
-        let magellan_schema_version = MIN_MAGELLAN_SCHEMA_VERSION;
-
-        #[allow(deprecated)]
-        Ok(DatabaseStatus {
-            cfg_blocks,
-            cfg_edges,
-            cfg_paths,
-            cfg_dominators,
-            mirage_schema_version,
-            magellan_schema_version,
-        })
-    }
-
     /// Resolve a function name or ID to a function_id (backend-agnostic)
-    ///
-    /// This method works with both SQLite and geometric backends.
     ///
     /// # Examples
     ///
@@ -403,7 +334,6 @@ impl MirageDb {
     /// Resolve a function name or ID to a function_id with optional file filter
     ///
     /// For SQLite backend: queries the graph_entities table
-    /// For geometric backend: uses GraphBackend::get_node
     #[cfg(feature = "backend-sqlite")]
     pub fn resolve_function_name_with_file(
         &self,
@@ -415,171 +345,11 @@ impl MirageDb {
             return Ok(id);
         }
 
-        // Check if we have a SQLite connection (geometric backend has conn=None)
+        // Check if we have a SQLite connection
         if let Ok(conn) = self.conn() {
             resolve_function_name_sqlite(conn, name_or_id, file_filter)
         } else {
-            // For geometric backend, use the storage backend directly
-            #[cfg(feature = "backend-geometric")]
-            {
-                if let Backend::Geometric(ref geometric) = self.storage {
-                    return self.resolve_function_name_geometric(name_or_id);
-                }
-            }
             anyhow::bail!("No database connection available for function resolution")
-        }
-    }
-
-    /// Normalize path for deduplication purposes
-    /// Converts paths to a canonical form for comparison
-    #[cfg(feature = "backend-geometric")]
-    fn normalize_path_for_dedup(path: &str) -> String {
-        let path = path.replace('\\', "/");
-        let path = path.strip_prefix("./").unwrap_or(&path);
-        if let Some(idx) = path.find("/src/") {
-            path[idx + 1..].to_string()
-        } else {
-            path.to_string()
-        }
-    }
-
-    /// Resolve function name for geometric backend
-    ///
-    /// Accepts:
-    /// - Numeric ID (e.g., "12345")
-    /// - Full Qualified Name (FQN): magellan::/path/to/file.rs::FunctionName
-    /// - Simple name (e.g., "FunctionName") - must be unique
-    #[cfg(feature = "backend-geometric")]
-    fn resolve_function_name_geometric(&self, name_or_id: &str) -> Result<i64> {
-        if let Ok(id) = name_or_id.parse::<i64>() {
-            if let Backend::Geometric(ref geometric) = self.storage {
-                if geometric
-                    .inner()
-                    .find_symbol_by_id_info(id as u64)
-                    .is_some()
-                {
-                    return Ok(id);
-                }
-            }
-            anyhow::bail!("Function with ID '{}' not found", id);
-        }
-
-        if let Some(fqn_data) = Self::parse_fqn(name_or_id) {
-            return self.resolve_function_by_fqn(fqn_data);
-        }
-
-        if let Backend::Geometric(ref geometric) = self.storage {
-            let all_symbols = geometric.find_symbols_by_name(name_or_id);
-            if all_symbols.is_empty() {
-                anyhow::bail!("Function '{}' not found", name_or_id);
-            }
-
-            let mut unique_symbols: Vec<magellan::graph::geometric_backend::SymbolInfo> =
-                Vec::new();
-            let mut seen_ids: std::collections::HashSet<u64> = std::collections::HashSet::new();
-
-            for sym in all_symbols {
-                if seen_ids.insert(sym.id) {
-                    unique_symbols.push(sym);
-                }
-            }
-
-            if unique_symbols.len() > 1 {
-                let first = &unique_symbols[0];
-                let first_path_normalized = Self::normalize_path_for_dedup(&first.file_path);
-                let all_same_location = unique_symbols.iter().all(|sym| {
-                    let sym_path_normalized = Self::normalize_path_for_dedup(&sym.file_path);
-                    sym.name == first.name
-                        && sym_path_normalized == first_path_normalized
-                        && sym.start_line == first.start_line
-                        && sym.start_col == first.start_col
-                });
-
-                if !all_same_location {
-                    anyhow::bail!(
-                        "Ambiguous function reference to '{}': {} unique candidates found\n\nCandidates:\n{}\n\nUse full qualified name: magellan::/path/to/file.rs::{}",
-                        name_or_id,
-                        unique_symbols.len(),
-                        unique_symbols.iter().map(|s| {
-                            format!("  - {} ({}:{}:{})", s.name, s.file_path, s.start_line, s.start_col)
-                        }).collect::<Vec<_>>().join("\n"),
-                        name_or_id
-                    );
-                }
-            }
-            Ok(unique_symbols[0].id as i64)
-        } else {
-            anyhow::bail!("Geometric backend not available")
-        }
-    }
-
-    /// Parse FQN format: magellan::/path/to/file.rs::Function symbol_name
-    /// Returns (file_path, symbol_name) if valid FQN
-    #[cfg(feature = "backend-geometric")]
-    fn parse_fqn(name: &str) -> Option<(&str, &str)> {
-        if !name.starts_with("magellan::") {
-            return None;
-        }
-
-        let after_prefix = &name[10..];
-
-        if let Some(last_sep_pos) = after_prefix.rfind("::") {
-            let file_path = &after_prefix[..last_sep_pos];
-            let name_part = &after_prefix[last_sep_pos + 2..];
-
-            let symbol_name = if let Some(space_pos) = name_part.find(' ') {
-                &name_part[space_pos + 1..]
-            } else {
-                name_part
-            };
-
-            if !file_path.is_empty() && !symbol_name.is_empty() {
-                return Some((file_path, symbol_name));
-            }
-        }
-
-        None
-    }
-
-    /// Resolve function by FQN (file path + symbol name)
-    #[cfg(feature = "backend-geometric")]
-    fn resolve_function_by_fqn(&self, fqn_data: (&str, &str)) -> Result<i64> {
-        let (file_path, symbol_name) = fqn_data;
-
-        if let Backend::Geometric(ref geometric) = self.storage {
-            match geometric.find_symbol_id_by_name_and_path(symbol_name, file_path) {
-                Some(id) => Ok(id as i64),
-                None => {
-                    let all_symbols = geometric.find_symbols_by_name(symbol_name);
-                    let normalized_target = Self::normalize_path_for_dedup(file_path);
-
-                    let matching_symbols: Vec<_> = all_symbols
-                        .into_iter()
-                        .filter(|sym| {
-                            let sym_path_normalized =
-                                Self::normalize_path_for_dedup(&sym.file_path);
-                            sym_path_normalized == normalized_target
-                        })
-                        .collect();
-
-                    if matching_symbols.is_empty() {
-                        anyhow::bail!(
-                            "Function '{}' not found in file '{}'",
-                            symbol_name,
-                            file_path
-                        );
-                    } else {
-                        anyhow::bail!(
-                            "Multiple functions named '{}' found in file '{}' ({} matches). Use numeric ID instead.",
-                            symbol_name,
-                            file_path,
-                            matching_symbols.len()
-                        );
-                    }
-                }
-            }
-        } else {
-            anyhow::bail!("Geometric backend not available")
         }
     }
 
@@ -663,7 +433,6 @@ impl MirageDb {
     /// Get the function name for a given function_id (backend-agnostic)
     ///
     /// For SQLite backend: queries the graph_entities table
-    /// For Geometric backend: uses GraphBackend::get_node
     pub fn get_function_name(&self, function_id: i64) -> Option<String> {
         let snapshot = SnapshotId::current();
         self.backend()

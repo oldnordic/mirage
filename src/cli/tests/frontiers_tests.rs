@@ -3,44 +3,6 @@
 use crate::cfg::{compute_dominance_frontiers, DominatorTree};
 use crate::cli::responses::*;
 use crate::cli::*;
-use tempfile::NamedTempFile;
-
-/// Create a minimal test database
-fn create_minimal_db() -> anyhow::Result<NamedTempFile> {
-    use crate::storage::{REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION};
-    let file = NamedTempFile::new()?;
-    let conn = rusqlite::Connection::open(file.path())?;
-
-    // Create Magellan tables
-    conn.execute(
-        "CREATE TABLE magellan_meta (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            magellan_schema_version INTEGER NOT NULL,
-            sqlitegraph_schema_version INTEGER NOT NULL,
-            created_at INTEGER NOT NULL
-        )",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TABLE graph_entities (
-            id INTEGER PRIMARY KEY,
-            type TEXT NOT NULL,
-            name TEXT,
-            source_file TEXT
-        )",
-        [],
-    )?;
-
-    conn.execute(
-        "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
-         VALUES (1, ?, ?, strftime('%s', 'now'))",
-        [REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION],
-    )?;
-
-    Ok(file)
-}
-
 /// Test frontiers response struct serialization
 #[test]
 fn test_frontiers_response_serialization() {

@@ -46,7 +46,7 @@ Core algorithms:
 ### 5. Analysis Layer (`src/analysis/`)
 
 Inter-procedural and intra-procedural analysis:
-- `MagellanBridge` — wraps Magellan's CodeGraph for call graph algorithms
+- `MagellanBridge` — wraps Magellan's CodeGraph for call graph algorithms; exposes `k_hop_callees()` and `k_hop_callers()` via `SymbolNavigator` for depth-bounded inter-procedural analysis
 - `risk` — composite risk scoring (cyclomatic complexity, path count, error ratio, nesting)
 - `suggest` — refactoring suggestions (split-function, flatten-nesting, extract-method, remove-dead-code)
 - `stats` — aggregate code statistics (function counts, complexity distribution, dead code)

@@ -145,6 +145,32 @@ impl MagellanBridge {
         self.graph.reverse_reachable_symbols(symbol_id, None)
     }
 
+    pub fn k_hop_callees(
+        &self,
+        symbol_name: &str,
+        depth: usize,
+    ) -> Result<Vec<magellan::graph::navigator::DepthSymbol>> {
+        let nav = self.graph.navigator();
+        let resolved = nav.resolve(symbol_name)?;
+        if resolved.is_empty() {
+            anyhow::bail!("symbol '{}' not found", symbol_name);
+        }
+        nav.k_hop_callees(resolved[0].id, depth as u32)
+    }
+
+    pub fn k_hop_callers(
+        &self,
+        symbol_name: &str,
+        depth: usize,
+    ) -> Result<Vec<magellan::graph::navigator::DepthSymbol>> {
+        let nav = self.graph.navigator();
+        let resolved = nav.resolve(symbol_name)?;
+        if resolved.is_empty() {
+            anyhow::bail!("symbol '{}' not found", symbol_name);
+        }
+        nav.k_hop_callers(resolved[0].id, depth as u32)
+    }
+
     /// Find dead code unreachable from an entry point symbol
     ///
     /// Identifies all symbols in the call graph that cannot be reached from

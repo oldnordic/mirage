@@ -47,7 +47,7 @@ pub struct CFGBuilder<'a> {
     node_to_block: HashMap<usize, usize>,
     /// Maps block IDs to graph node indices
     node_map: HashMap<usize, petgraph::graph::NodeIndex>,
-    /// Next block ID to assign
+    #[allow(dead_code)]
     next_block_id: usize,
 }
 

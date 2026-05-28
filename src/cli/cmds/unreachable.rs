@@ -66,7 +66,7 @@ pub fn unreachable(args: &UnreachableArgs, cli: &Cli) -> Result<()> {
     // Struct to hold unreachable results per function
     struct FunctionUnreachable {
         function_name: String,
-        function_id: i64,
+        _function_id: i64,
         blocks: Vec<UnreachableBlock>,
     }
 
@@ -186,7 +186,7 @@ pub fn unreachable(args: &UnreachableArgs, cli: &Cli) -> Result<()> {
 
                     all_results.push(FunctionUnreachable {
                         function_name,
-                        function_id,
+                        _function_id: function_id,
                         blocks,
                     });
                 }

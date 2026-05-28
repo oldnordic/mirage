@@ -123,10 +123,7 @@ pub fn cfg(args: &CfgArgs, cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-/// Helper to create a test CFG for demonstration
-///
-/// This will be replaced with database loading in future plans
-/// when MIR extraction (02-01) is complete.
+#[cfg(test)]
 pub(crate) fn create_test_cfg() -> crate::cfg::Cfg {
     use crate::cfg::{BasicBlock, BlockKind, EdgeType, Terminator};
     use petgraph::graph::DiGraph;

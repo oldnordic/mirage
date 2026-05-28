@@ -378,21 +378,6 @@ fn print_dominator_tree_human(
         print_dominator_tree_human(cfg, dom_tree, child, depth + 1, is_post);
     }
 }
-fn print_post_dominator_tree_human(
-    cfg: &crate::cfg::Cfg,
-    post_dom_tree: &crate::cfg::PostDominatorTree,
-    node: petgraph::graph::NodeIndex,
-    depth: usize,
-) {
-    let indent = "  ".repeat(depth);
-    let block_id = cfg[node].id;
-
-    println!("{}Block {} (post-dominator)", indent, block_id);
-
-    for &child in post_dom_tree.children(node) {
-        print_post_dominator_tree_human(cfg, post_dom_tree, child, depth + 1);
-    }
-}
 fn inter_procedural_dominators(args: &DominatorsArgs, cli: &Cli, db_path: &str) -> Result<()> {
     use crate::analysis::MagellanBridge;
     use std::collections::{HashMap, HashSet};

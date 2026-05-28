@@ -5,6 +5,19 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-05-28
+
+### Added
+- **`--call-depth` flag for `blast-zone` command** — Depth-aware inter-procedural analysis via magellan `SymbolNavigator`. Limits call graph traversal to N hops, showing `[d1]`, `[d2]` etc. in human output.
+- **`MagellanBridge::k_hop_callees()` and `k_hop_callers()`** — Depth-bounded call graph traversal methods wrapping magellan's `SymbolNavigator` (requires magellan 4.2.0+).
+
+### Changed
+- **`MirageDb::resolve_function_name_with_file()`** now uses magellan's `SymbolNavigator` for name-based resolution with disambiguation, falling back to direct SQL for symbol_id hash lookup. Adds ambiguity reporting with file:line locations.
+- **`CallGraphSymbol` response type** now includes optional `depth` field (JSON output).
+- **`blast-zone` human output** shows `[dN]` depth prefix when using `--call-depth`.
+- **Schema v17 support** — tested against magellan schema v17 (minimum remains >= 7).
+- **Dependency: magellan** updated to `4.2.0` with `SymbolNavigator` support.
+
 ## [1.5.1] - 2026-05-26
 
 ### Changed

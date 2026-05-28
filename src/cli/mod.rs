@@ -325,6 +325,10 @@ pub struct BlastZoneArgs {
     /// Use call graph for inter-procedural impact analysis
     #[arg(long)]
     pub use_call_graph: bool,
+
+    /// Call graph traversal depth for inter-procedural analysis (default: unlimited)
+    #[arg(long, default_value_t = 0)]
+    pub call_depth: usize,
 }
 
 /// Cycle type filter for the cycles command

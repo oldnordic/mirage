@@ -31,6 +31,9 @@ pub struct MirageDb {
     /// Snapshot ID for consistent reads
     snapshot_id: SnapshotId,
 
+    /// Path to the database file (for CodeGraph::open in SymbolNavigator)
+    db_path: std::path::PathBuf,
+
     // SQLite-specific connection (only available with sqlite feature)
     // DEPRECATED: Use storage field instead for new code
     #[cfg(feature = "backend-sqlite")]
@@ -97,6 +100,7 @@ impl MirageDb {
             storage,
             graph_backend,
             snapshot_id,
+            db_path: path.to_path_buf(),
             #[cfg(feature = "backend-sqlite")]
             conn,
         })
@@ -333,24 +337,70 @@ impl MirageDb {
 
     /// Resolve a function name or ID to a function_id with optional file filter
     ///
-    /// For SQLite backend: queries the graph_entities table
+    /// Uses magellan's `SymbolNavigator` for name-based resolution, falling back
+    /// to direct SQL for symbol_id hash lookup.
     #[cfg(feature = "backend-sqlite")]
     pub fn resolve_function_name_with_file(
         &self,
         name_or_id: &str,
         file_filter: Option<&str>,
     ) -> Result<i64> {
-        // Try to parse as numeric ID first
         if let Ok(id) = name_or_id.parse::<i64>() {
             return Ok(id);
         }
 
-        // Check if we have a SQLite connection
         if let Ok(conn) = self.conn() {
-            resolve_function_name_sqlite(conn, name_or_id, file_filter)
-        } else {
-            anyhow::bail!("No database connection available for function resolution")
+            if let Ok(id) = resolve_function_name_sqlite(conn, name_or_id, file_filter) {
+                return Ok(id);
+            }
         }
+
+        let graph = magellan::CodeGraph::open(&self.db_path)
+            .context("Failed to open CodeGraph for symbol resolution")?;
+        let nav = graph.navigator();
+        let resolved = nav
+            .resolve(name_or_id)
+            .context(format!("Symbol resolution failed for '{}'", name_or_id))?;
+
+        let mut candidates: Vec<_> = resolved
+            .into_iter()
+            .filter(|s| s.kind == "Function" || s.kind == "Method")
+            .collect();
+
+        if let Some(file_path) = file_filter {
+            candidates.retain(|s| {
+                s.file_path
+                    .as_deref()
+                    .map(|p| p.contains(file_path))
+                    .unwrap_or(false)
+            });
+        }
+
+        if candidates.is_empty() {
+            anyhow::bail!(
+                "Function '{}' not found in database. Run 'magellan watch' to index functions.",
+                name_or_id
+            );
+        }
+
+        if candidates.len() > 1 {
+            let locations: Vec<String> = candidates
+                .iter()
+                .filter_map(|s| {
+                    s.file_path
+                        .as_deref()
+                        .map(|p| format!("{}:{}", p, s.start_line))
+                })
+                .collect();
+            anyhow::bail!(
+                "Ambiguous function name '{}' matches {} symbols: {}",
+                name_or_id,
+                candidates.len(),
+                locations.join(", ")
+            );
+        }
+
+        Ok(candidates[0].id)
     }
 
     /// Load a CFG from the database (backend-agnostic)

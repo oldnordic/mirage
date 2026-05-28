@@ -176,36 +176,72 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
             use crate::analysis::MagellanBridge;
             match MagellanBridge::open(&db_path) {
                 Ok(bridge) => {
-                    // Use function name as symbol identifier
                     let symbol_id = function_name.as_str();
-                    let forward: Option<Vec<CallGraphSymbol>> = bridge
-                        .reachable_symbols(symbol_id)
-                        .map(|symbols| {
-                            symbols
-                                .into_iter()
-                                .map(|s| CallGraphSymbol {
-                                    symbol_id: s.symbol_id,
-                                    fqn: s.fqn,
-                                    file_path: s.file_path,
-                                    kind: s.kind,
-                                })
-                                .collect()
-                        })
-                        .ok();
-                    let backward: Option<Vec<CallGraphSymbol>> = bridge
-                        .reverse_reachable_symbols(symbol_id)
-                        .map(|symbols| {
-                            symbols
-                                .into_iter()
-                                .map(|s| CallGraphSymbol {
-                                    symbol_id: s.symbol_id,
-                                    fqn: s.fqn,
-                                    file_path: s.file_path,
-                                    kind: s.kind,
-                                })
-                                .collect()
-                        })
-                        .ok();
+                    let (forward, backward) = if args.call_depth > 0 {
+                        let fwd = bridge
+                            .k_hop_callees(symbol_id, args.call_depth)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|ds| CallGraphSymbol {
+                                        symbol_id: None,
+                                        fqn: Some(ds.info.name.clone()),
+                                        file_path: ds.info.file_path.clone().unwrap_or_default(),
+                                        kind: ds.info.kind.clone(),
+                                        depth: Some(ds.depth),
+                                    })
+                                    .collect()
+                            })
+                            .ok();
+                        let bwd = bridge
+                            .k_hop_callers(symbol_id, args.call_depth)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|ds| CallGraphSymbol {
+                                        symbol_id: None,
+                                        fqn: Some(ds.info.name.clone()),
+                                        file_path: ds.info.file_path.clone().unwrap_or_default(),
+                                        kind: ds.info.kind.clone(),
+                                        depth: Some(ds.depth),
+                                    })
+                                    .collect()
+                            })
+                            .ok();
+                        (fwd, bwd)
+                    } else {
+                        let fwd = bridge
+                            .reachable_symbols(symbol_id)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|s| CallGraphSymbol {
+                                        symbol_id: s.symbol_id,
+                                        fqn: s.fqn,
+                                        file_path: s.file_path,
+                                        kind: s.kind,
+                                        depth: None,
+                                    })
+                                    .collect()
+                            })
+                            .ok();
+                        let bwd = bridge
+                            .reverse_reachable_symbols(symbol_id)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|s| CallGraphSymbol {
+                                        symbol_id: s.symbol_id,
+                                        fqn: s.fqn,
+                                        file_path: s.file_path,
+                                        kind: s.kind,
+                                        depth: None,
+                                    })
+                                    .collect()
+                            })
+                            .ok();
+                        (fwd, bwd)
+                    };
                     (forward, backward)
                 }
                 Err(e) => {
@@ -234,20 +270,45 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
 
                 // Show call graph impact if available
                 if let Some(ref forward) = forward_impact {
-                    println!("Inter-Procedural Impact (Call Graph):");
+                    if args.call_depth > 0 {
+                        println!(
+                            "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):",
+                            args.call_depth
+                        );
+                    } else {
+                        println!("Inter-Procedural Impact (Call Graph):");
+                    }
                     println!("  Forward Impact: {} functions reached", forward.len());
                     for sym in forward {
-                        println!("    - {}", sym.fqn.as_deref().unwrap_or(&sym.file_path));
+                        let name = sym.fqn.as_deref().unwrap_or(&sym.file_path);
+                        if let Some(d) = sym.depth {
+                            println!("    [d{}] {}", d, name);
+                        } else {
+                            println!("    - {}", name);
+                        }
                     }
                 }
                 if let Some(ref backward) = backward_impact {
                     if !backward.is_empty() {
+                        if forward_impact.is_none() && args.call_depth > 0 {
+                            println!(
+                                "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):",
+                                args.call_depth
+                            );
+                        } else if forward_impact.is_none() {
+                            println!("Inter-Procedural Impact (Call Graph):");
+                        }
                         println!(
                             "  Backward Impact: {} functions can reach this",
                             backward.len()
                         );
                         for sym in backward {
-                            println!("    - {}", sym.fqn.as_deref().unwrap_or(&sym.file_path));
+                            let name = sym.fqn.as_deref().unwrap_or(&sym.file_path);
+                            if let Some(d) = sym.depth {
+                                println!("    [d{}] {}", d, name);
+                            } else {
+                                println!("    - {}", name);
+                            }
                         }
                     }
                 }
@@ -378,36 +439,72 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
             use crate::analysis::MagellanBridge;
             match MagellanBridge::open(&db_path) {
                 Ok(bridge) => {
-                    // Use function name as symbol identifier
                     let symbol_id = function_name.as_str();
-                    let forward: Option<Vec<CallGraphSymbol>> = bridge
-                        .reachable_symbols(symbol_id)
-                        .map(|symbols| {
-                            symbols
-                                .into_iter()
-                                .map(|s| CallGraphSymbol {
-                                    symbol_id: s.symbol_id,
-                                    fqn: s.fqn,
-                                    file_path: s.file_path,
-                                    kind: s.kind,
-                                })
-                                .collect()
-                        })
-                        .ok();
-                    let backward: Option<Vec<CallGraphSymbol>> = bridge
-                        .reverse_reachable_symbols(symbol_id)
-                        .map(|symbols| {
-                            symbols
-                                .into_iter()
-                                .map(|s| CallGraphSymbol {
-                                    symbol_id: s.symbol_id,
-                                    fqn: s.fqn,
-                                    file_path: s.file_path,
-                                    kind: s.kind,
-                                })
-                                .collect()
-                        })
-                        .ok();
+                    let (forward, backward) = if args.call_depth > 0 {
+                        let fwd = bridge
+                            .k_hop_callees(symbol_id, args.call_depth)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|ds| CallGraphSymbol {
+                                        symbol_id: None,
+                                        fqn: Some(ds.info.name.clone()),
+                                        file_path: ds.info.file_path.clone().unwrap_or_default(),
+                                        kind: ds.info.kind.clone(),
+                                        depth: Some(ds.depth),
+                                    })
+                                    .collect()
+                            })
+                            .ok();
+                        let bwd = bridge
+                            .k_hop_callers(symbol_id, args.call_depth)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|ds| CallGraphSymbol {
+                                        symbol_id: None,
+                                        fqn: Some(ds.info.name.clone()),
+                                        file_path: ds.info.file_path.clone().unwrap_or_default(),
+                                        kind: ds.info.kind.clone(),
+                                        depth: Some(ds.depth),
+                                    })
+                                    .collect()
+                            })
+                            .ok();
+                        (fwd, bwd)
+                    } else {
+                        let fwd = bridge
+                            .reachable_symbols(symbol_id)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|s| CallGraphSymbol {
+                                        symbol_id: s.symbol_id,
+                                        fqn: s.fqn,
+                                        file_path: s.file_path,
+                                        kind: s.kind,
+                                        depth: None,
+                                    })
+                                    .collect()
+                            })
+                            .ok();
+                        let bwd = bridge
+                            .reverse_reachable_symbols(symbol_id)
+                            .map(|symbols| {
+                                symbols
+                                    .into_iter()
+                                    .map(|s| CallGraphSymbol {
+                                        symbol_id: s.symbol_id,
+                                        fqn: s.fqn,
+                                        file_path: s.file_path,
+                                        kind: s.kind,
+                                        depth: None,
+                                    })
+                                    .collect()
+                            })
+                            .ok();
+                        (fwd, bwd)
+                    };
                     (forward, backward)
                 }
                 Err(e) => {
@@ -434,20 +531,45 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
 
                 // Show call graph impact if available
                 if let Some(ref forward) = forward_impact {
-                    println!("Inter-Procedural Impact (Call Graph):");
+                    if args.call_depth > 0 {
+                        println!(
+                            "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):",
+                            args.call_depth
+                        );
+                    } else {
+                        println!("Inter-Procedural Impact (Call Graph):");
+                    }
                     println!("  Forward Impact: {} functions reached", forward.len());
                     for sym in forward {
-                        println!("    - {}", sym.fqn.as_deref().unwrap_or(&sym.file_path));
+                        let name = sym.fqn.as_deref().unwrap_or(&sym.file_path);
+                        if let Some(d) = sym.depth {
+                            println!("    [d{}] {}", d, name);
+                        } else {
+                            println!("    - {}", name);
+                        }
                     }
                 }
                 if let Some(ref backward) = backward_impact {
                     if !backward.is_empty() {
+                        if forward_impact.is_none() && args.call_depth > 0 {
+                            println!(
+                                "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):",
+                                args.call_depth
+                            );
+                        } else if forward_impact.is_none() {
+                            println!("Inter-Procedural Impact (Call Graph):");
+                        }
                         println!(
                             "  Backward Impact: {} functions can reach this",
                             backward.len()
                         );
                         for sym in backward {
-                            println!("    - {}", sym.fqn.as_deref().unwrap_or(&sym.file_path));
+                            let name = sym.fqn.as_deref().unwrap_or(&sym.file_path);
+                            if let Some(d) = sym.depth {
+                                println!("    [d{}] {}", d, name);
+                            } else {
+                                println!("    - {}", name);
+                            }
                         }
                     }
                 }

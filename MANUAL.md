@@ -1,6 +1,6 @@
 # Mirage User Manual
 
-Version 1.5.0
+Version 1.6.0
 
 ---
 
@@ -445,11 +445,22 @@ mirage blast-zone --function "function_name" --block-id 0
 | `--max-depth <N>` | Maximum traversal depth (default: 100) |
 | `--include-errors` | Include error paths in analysis |
 | `--use-call-graph` | Use call graph for inter-procedural impact |
+| `--call-depth <N>` | Limit inter-procedural traversal to N call hops (default: 0 = unlimited reachability) |
 
 **What is a Blast Zone?**
 The set of all code reachable from a given point. Changing code in the blast zone affects all downstream execution.
 
-**Output:**
+**Depth-aware inter-procedural analysis:**
+Use `--call-depth N` with `--use-call-graph` to limit call graph traversal to N hops. This uses depth-aware BFS through the call graph, showing propagation depth for each affected symbol.
+
+```bash
+# Depth-limited blast zone (3 call hops)
+mirage blast-zone --function "index_file" --use-call-graph --call-depth 3
+```
+
+When `--call-depth` is 0 (default), blast-zone uses existing unlimited reachability. When > 0, each affected symbol is annotated with its depth in the call chain.
+
+**Output (without --call-depth):**
 ```
 Blast Zone: function_name:Block0
 ==============================================
@@ -459,6 +470,19 @@ Intra-Procedural Impact (CFG):
   Block1 → Block4 → Exit
 
 Affected functions: 1 (within same function)
+```
+
+**Output (with --call-depth 3):**
+```
+Blast Zone: function_name:Block0
+==============================================
+
+Inter-Procedural Impact (call graph, depth ≤ 3):
+  [d1] helper_a → helper_b
+  [d2] helper_b → process
+  [d3] process → commit
+
+Affected functions: 4 (across 3 call hops)
 ```
 
 ---

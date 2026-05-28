@@ -92,7 +92,7 @@ impl TestContext {
 
         conn.execute(
             "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
-             VALUES (1, 11, 5, 0)",
+             VALUES (1, 17, 5, 0)",
             [],
         ).unwrap();
 

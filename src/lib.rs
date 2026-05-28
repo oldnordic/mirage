@@ -29,8 +29,6 @@
 //! - [`StorageTrait`] - Backend-agnostic storage interface
 //! - [`MirageDb`] - Legacy database connection (wraps Backend internally)
 
-#![allow(dead_code)]
-
 pub mod analysis;
 pub mod cfg;
 pub mod cli;

@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/mirage-analyzer)](https://crates.io/crates/mirage-analyzer)
 [![Documentation](https://docs.rs/mirage-analyzer/badge.svg)](https://docs.rs/mirage-analyzer)
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 
 Path-aware code intelligence engine for Rust. Analyzes control-flow graphs from Magellan databases.
 
@@ -15,7 +15,7 @@ Mirage reads Magellan code graphs and provides control-flow analysis:
 - Natural loop detection
 - Dead code detection
 - Call graph cycle detection
-- Inter-procedural reachability
+- Inter-procedural reachability (with depth-aware blast zone analysis)
 - Source document listing from graph memory tables
 
 ## Quick Start

@@ -281,19 +281,14 @@ pub fn get_cached_paths(conn: &mut Connection, function_id: i64) -> Result<Vec<P
         .context("Failed to execute get_cached_paths query")?;
 
     for row in rows {
-        let (path_id, kind_str, entry_block, exit_block, block_id, _sequence_order) = row?;
-        let entry = entry_block as BlockId;
-        let exit = exit_block as BlockId;
+        let (path_id, kind_str, _entry_block, _exit_block, block_id, _sequence_order) = row?;
         let kind = str_to_path_kind(&kind_str)
             .with_context(|| format!("Invalid path_kind '{}' in database", kind_str))?;
 
         path_data
             .entry(path_id)
             .or_insert_with(|| PathData {
-                path_id: String::new(),
                 kind,
-                entry,
-                exit,
                 blocks: Vec::new(),
             })
             .blocks
@@ -310,10 +305,7 @@ pub fn get_cached_paths(conn: &mut Connection, function_id: i64) -> Result<Vec<P
 }
 
 struct PathData {
-    path_id: String,
     kind: PathKind,
-    entry: BlockId,
-    exit: BlockId,
     blocks: Vec<BlockId>,
 }
 

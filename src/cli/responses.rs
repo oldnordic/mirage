@@ -281,6 +281,8 @@ pub(crate) struct CallGraphSymbol {
     pub fqn: Option<String>,
     pub file_path: String,
     pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u32>,
 }
 
 #[derive(serde::Serialize)]

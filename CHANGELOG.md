@@ -5,6 +5,22 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-05-29
+
+### Added
+
+- **`forge` module** — High-level library API for external consumers (forge SDK, agents, tool integrations):
+  - `resolve_function(name, file_filter, db)` — resolve a function name to its database ID.
+  - `get_function_cfg(name, file_filter, db)` — load a complete CFG for a function by name.
+  - `get_function_paths(name, file_filter, db)` — get cached execution paths for a function.
+  - `get_callees(name, file_filter, db)` — get all callees for a function.
+  - `detect_cycles(db)` — detect cycles in the call graph.
+  - `find_dead_symbols(entry, db)` — find symbols unreachable from an entry point.
+  - `reachable_symbols(symbol_id, db)` — forward reachability from a symbol.
+  - `database_status(db)` — get database statistics.
+  - Types: `FunctionCfgResult`, `CycleReport`, `DeadSymbolInfo`.
+- **Re-exports** in `lib.rs`: all forge convenience functions and types are re-exported at the crate root.
+
 ## [1.6.0] - 2026-05-28
 
 ### Added

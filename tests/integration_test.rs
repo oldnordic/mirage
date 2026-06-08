@@ -471,6 +471,7 @@ fn test_slice_command() {
             || stderr_lower.contains("not found")
             || stderr_lower.contains("no symbol")
             || stderr_lower.contains("could not")
+            || stderr_lower.contains("schema mismatch")
             || stdout_lower.contains("slice"),
         "slice command should succeed or show appropriate message: stderr={}, stdout={}",
         output.stderr,

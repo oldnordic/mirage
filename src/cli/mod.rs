@@ -140,8 +140,12 @@ pub struct StatusArgs {}
 #[derive(Parser, Debug, Clone)]
 pub struct PathsArgs {
     /// Function symbol ID or name
-    #[arg(long)]
+    #[arg(long, default_value = "")]
     pub function: String,
+
+    /// Natural-language query resolved via semantic search (HNSW embeddings)
+    #[arg(long)]
+    pub semantic_query: Option<String>,
 
     /// File path to disambiguate functions with same name (optional)
     #[arg(long)]
@@ -175,8 +179,12 @@ pub struct PathsArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct CfgArgs {
     /// Function symbol ID or name
-    #[arg(long)]
+    #[arg(long, default_value = "")]
     pub function: String,
+
+    /// Natural-language query resolved via semantic search (HNSW embeddings)
+    #[arg(long)]
+    pub semantic_query: Option<String>,
 
     /// File path to disambiguate functions with same name (optional)
     #[arg(long)]
@@ -190,8 +198,12 @@ pub struct CfgArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct CoverageArgs {
     /// Function symbol ID or name
-    #[arg(long)]
+    #[arg(long, default_value = "")]
     pub function: String,
+
+    /// Natural-language query resolved via semantic search (HNSW embeddings)
+    #[arg(long)]
+    pub semantic_query: Option<String>,
 
     /// File path to disambiguate functions with same name (optional)
     #[arg(long)]
@@ -201,8 +213,12 @@ pub struct CoverageArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct DominatorsArgs {
     /// Function symbol ID or name
-    #[arg(long)]
+    #[arg(long, default_value = "")]
     pub function: String,
+
+    /// Natural-language query resolved via semantic search (HNSW embeddings)
+    #[arg(long)]
+    pub semantic_query: Option<String>,
 
     /// File path to disambiguate functions with same name (optional)
     #[arg(long)]
@@ -224,8 +240,12 @@ pub struct DominatorsArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct LoopsArgs {
     /// Function to analyze for loops
-    #[arg(long)]
+    #[arg(long, default_value = "")]
     pub function: String,
+
+    /// Natural-language query resolved via semantic search (HNSW embeddings)
+    #[arg(long)]
+    pub semantic_query: Option<String>,
 
     /// File path to disambiguate functions with same name (optional)
     #[arg(long)]
@@ -254,8 +274,12 @@ pub struct UnreachableArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct PatternsArgs {
     /// Function to analyze for branching patterns
-    #[arg(long)]
+    #[arg(long, default_value = "")]
     pub function: String,
+
+    /// Natural-language query resolved via semantic search (HNSW embeddings)
+    #[arg(long)]
+    pub semantic_query: Option<String>,
 
     /// File path to disambiguate functions with same name (optional)
     #[arg(long)]
@@ -273,8 +297,12 @@ pub struct PatternsArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct FrontiersArgs {
     /// Function to analyze for dominance frontiers
-    #[arg(long)]
+    #[arg(long, default_value = "")]
     pub function: String,
+
+    /// Natural-language query resolved via semantic search (HNSW embeddings)
+    #[arg(long)]
+    pub semantic_query: Option<String>,
 
     /// File path to disambiguate functions with same name (optional)
     #[arg(long)]
@@ -412,8 +440,12 @@ pub struct HotspotsArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct HotpathsArgs {
     /// Function symbol ID or name
-    #[arg(long)]
+    #[arg(long, default_value = "")]
     pub function: String,
+
+    /// Natural-language query resolved via semantic search (HNSW embeddings)
+    #[arg(long)]
+    pub semantic_query: Option<String>,
 
     /// Number of hot paths to return (default: 10)
     #[arg(long, default_value = "10")]
@@ -472,8 +504,12 @@ pub struct DocsArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct RiskArgs {
     /// Function symbol ID or name
-    #[arg(long)]
+    #[arg(long, default_value = "")]
     pub function: String,
+
+    /// Natural-language query resolved via semantic search (HNSW embeddings)
+    #[arg(long)]
+    pub semantic_query: Option<String>,
 
     /// File path to disambiguate functions with same name (optional)
     #[arg(long)]
@@ -484,8 +520,12 @@ pub struct RiskArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct SuggestArgs {
     /// Symbol ID or name to analyze
-    #[arg(long)]
+    #[arg(long, default_value = "")]
     pub symbol: String,
+
+    /// Natural-language query resolved via semantic search (HNSW embeddings)
+    #[arg(long)]
+    pub semantic_query: Option<String>,
 
     /// File path to disambiguate (optional)
     #[arg(long)]

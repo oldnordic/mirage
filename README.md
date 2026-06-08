@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/mirage-analyzer)](https://crates.io/crates/mirage-analyzer)
 [![Documentation](https://docs.rs/mirage-analyzer/badge.svg)](https://docs.rs/mirage-analyzer)
 
-**Version:** 1.6.0
+**Version:** 1.8.0
 
 Path-aware code intelligence engine for Rust. Analyzes control-flow graphs from Magellan databases.
 
@@ -17,6 +17,7 @@ Mirage reads Magellan code graphs and provides control-flow analysis:
 - Call graph cycle detection
 - Inter-procedural reachability (with depth-aware blast zone analysis)
 - Source document listing from graph memory tables
+- **Semantic entry point discovery** — find functions by natural-language query via HNSW embeddings
 
 ## Quick Start
 
@@ -32,6 +33,9 @@ mirage --db .magellan/mirage.db paths --function "main"
 mirage --db .magellan/mirage.db cfg --function "process"
 mirage --db .magellan/mirage.db cycles
 mirage --db .magellan/mirage.db docs --kind wiki
+
+# Semantic entry point discovery (requires `magellan embed --db <db>` first)
+mirage --db .magellan/mirage.db paths --semantic-query "error handling in the parser"
 ```
 
 ## Backends

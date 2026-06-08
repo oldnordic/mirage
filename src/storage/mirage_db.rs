@@ -106,6 +106,11 @@ impl MirageDb {
         })
     }
 
+    /// Return the database file path
+    pub fn path(&self) -> &Path {
+        &self.db_path
+    }
+
     /// Validate database schema for SQLite backend
     #[cfg(feature = "backend-sqlite")]
     fn validate_schema_sqlite(conn: &mut Connection, _path: &Path) -> Result<()> {

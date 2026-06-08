@@ -447,6 +447,7 @@ fn test_loops_response_serialization() {
 fn test_loops_args_fields() {
     let args = LoopsArgs {
         function: "my_function".to_string(),
+        semantic_query: None,
         file: None,
         verbose: true,
     };
@@ -506,12 +507,14 @@ fn test_loops_json_output_format() {
 fn test_loops_verbose_flag() {
     let args_verbose = LoopsArgs {
         function: "test".to_string(),
+        semantic_query: None,
         file: None,
         verbose: true,
     };
 
     let args_not_verbose = LoopsArgs {
         function: "test".to_string(),
+        semantic_query: None,
         file: None,
         verbose: false,
     };
@@ -599,6 +602,7 @@ fn test_patterns_if_else_filter() {
     // Test argument parsing - command structure is correct
     let args = PatternsArgs {
         function: "test_func".to_string(),
+        semantic_query: None,
         file: None,
         if_else: true,
         r#match: false,
@@ -616,6 +620,7 @@ fn test_patterns_match_filter() {
     // Test argument parsing - command structure is correct
     let args = PatternsArgs {
         function: "test_func".to_string(),
+        semantic_query: None,
         file: None,
         if_else: false,
         r#match: true,
@@ -633,6 +638,7 @@ fn test_patterns_json_output() {
     // Test argument parsing - command structure is correct
     let args = PatternsArgs {
         function: "test_func".to_string(),
+        semantic_query: None,
         file: None,
         if_else: false,
         r#match: false,

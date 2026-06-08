@@ -39,6 +39,7 @@ pub mod forge;
 pub mod integrations;
 pub mod output;
 pub mod platform;
+pub mod query;
 pub mod storage;
 
 // Public API exports

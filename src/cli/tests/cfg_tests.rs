@@ -113,6 +113,7 @@ fn test_cfg_format_fallback() {
         output: OutputFormat::Human,
         command: Some(Commands::Cfg(CfgArgs {
             function: "test".to_string(),
+            semantic_query: None,
             file: None,
             format: None,
         })),
@@ -144,6 +145,7 @@ fn test_cfg_format_fallback() {
         output: OutputFormat::Json,
         command: Some(Commands::Cfg(CfgArgs {
             function: "test".to_string(),
+            semantic_query: None,
             file: None,
             format: None,
         })),

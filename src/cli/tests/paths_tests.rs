@@ -70,6 +70,7 @@ fn test_paths_max_length_limit() {
 fn test_paths_args_function_extraction() {
     let args = PathsArgs {
         function: "test_function".to_string(),
+        semantic_query: None,
         file: None,
         show_errors: false,
         max_length: None,
@@ -90,6 +91,7 @@ fn test_paths_args_function_extraction() {
 fn test_paths_args_with_flags() {
     let args = PathsArgs {
         function: "my_func".to_string(),
+        semantic_query: None,
         file: None,
         show_errors: true,
         max_length: Some(10),
@@ -224,6 +226,7 @@ fn test_paths_integration_with_test_cfg() {
 fn test_paths_args_with_blocks_flag() {
     let args_with = PathsArgs {
         function: "test".to_string(),
+        semantic_query: None,
         file: None,
         show_errors: false,
         max_length: None,
@@ -235,6 +238,7 @@ fn test_paths_args_with_blocks_flag() {
 
     let args_without = PathsArgs {
         function: "test".to_string(),
+        semantic_query: None,
         file: None,
         show_errors: false,
         max_length: None,

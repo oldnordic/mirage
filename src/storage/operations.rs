@@ -410,6 +410,58 @@ pub fn resolve_function_name_with_file(
     db.resolve_function_name_with_file(name_or_id, file_filter)
 }
 
+/// Resolve a function from either an explicit name or a semantic natural-language query.
+///
+/// If `semantic_query` is provided, embeds the query via Ollama and searches the
+/// HNSW index in the Magellan database, returning the top matching function ID.
+/// Otherwise falls back to `resolve_function_name_with_file` (function must be non-empty).
+pub fn resolve_function_or_semantic(
+    db: &super::MirageDb,
+    function: &str,
+    semantic_query: Option<&str>,
+    file_filter: Option<&str>,
+) -> Result<i64> {
+    if let Some(query) = semantic_query {
+        let db_path = std::path::Path::new(db.path());
+        let matches = crate::query::semantic::resolve_semantic_query(db_path, query, 5)?;
+        let matches = match matches {
+            Some(m) => m,
+            None => anyhow::bail!(
+                "No HNSW semantic index found in database. Run 'magellan embed --db <db>' first."
+            ),
+        };
+        if matches.is_empty() {
+            anyhow::bail!("Semantic query returned no matching functions.");
+        }
+        // Try each match in order, filtering by file if provided
+        for (entity_id, _distance) in matches {
+            if let Some(filter) = file_filter {
+                if let Ok(conn) = db.conn() {
+                    let file_match: Option<bool> = conn
+                        .query_row(
+                            "SELECT CASE WHEN file_path LIKE ?1 THEN 1 ELSE 0 END \
+                             FROM graph_entities WHERE id = ?2",
+                            params![format!("%{}%", filter), entity_id],
+                            |row| row.get(0),
+                        )
+                        .optional()
+                        .unwrap_or(None);
+                    if file_match != Some(true) {
+                        continue;
+                    }
+                }
+            }
+            return Ok(entity_id);
+        }
+        anyhow::bail!("No semantic match passed the file filter.");
+    }
+
+    if function.is_empty() {
+        anyhow::bail!("Either --function or --semantic-query must be provided.");
+    }
+    db.resolve_function_name_with_file(function, file_filter)
+}
+
 /// Resolve a function name or ID to a function_id (SQLite backend, legacy)
 ///
 /// This is the legacy function that takes a direct Connection reference.

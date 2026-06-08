@@ -121,6 +121,7 @@ fn test_dominator_tree_children() {
 fn test_dominators_args_fields() {
     let args = DominatorsArgs {
         function: "test_func".to_string(),
+        semantic_query: None,
         file: None,
         must_pass_through: Some("1".to_string()),
         post: false,
@@ -138,6 +139,7 @@ fn test_dominators_args_fields() {
 fn test_dominators_args_with_post_flag() {
     let args = DominatorsArgs {
         function: "my_function".to_string(),
+        semantic_query: None,
         file: None,
         must_pass_through: None,
         post: true,

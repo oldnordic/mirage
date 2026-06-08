@@ -30,20 +30,26 @@ pub fn hotpaths(args: &HotpathsArgs, cli: &Cli) -> Result<()> {
         }
     };
 
-    // Resolve function name/ID to function_id
-    let function_id = match db.resolve_function_name(&args.function) {
+    // Resolve function name/ID or semantic query to function_id
+    let function_id = match crate::storage::resolve_function_or_semantic(
+        &db,
+        &args.function,
+        args.semantic_query.as_deref(),
+        None,
+    ) {
         Ok(id) => id,
-        Err(_e) => {
+        Err(e) => {
             if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::function_not_found(&args.function);
+                let error = output::JsonError::new(
+                    "FunctionNotFound",
+                    &format!("{}", e),
+                    output::E_CFG_ERROR,
+                );
                 let wrapper = output::JsonResponse::new(error);
                 println!("{}", wrapper.to_json());
                 std::process::exit(output::EXIT_DATABASE);
             } else {
-                output::error(&format!(
-                    "Function '{}' not found in database",
-                    args.function
-                ));
+                output::error(&format!("{}", e));
                 output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
                 std::process::exit(output::EXIT_DATABASE);
             }

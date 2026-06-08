@@ -51,7 +51,7 @@ pub use schema::{create_minimal_database, create_schema, migrate_schema};
 // Re-exports from operations
 pub use operations::{
     load_cfg_from_db, load_cfg_from_db_with_conn, resolve_function_name,
-    resolve_function_name_with_conn, resolve_function_name_with_file,
+    resolve_function_name_with_conn, resolve_function_name_with_file, resolve_function_or_semantic,
 };
 
 // Re-exports from queries

@@ -22,20 +22,25 @@ pub fn suggest(args: &SuggestArgs, cli: &Cli) -> Result<()> {
         }
     };
 
-    let function_id = match crate::cfg::resolve_function_name_with_file(
+    let function_id = match crate::storage::resolve_function_or_semantic(
         &db,
         &args.symbol,
+        args.semantic_query.as_deref(),
         args.file.as_deref(),
     ) {
         Ok(id) => id,
-        Err(_) => {
+        Err(e) => {
             if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::function_not_found(&args.symbol);
+                let error = output::JsonError::new(
+                    "FunctionNotFound",
+                    &format!("{}", e),
+                    output::E_CFG_ERROR,
+                );
                 let wrapper = output::JsonResponse::new(error);
                 println!("{}", wrapper.to_json());
                 std::process::exit(output::EXIT_DATABASE);
             } else {
-                output::error(&format!("Symbol '{}' not found", args.symbol));
+                output::error(&format!("{}", e));
                 std::process::exit(output::EXIT_DATABASE);
             }
         }

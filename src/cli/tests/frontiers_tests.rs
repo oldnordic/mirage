@@ -140,6 +140,7 @@ fn test_frontiers_basic() {
 fn test_frontiers_iterated_flag() {
     let args = FrontiersArgs {
         function: "test_func".to_string(),
+        semantic_query: None,
         file: None,
         iterated: true,
         node: None,
@@ -154,6 +155,7 @@ fn test_frontiers_iterated_flag() {
 fn test_frontiers_node_flag() {
     let args = FrontiersArgs {
         function: "test_func".to_string(),
+        semantic_query: None,
         file: None,
         iterated: false,
         node: Some(5),
@@ -489,6 +491,7 @@ fn test_hotspot_entry_clone() {
 fn test_hotpaths_args_parsing() {
     let args = HotpathsArgs {
         function: "my_function".to_string(),
+        semantic_query: None,
         top: 5,
         rationale: true,
         min_score: Some(0.5),
@@ -505,6 +508,7 @@ fn test_hotpaths_args_parsing() {
 fn test_hotpaths_args_defaults() {
     let args = HotpathsArgs {
         function: "main".to_string(),
+        semantic_query: None,
         top: 10, // default value
         rationale: false,
         min_score: None,
@@ -525,6 +529,7 @@ fn test_hotpaths_args_defaults() {
 fn test_dominators_args_has_inter_procedural_flag() {
     let args = DominatorsArgs {
         function: "main".to_string(),
+        semantic_query: None,
         file: None,
         must_pass_through: Some("block1".to_string()),
         post: false,
@@ -542,6 +547,7 @@ fn test_dominators_args_has_inter_procedural_flag() {
 fn test_dominators_args_default_intra_procedural() {
     let args = DominatorsArgs {
         function: "main".to_string(),
+        semantic_query: None,
         file: None,
         must_pass_through: None,
         post: false,
@@ -559,6 +565,7 @@ fn test_dominators_inter_procedural_with_post() {
     // In practice, inter_procedural mode should take precedence
     let args = DominatorsArgs {
         function: "entry".to_string(),
+        semantic_query: None,
         file: None,
         must_pass_through: None,
         post: true,
@@ -576,6 +583,7 @@ fn test_dominators_inter_procedural_must_pass_through_combination() {
     // These flags can coexist in args struct
     let args = DominatorsArgs {
         function: "main".to_string(),
+        semantic_query: None,
         file: None,
         must_pass_through: Some("some_block".to_string()),
         post: false,

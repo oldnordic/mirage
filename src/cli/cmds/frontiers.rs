@@ -4,8 +4,9 @@ use crate::output;
 use anyhow::Result;
 
 pub fn frontiers(args: &FrontiersArgs, cli: &Cli) -> Result<()> {
+    use crate::cfg::load_cfg_from_db;
     use crate::cfg::{compute_dominance_frontiers, DominatorTree};
-    use crate::cfg::{load_cfg_from_db, resolve_function_name_with_file};
+    use crate::storage::resolve_function_or_semantic;
     use crate::storage::MirageDb;
 
     // Resolve database path
@@ -29,26 +30,31 @@ pub fn frontiers(args: &FrontiersArgs, cli: &Cli) -> Result<()> {
         }
     };
 
-    // Resolve function name/ID to function_id (with optional file filter)
-    let function_id =
-        match resolve_function_name_with_file(&db, &args.function, args.file.as_deref()) {
-            Ok(id) => id,
-            Err(_e) => {
-                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::function_not_found(&args.function);
-                    let wrapper = output::JsonResponse::new(error);
-                    println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_DATABASE);
-                } else {
-                    output::error(&format!(
-                        "Function '{}' not found in database",
-                        args.function
-                    ));
-                    output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
-                    std::process::exit(output::EXIT_DATABASE);
-                }
+    // Resolve function name/ID or semantic query to function_id (with optional file filter)
+    let function_id = match resolve_function_or_semantic(
+        &db,
+        &args.function,
+        args.semantic_query.as_deref(),
+        args.file.as_deref(),
+    ) {
+        Ok(id) => id,
+        Err(e) => {
+            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                let error = output::JsonError::new(
+                    "FunctionNotFound",
+                    &format!("{}", e),
+                    output::E_CFG_ERROR,
+                );
+                let wrapper = output::JsonResponse::new(error);
+                println!("{}", wrapper.to_json());
+                std::process::exit(output::EXIT_DATABASE);
+            } else {
+                output::error(&format!("{}", e));
+                output::info(&format!("Hint: {}", output::R_HINT_LIST_FUNCTIONS));
+                std::process::exit(output::EXIT_DATABASE);
             }
-        };
+        }
+    };
 
     // Load CFG from database
     let cfg = match load_cfg_from_db(&db, function_id) {

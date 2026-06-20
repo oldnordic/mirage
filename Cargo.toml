@@ -28,7 +28,7 @@ clap = { version = "4.5", features = ["derive", "env"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Magellan for inter-procedural analysis (required for CFG data)
-magellan = { path = "../magellan", default-features = false, features = ["sqlite-backend"] }
+magellan = { version = "4.8.0", default-features = false, features = ["sqlite-backend"] }
 
 # sqlitegraph for GraphBackend trait
 sqlitegraph = { version = "3.3.1", default-features = false, features = ["sqlite-backend"] }

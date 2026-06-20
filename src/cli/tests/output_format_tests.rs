@@ -336,9 +336,6 @@ fn test_loops_detects_loops() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -351,9 +348,6 @@ fn test_loops_detects_loops() {
             otherwise: 3,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -363,9 +357,6 @@ fn test_loops_detects_loops() {
         statements: vec!["loop body".to_string()],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -375,9 +366,6 @@ fn test_loops_detects_loops() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);

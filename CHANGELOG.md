@@ -5,6 +5,19 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-06-20
+
+### Fixed
+
+- **Magellan schema v18 compatibility verification**:
+  - Added regression coverage proving `MirageDb` opens a Magellan schema-18 database cleanly.
+  - Verified live analysis commands against the current unified Magellan database after the temporal schema rollout.
+
+### Changed
+
+- **Release docs refresh**:
+  - Updated README and manual requirements to reflect current Magellan schema support and removed stale 4D-coordinate migration guidance from the public path.
+
 ## [1.8.1] - 2026-06-20
 
 ### Added
@@ -28,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CFG/status compatibility cleanup:
   - `DatabaseStatus.cfg_edges` remains a normal compatibility field for Magellan-backed status output instead of being marked deprecated while still in active use.
   - Legacy in-memory `coord_*` fields are now documented as analysis-time values, not persisted database columns.
+- Dynamic schema version alignment:
+  - Updated `REQUIRED_SQLITEGRAPH_SCHEMA_VERSION` to dynamically reference `sqlitegraph::schema::SCHEMA_VERSION as i32` instead of hardcoding `3`, aligning with sqlitegraph v3.3.1 (schema v6).
 - Source hygiene cleanup:
   - Removed a dead AST CFG builder field and cleaned up stale doctest placeholders that used `unimplemented!()`.
   - Replaced stale wording that implied temporary or 4D-backed behavior where Mirage now only reads Magellan-managed CFG data.

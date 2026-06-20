@@ -147,9 +147,6 @@ impl StorageTrait for SqliteStorage {
                     start_col: row.get::<_, Option<i64>>(6)?.unwrap_or(0) as u64,
                     end_line: row.get::<_, Option<i64>>(7)?.unwrap_or(0) as u64,
                     end_col: row.get::<_, Option<i64>>(8)?.unwrap_or(0) as u64,
-                    coord_x: 0,
-                    coord_y: 0,
-                    coord_z: 0,
                     cfg_condition: row.get(9)?,
                 })
             })

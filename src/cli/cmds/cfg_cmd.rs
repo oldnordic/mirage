@@ -142,9 +142,6 @@ pub(crate) fn create_test_cfg() -> crate::cfg::Cfg {
         statements: vec!["let x = 1".to_string()],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -157,9 +154,6 @@ pub(crate) fn create_test_cfg() -> crate::cfg::Cfg {
             otherwise: 3,
         },
         source_location: None,
-        coord_x: 1,
-        coord_y: 0,
-        coord_z: 1,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -169,9 +163,6 @@ pub(crate) fn create_test_cfg() -> crate::cfg::Cfg {
         statements: vec!["return true".to_string()],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 2,
-        coord_y: 0,
-        coord_z: 2,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -181,9 +172,6 @@ pub(crate) fn create_test_cfg() -> crate::cfg::Cfg {
         statements: vec!["return false".to_string()],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 2,
-        coord_y: 0,
-        coord_z: 3,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);

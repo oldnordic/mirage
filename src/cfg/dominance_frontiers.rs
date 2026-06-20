@@ -248,9 +248,6 @@ mod tests {
                 otherwise: 2,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -260,9 +257,6 @@ mod tests {
             statements: vec!["branch 1".to_string()],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -272,9 +266,6 @@ mod tests {
             statements: vec!["branch 2".to_string()],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -284,9 +275,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -315,9 +303,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -330,9 +315,6 @@ mod tests {
                 otherwise: 3,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -342,9 +324,6 @@ mod tests {
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -354,9 +333,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -491,9 +467,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -503,9 +476,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -515,9 +485,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -527,9 +494,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -570,9 +534,6 @@ mod tests {
                 otherwise: 3,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -582,9 +543,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 4 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -594,9 +552,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 4 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -606,9 +561,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 5 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b4 = g.add_node(BasicBlock {
@@ -618,9 +570,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 5 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b5 = g.add_node(BasicBlock {
@@ -630,9 +579,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);

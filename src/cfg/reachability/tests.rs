@@ -13,9 +13,6 @@ fn create_test_cfg_with_unreachable() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     // Block 1: normal, goes to 2
@@ -26,9 +23,6 @@ fn create_test_cfg_with_unreachable() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     // Block 2: exit
@@ -39,9 +33,6 @@ fn create_test_cfg_with_unreachable() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     // Block 3: unreachable (no edges to it)
@@ -52,9 +43,6 @@ fn create_test_cfg_with_unreachable() -> Cfg {
         statements: vec!["unreachable code".to_string()],
         terminator: Terminator::Unreachable,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -118,9 +106,6 @@ fn test_fully_reachable_cfg() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -130,9 +115,6 @@ fn test_fully_reachable_cfg() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -152,9 +134,6 @@ fn test_can_reach_simple() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -164,9 +143,6 @@ fn test_can_reach_simple() {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -176,9 +152,6 @@ fn test_can_reach_simple() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -215,9 +188,6 @@ fn test_can_reach_diamond() {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -227,9 +197,6 @@ fn test_can_reach_diamond() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -239,9 +206,6 @@ fn test_can_reach_diamond() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -251,9 +215,6 @@ fn test_can_reach_diamond() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -282,9 +243,6 @@ fn test_can_reach_cached() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -294,9 +252,6 @@ fn test_can_reach_cached() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -334,9 +289,6 @@ fn test_reachability_cache() {
                     Terminator::Return
                 },
                 source_location: None,
-                coord_x: 0,
-                coord_y: 0,
-                coord_z: 0,
             })
         })
         .collect::<Vec<_>>();
@@ -365,9 +317,6 @@ fn test_find_reachable_from_block_linear() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -377,9 +326,6 @@ fn test_find_reachable_from_block_linear() {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -389,9 +335,6 @@ fn test_find_reachable_from_block_linear() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -401,9 +344,6 @@ fn test_find_reachable_from_block_linear() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -435,9 +375,6 @@ fn test_find_reachable_from_block_diamond() {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -447,9 +384,6 @@ fn test_find_reachable_from_block_diamond() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -459,9 +393,6 @@ fn test_find_reachable_from_block_diamond() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -471,9 +402,6 @@ fn test_find_reachable_from_block_diamond() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -502,9 +430,6 @@ fn test_find_reachable_from_block_max_depth() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -514,9 +439,6 @@ fn test_find_reachable_from_block_max_depth() {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -526,9 +448,6 @@ fn test_find_reachable_from_block_max_depth() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -538,9 +457,6 @@ fn test_find_reachable_from_block_max_depth() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -580,9 +496,6 @@ fn test_find_reachable_from_block_with_loop() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -592,9 +505,6 @@ fn test_find_reachable_from_block_with_loop() {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -607,9 +517,6 @@ fn test_find_reachable_from_block_with_loop() {
             otherwise: 3,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -619,9 +526,6 @@ fn test_find_reachable_from_block_with_loop() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -650,9 +554,6 @@ fn test_compute_path_impact() {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -662,9 +563,6 @@ fn test_compute_path_impact() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -674,9 +572,6 @@ fn test_compute_path_impact() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -686,9 +581,6 @@ fn test_compute_path_impact() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::TrueBranch);

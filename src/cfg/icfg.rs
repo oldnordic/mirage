@@ -407,9 +407,6 @@ pub fn project_icfg_to_cfg(icfg: &Icfg) -> crate::cfg::Cfg {
             statements,
             terminator,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
         node_map.insert(node_idx, cfg_idx);
     }

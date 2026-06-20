@@ -447,9 +447,6 @@ impl MirageDb {
                     Some(b.start_col as i64),
                     Some(b.end_line as i64),
                     Some(b.end_col as i64),
-                    Some(b.coord_x),
-                    Some(b.coord_y),
-                    Some(b.coord_z),
                     b.cfg_condition,
                 )
             })

@@ -2,7 +2,7 @@
 
 pub mod analysis;
 pub mod ast;
-pub mod coordinates;
+
 pub mod diff;
 pub mod dominance_frontiers;
 pub mod dominators;
@@ -144,15 +144,11 @@ pub fn get_or_enumerate_paths(
 
 /// Row tuple from cfg_blocks table queries
 /// Fields: id, kind, terminator, byte_start, byte_end,
-///         start_line, start_col, end_line, end_col,
-///         legacy coord_x, coord_y, coord_z defaults, cfg_condition
+///         start_line, start_col, end_line, end_col, cfg_condition
 type CfgBlockRow = (
     i64,
     String,
     Option<String>,
-    Option<i64>,
-    Option<i64>,
-    Option<i64>,
     Option<i64>,
     Option<i64>,
     Option<i64>,
@@ -380,13 +376,6 @@ pub struct BasicBlock {
     pub terminator: Terminator,
     /// Source location for this block (if available)
     pub source_location: Option<SourceLocation>,
-    /// 4D Spatial Coordinates
-    /// X coordinate: dominator depth (control flow hierarchy level)
-    pub coord_x: i64,
-    /// Y coordinate: loop nesting depth (how many loops surround this block)
-    pub coord_y: i64,
-    /// Z coordinate: branch distance from entry point
-    pub coord_z: i64,
 }
 
 /// Block identifier

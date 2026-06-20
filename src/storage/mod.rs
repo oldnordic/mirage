@@ -86,15 +86,11 @@ pub fn update_function_paths_if_changed(
 
 /// Row tuple from cfg_blocks table queries
 /// Fields: id, kind, terminator, byte_start, byte_end,
-///         start_line, start_col, end_line, end_col,
-///         legacy coord_x, coord_y, coord_z defaults, cfg_condition
+///         start_line, start_col, end_line, end_col, cfg_condition
 type CfgBlockRow = (
     i64,
     String,
     Option<String>,
-    Option<i64>,
-    Option<i64>,
-    Option<i64>,
     Option<i64>,
     Option<i64>,
     Option<i64>,
@@ -187,13 +183,6 @@ pub struct CfgBlockData {
     pub end_line: u64,
     /// Column where block ends (0-indexed)
     pub end_col: u64,
-    /// Legacy in-memory coordinate slot.
-    /// Current Magellan no longer persists coord columns in cfg_blocks.
-    pub coord_x: i64,
-    /// Legacy in-memory coordinate slot.
-    pub coord_y: i64,
-    /// Legacy in-memory coordinate slot.
-    pub coord_z: i64,
     /// Optional #[cfg(...)] condition for feature-gated branch elimination
     pub cfg_condition: Option<String>,
 }
@@ -238,4 +227,4 @@ pub const TEST_MAGELLAN_SCHEMA_VERSION: i32 = MIN_MAGELLAN_SCHEMA_VERSION;
 pub const REQUIRED_MAGELLAN_SCHEMA_VERSION: i32 = TEST_MAGELLAN_SCHEMA_VERSION;
 
 /// SQLiteGraph schema version we require
-pub const REQUIRED_SQLITEGRAPH_SCHEMA_VERSION: i32 = 3;
+pub const REQUIRED_SQLITEGRAPH_SCHEMA_VERSION: i32 = sqlitegraph::schema::SCHEMA_VERSION as i32;

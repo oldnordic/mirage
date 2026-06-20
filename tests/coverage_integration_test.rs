@@ -158,9 +158,6 @@ fn create_test_cfg_with_db_ids() -> Cfg {
         statements: vec!["entry".to_string()],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -173,9 +170,6 @@ fn create_test_cfg_with_db_ids() -> Cfg {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 1,
-        coord_y: 0,
-        coord_z: 1,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -185,9 +179,6 @@ fn create_test_cfg_with_db_ids() -> Cfg {
         statements: vec!["return".to_string()],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 2,
-        coord_y: 0,
-        coord_z: 2,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -254,9 +245,6 @@ fn test_export_json_coverage_db_id_none() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let mut coverage = HashMap::new();

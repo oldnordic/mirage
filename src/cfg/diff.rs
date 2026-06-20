@@ -468,9 +468,6 @@ mod tests {
                 start_col: 0,
                 end_line: 2,
                 end_col: 0,
-                coord_x: 0,
-                coord_y: 0,
-                coord_z: 0,
                 cfg_condition: None,
             },
             CfgBlockData {
@@ -483,9 +480,6 @@ mod tests {
                 start_col: 0,
                 end_line: 3,
                 end_col: 0,
-                coord_x: 0,
-                coord_y: 0,
-                coord_z: 0,
                 cfg_condition: None,
             },
         ];

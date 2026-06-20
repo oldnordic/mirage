@@ -11,9 +11,6 @@ pub(super) fn create_linear_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -23,9 +20,6 @@ pub(super) fn create_linear_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -35,9 +29,6 @@ pub(super) fn create_linear_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -59,9 +50,6 @@ pub(super) fn create_diamond_cfg() -> Cfg {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -71,9 +59,6 @@ pub(super) fn create_diamond_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -83,9 +68,6 @@ pub(super) fn create_diamond_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -95,9 +77,6 @@ pub(super) fn create_diamond_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -118,9 +97,6 @@ pub(super) fn create_loop_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -133,9 +109,6 @@ pub(super) fn create_loop_cfg() -> Cfg {
             otherwise: 3,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -145,9 +118,6 @@ pub(super) fn create_loop_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -157,9 +127,6 @@ pub(super) fn create_loop_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -180,9 +147,6 @@ pub(super) fn create_error_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -192,9 +156,6 @@ pub(super) fn create_error_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Abort("panic!".to_string()),
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -212,9 +173,6 @@ pub(super) fn create_unreachable_term_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -224,9 +182,6 @@ pub(super) fn create_unreachable_term_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Unreachable,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -244,9 +199,6 @@ pub(super) fn create_dead_code_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let _b1 = g.add_node(BasicBlock {
@@ -256,9 +208,6 @@ pub(super) fn create_dead_code_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g
@@ -277,9 +226,6 @@ pub(super) fn create_call_unwind_cfg() -> Cfg {
             unwind: Some(2),
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -289,9 +235,6 @@ pub(super) fn create_call_unwind_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let _b2 = g.add_node(BasicBlock {
@@ -301,9 +244,6 @@ pub(super) fn create_call_unwind_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -321,9 +261,6 @@ pub(super) fn create_self_loop_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let _b1 = g.add_node(BasicBlock {
@@ -333,9 +270,6 @@ pub(super) fn create_self_loop_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, NodeIndex::new(1), EdgeType::Fallthrough);
@@ -353,9 +287,6 @@ pub(super) fn create_nested_loop_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -368,9 +299,6 @@ pub(super) fn create_nested_loop_cfg() -> Cfg {
             otherwise: 4,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -383,9 +311,6 @@ pub(super) fn create_nested_loop_cfg() -> Cfg {
             otherwise: 1,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -395,9 +320,6 @@ pub(super) fn create_nested_loop_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b4 = g.add_node(BasicBlock {
@@ -407,9 +329,6 @@ pub(super) fn create_nested_loop_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -435,9 +354,6 @@ pub(super) fn create_conflicting_conditions_cfg() -> Cfg {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -450,9 +366,6 @@ pub(super) fn create_conflicting_conditions_cfg() -> Cfg {
             otherwise: 3,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -462,9 +375,6 @@ pub(super) fn create_conflicting_conditions_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -474,9 +384,6 @@ pub(super) fn create_conflicting_conditions_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -511,9 +418,6 @@ pub(super) fn create_large_linear_cfg(size: usize) -> Cfg {
             statements: vec![],
             terminator,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
     }
 
@@ -563,9 +467,6 @@ pub(super) fn create_large_diamond_cfg() -> Cfg {
             statements: vec![],
             terminator,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
         nodes.push(node);
     }
@@ -600,9 +501,6 @@ pub(super) fn create_simple_diamond_cfg() -> Cfg {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -612,9 +510,6 @@ pub(super) fn create_simple_diamond_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -624,9 +519,6 @@ pub(super) fn create_simple_diamond_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -636,9 +528,6 @@ pub(super) fn create_simple_diamond_cfg() -> Cfg {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::TrueBranch);

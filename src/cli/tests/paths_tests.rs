@@ -326,9 +326,6 @@ fn test_path_summary_from_with_cfg() {
         statements: vec!["let x = 1".to_string()],
         terminator: Terminator::Goto { target: 1 },
         source_location: Some(loc0),
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -341,9 +338,6 @@ fn test_path_summary_from_with_cfg() {
             otherwise: 2,
         },
         source_location: Some(loc1),
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -353,9 +347,6 @@ fn test_path_summary_from_with_cfg() {
         statements: vec!["return true".to_string()],
         terminator: Terminator::Return,
         source_location: Some(loc2),
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);

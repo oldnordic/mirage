@@ -18,9 +18,6 @@ fn create_cfg_with_unreachable() -> Cfg {
         statements: vec!["let x = 1".to_string()],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     // Block 1: normal, goes to 2
@@ -34,9 +31,6 @@ fn create_cfg_with_unreachable() -> Cfg {
             otherwise: 3,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     // Block 2: exit (reachable)
@@ -47,9 +41,6 @@ fn create_cfg_with_unreachable() -> Cfg {
         statements: vec!["return true".to_string()],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     // Block 3: exit (reachable)
@@ -60,9 +51,6 @@ fn create_cfg_with_unreachable() -> Cfg {
         statements: vec!["return false".to_string()],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     // Block 4: unreachable (no edges to it)
@@ -73,9 +61,6 @@ fn create_cfg_with_unreachable() -> Cfg {
         statements: vec!["unreachable code".to_string()],
         terminator: Terminator::Unreachable,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -222,9 +207,6 @@ fn test_unreachable_show_branches_with_edges() {
         statements: vec!["let x = 1".to_string()],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -237,9 +219,6 @@ fn test_unreachable_show_branches_with_edges() {
             otherwise: 3,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -249,9 +228,6 @@ fn test_unreachable_show_branches_with_edges() {
         statements: vec!["return true".to_string()],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     // b3 and b4 are both unreachable, but b4 has an incoming edge from b3
@@ -262,9 +238,6 @@ fn test_unreachable_show_branches_with_edges() {
         statements: vec!["unreachable branch".to_string()],
         terminator: Terminator::Goto { target: 4 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b4 = g.add_node(BasicBlock {
@@ -274,9 +247,6 @@ fn test_unreachable_show_branches_with_edges() {
         statements: vec!["unreachable code".to_string()],
         terminator: Terminator::Unreachable,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     // Only connect entry to b1, making b3 and b4 unreachable
@@ -349,9 +319,6 @@ fn test_unreachable_show_branches_json_output() {
         statements: vec!["let x = 1".to_string()],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -364,9 +331,6 @@ fn test_unreachable_show_branches_json_output() {
             otherwise: 3,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -376,9 +340,6 @@ fn test_unreachable_show_branches_json_output() {
         statements: vec!["return true".to_string()],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b3 = g.add_node(BasicBlock {
@@ -388,9 +349,6 @@ fn test_unreachable_show_branches_json_output() {
         statements: vec!["unreachable branch".to_string()],
         terminator: Terminator::Goto { target: 4 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b4 = g.add_node(BasicBlock {
@@ -400,9 +358,6 @@ fn test_unreachable_show_branches_json_output() {
         statements: vec!["unreachable code".to_string()],
         terminator: Terminator::Unreachable,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);

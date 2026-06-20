@@ -354,9 +354,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // Block 1: if condition
@@ -370,9 +367,6 @@ mod tests {
                 otherwise: 3,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // Block 2: true branch
@@ -383,9 +377,6 @@ mod tests {
             statements: vec!["true branch".to_string()],
             terminator: Terminator::Goto { target: 4 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // Block 3: false branch
@@ -396,9 +387,6 @@ mod tests {
             statements: vec!["false branch".to_string()],
             terminator: Terminator::Goto { target: 4 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // Block 4: merge point
@@ -409,9 +397,6 @@ mod tests {
             statements: vec!["merge".to_string()],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -466,9 +451,6 @@ mod tests {
                 otherwise: 3,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -478,9 +460,6 @@ mod tests {
             statements: vec!["case 1".to_string()],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -490,9 +469,6 @@ mod tests {
             statements: vec!["case 2".to_string()],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -502,9 +478,6 @@ mod tests {
             statements: vec!["default".to_string()],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -535,9 +508,6 @@ mod tests {
                 otherwise: 3,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         for i in 1..=3 {
@@ -548,9 +518,6 @@ mod tests {
                 statements: vec![],
                 terminator: Terminator::Return,
                 source_location: None,
-                coord_x: 0,
-                coord_y: 0,
-                coord_z: 0,
             });
         }
 
@@ -575,9 +542,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // If/else at block 1
@@ -591,9 +555,6 @@ mod tests {
                 otherwise: 3,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // True branch (leads to match)
@@ -608,9 +569,6 @@ mod tests {
                 otherwise: 6,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // False branch
@@ -621,9 +579,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // Match branches
@@ -634,9 +589,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b5 = g.add_node(BasicBlock {
@@ -646,9 +598,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b6 = g.add_node(BasicBlock {
@@ -658,9 +607,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 7 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // Merge point
@@ -671,9 +617,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -719,9 +662,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -731,9 +671,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -743,9 +680,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);

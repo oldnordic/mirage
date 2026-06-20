@@ -210,10 +210,6 @@ impl<'a> CFGBuilder<'a> {
                 statements: statements.iter().map(|n| self.node_text(*n)).collect(),
                 terminator: self.extract_terminator(statements),
                 source_location,
-                // AST-based CFG doesn't compute spatial coordinates (use 0 defaults)
-                coord_x: 0,
-                coord_y: 0,
-                coord_z: 0,
             };
 
             let node_idx = self.graph.add_node(basic_block);

@@ -359,9 +359,6 @@ mod tests {
             kind: BlockKind::Entry,
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
             source_location: None,
         });
         let b1 = cfg.add_node(BasicBlock {
@@ -370,9 +367,6 @@ mod tests {
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
             source_location: None,
         });
         let b2 = cfg.add_node(BasicBlock {
@@ -381,9 +375,6 @@ mod tests {
             kind: BlockKind::Normal,
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
             source_location: None,
         });
         let b3 = cfg.add_node(BasicBlock {
@@ -392,9 +383,6 @@ mod tests {
             kind: BlockKind::Exit,
             statements: vec![],
             terminator: Terminator::Return,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
             source_location: None,
         });
         cfg.add_edge(b0, b1, crate::cfg::EdgeType::Fallthrough);

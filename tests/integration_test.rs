@@ -151,11 +151,7 @@ impl TestContext {
                 end_col INTEGER NOT NULL,
                 cfg_hash TEXT,
                 statements TEXT,
-                coord_x INTEGER DEFAULT 0,
-                coord_y INTEGER DEFAULT 0,
-                coord_z INTEGER DEFAULT 0,
                 cfg_condition TEXT,
-                coord_t TEXT DEFAULT NULL,
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id) ON DELETE CASCADE
             )",
             [],
@@ -173,10 +169,10 @@ impl TestContext {
         // Insert test CFG blocks
         conn.execute(
             "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
-                                     start_line, start_col, end_line, end_col, coord_x, coord_y, coord_z)
-             VALUES (1, 'entry', 'fallthrough', 0, 10, 1, 0, 1, 10, 0, 0, 0),
-                    (1, 'normal', 'conditional', 10, 50, 2, 4, 5, 8, 1, 0, 1),
-                    (1, 'return', 'return', 50, 60, 5, 0, 5, 10, 2, 0, 2)",
+                                     start_line, start_col, end_line, end_col)
+             VALUES (1, 'entry', 'fallthrough', 0, 10, 1, 0, 1, 10),
+                    (1, 'normal', 'conditional', 10, 50, 2, 4, 5, 8),
+                    (1, 'return', 'return', 50, 60, 5, 0, 5, 10)",
             [],
         )
         .unwrap();

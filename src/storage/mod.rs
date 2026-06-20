@@ -32,13 +32,6 @@ use anyhow::Result;
 #[cfg(feature = "backend-sqlite")]
 pub use sqlite_backend::SqliteStorage;
 
-// Re-export path caching functions
-#[allow(unused_imports)]
-pub use paths::{
-    get_cached_paths, invalidate_function_paths, store_paths, update_function_paths_if_changed,
-    PathCache,
-};
-
 // Re-exports from backend
 pub use backend::{Backend, BackendFormat};
 
@@ -46,7 +39,7 @@ pub use backend::{Backend, BackendFormat};
 pub use mirage_db::{DatabaseStatus, MirageDb};
 
 // Re-exports from schema
-pub use schema::{create_minimal_database, create_schema, migrate_schema};
+pub use schema::{create_schema, migrate_schema};
 
 // Re-exports from operations
 pub use operations::{
@@ -55,17 +48,46 @@ pub use operations::{
 };
 
 // Re-exports from queries
-#[allow(deprecated)]
 pub use queries::{
     compute_path_impact_from_db, function_exists, get_changed_functions, get_function_file,
     get_function_file_db, get_function_hash, get_function_hash_db, get_function_name,
-    get_function_name_db, get_path_elements, hash_changed, store_cfg,
+    get_function_name_db, get_path_elements,
 };
+
+pub type PathCache = paths::PathCache;
+
+pub fn get_cached_paths(
+    conn: &mut rusqlite::Connection,
+    function_id: i64,
+) -> Result<Vec<crate::cfg::Path>> {
+    paths::get_cached_paths(conn, function_id)
+}
+
+pub fn invalidate_function_paths(conn: &mut rusqlite::Connection, function_id: i64) -> Result<()> {
+    paths::invalidate_function_paths(conn, function_id)
+}
+
+pub fn store_paths(
+    conn: &mut rusqlite::Connection,
+    function_id: i64,
+    paths: &[crate::cfg::Path],
+) -> Result<()> {
+    self::paths::store_paths(conn, function_id, paths)
+}
+
+pub fn update_function_paths_if_changed(
+    conn: &mut rusqlite::Connection,
+    function_id: i64,
+    function_hash: &str,
+    paths: &[crate::cfg::Path],
+) -> Result<bool> {
+    self::paths::update_function_paths_if_changed(conn, function_id, function_hash, paths)
+}
 
 /// Row tuple from cfg_blocks table queries
 /// Fields: id, kind, terminator, byte_start, byte_end,
 ///         start_line, start_col, end_line, end_col,
-///         coord_x, coord_y, coord_z, cfg_condition
+///         legacy coord_x, coord_y, coord_z defaults, cfg_condition
 type CfgBlockRow = (
     i64,
     String,
@@ -100,7 +122,7 @@ type CfgBlockRow = (
 /// # Examples
 ///
 /// ```ignore
-/// # use mirage_analyzer::storage::{StorageTrait, Backend};
+/// # use mirage::storage::{StorageTrait, Backend};
 /// # fn main() -> anyhow::Result<()> {
 /// // Auto-detect and open backend
 /// let backend = Backend::detect_and_open("/path/to/db")?;
@@ -165,12 +187,12 @@ pub struct CfgBlockData {
     pub end_line: u64,
     /// Column where block ends (0-indexed)
     pub end_col: u64,
-    /// 4D Spatial Coordinates
-    /// X coordinate: dominator depth (control flow hierarchy level)
+    /// Legacy in-memory coordinate slot.
+    /// Current Magellan no longer persists coord columns in cfg_blocks.
     pub coord_x: i64,
-    /// Y coordinate: loop nesting depth (how many loops surround this block)
+    /// Legacy in-memory coordinate slot.
     pub coord_y: i64,
-    /// Z coordinate: branch distance from entry point
+    /// Legacy in-memory coordinate slot.
     pub coord_z: i64,
     /// Optional #[cfg(...)] condition for feature-gated branch elimination
     pub cfg_condition: Option<String>,
@@ -203,8 +225,10 @@ pub struct FactInfo {
 /// Mirage schema version
 pub const MIRAGE_SCHEMA_VERSION: i32 = 1;
 
-/// Minimum Magellan schema version we require
-/// Magellan v7+ includes cfg_blocks table with AST-based CFG
+/// Minimum Magellan schema version we require.
+/// The live `cfg_blocks` contract is defined by current Magellan, but Mirage
+/// can open databases as far back as the first schema version that introduced
+/// CFG storage.
 pub const MIN_MAGELLAN_SCHEMA_VERSION: i32 = 7;
 
 /// Magellan schema version used in tests (for consistency)

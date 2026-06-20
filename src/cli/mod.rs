@@ -151,6 +151,10 @@ pub struct PathsArgs {
     #[arg(long)]
     pub file: Option<String>,
 
+    /// Traverse inter-procedural control flow using Magellan call stitching
+    #[arg(long)]
+    pub inter_procedural: bool,
+
     /// Show only error paths
     #[arg(long)]
     pub show_errors: bool,

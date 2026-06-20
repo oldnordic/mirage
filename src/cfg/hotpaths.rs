@@ -87,7 +87,7 @@ impl Default for HotpathsOptions {
 /// # Examples
 ///
 /// ```ignore
-/// # use mirage_analyzer::cfg::hotpaths::{compute_hot_paths, HotpathsOptions};
+/// # use mirage::cfg::hotpaths::{compute_hot_paths, HotpathsOptions};
 /// # use petgraph::graph::DiGraph;
 /// # let graph = DiGraph::new();
 /// # let paths = vec![];

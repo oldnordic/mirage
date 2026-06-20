@@ -47,8 +47,6 @@ pub struct CFGBuilder<'a> {
     node_to_block: HashMap<usize, usize>,
     /// Maps block IDs to graph node indices
     node_map: HashMap<usize, petgraph::graph::NodeIndex>,
-    #[allow(dead_code)]
-    next_block_id: usize,
 }
 
 impl<'a> CFGBuilder<'a> {
@@ -62,7 +60,6 @@ impl<'a> CFGBuilder<'a> {
             blocks: HashMap::new(),
             node_to_block: HashMap::new(),
             node_map: HashMap::new(),
-            next_block_id: 0,
         }
     }
 
@@ -245,15 +242,12 @@ impl<'a> CFGBuilder<'a> {
     }
 
     /// Get the first statement from a block
-    #[allow(clippy::manual_find)]
     fn first_statement(&self, block: Node<'a>) -> Option<Node<'a>> {
         let mut cursor = block.walk();
-        for child in block.children(&mut cursor) {
-            if self.is_statement(child) {
-                return Some(child);
-            }
-        }
-        None
+        let first = block
+            .children(&mut cursor)
+            .find(|&child| self.is_statement(child));
+        first
     }
 
     /// Check if a node is a leader (block boundary)
@@ -461,7 +455,6 @@ mod tests {
         let source = "fn test() { return; }";
         let builder = CFGBuilder::new(source, None);
         assert_eq!(builder.source, source);
-        assert_eq!(builder.next_block_id, 0);
         assert!(builder.leaders.is_empty());
         assert!(builder.blocks.is_empty());
     }
@@ -507,7 +500,6 @@ mod tests {
 
         // Verify initial state
         assert_eq!(builder.source, source);
-        assert_eq!(builder.next_block_id, 0);
         assert!(builder.leaders.is_empty());
         assert!(builder.blocks.is_empty());
         assert!(builder.node_to_block.is_empty());

@@ -58,8 +58,9 @@ impl NaturalLoop {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage_analyzer::cfg::loops::detect_natural_loops;
-/// # let graph = unimplemented!();
+/// # use mirage::cfg::loops::detect_natural_loops;
+/// # use mirage::cfg::Cfg;
+/// # let graph = Cfg::new();
 /// let loops = detect_natural_loops(&graph);
 /// for loop_ in &loops {
 ///     println!("Loop header: {:?}", loop_.header);
@@ -110,8 +111,9 @@ pub fn detect_natural_loops(cfg: &Cfg) -> Vec<NaturalLoop> {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage_analyzer::cfg::loops::apply_loop_nesting_depths;
-/// # let mut graph = unimplemented!();
+/// # use mirage::cfg::loops::apply_loop_nesting_depths;
+/// # use mirage::cfg::Cfg;
+/// # let mut graph = Cfg::new();
 /// apply_loop_nesting_depths(&mut graph);
 /// // Now all blocks have correct coord_y values
 /// ```
@@ -150,8 +152,9 @@ pub fn apply_loop_nesting_depths(cfg: &mut Cfg) {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage_analyzer::cfg::loops::detect_natural_loops_with_depths;
-/// # let mut graph = unimplemented!();
+/// # use mirage::cfg::loops::detect_natural_loops_with_depths;
+/// # use mirage::cfg::Cfg;
+/// # let mut graph = Cfg::new();
 /// let loops = detect_natural_loops_with_depths(&mut graph);
 /// // CFG blocks now have correct coord_y values
 /// // loops contains the detected NaturalLoop structures
@@ -224,8 +227,9 @@ fn compute_loop_body(cfg: &Cfg, header: NodeIndex, tail: NodeIndex) -> HashSet<N
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage_analyzer::cfg::loops::find_loop_headers;
-/// # let graph = unimplemented!();
+/// # use mirage::cfg::loops::find_loop_headers;
+/// # use mirage::cfg::Cfg;
+/// # let graph = Cfg::new();
 /// let headers = find_loop_headers(&graph);
 /// for header in headers {
 ///     println!("Node {:?} is a loop header", header);

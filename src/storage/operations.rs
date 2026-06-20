@@ -179,12 +179,12 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
     let query = if has_cfg_condition {
         "SELECT id, kind, terminator, byte_start, byte_end,
              start_line, start_col, end_line, end_col,
-             coord_x, coord_y, coord_z, cfg_condition
+             cfg_condition
          FROM cfg_blocks WHERE function_id = ? ORDER BY id ASC"
     } else {
         "SELECT id, kind, terminator, byte_start, byte_end,
              start_line, start_col, end_line, end_col,
-             coord_x, coord_y, coord_z, NULL
+             NULL
          FROM cfg_blocks WHERE function_id = ? ORDER BY id ASC"
     };
 
@@ -204,10 +204,10 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
                 row.get(6)?,
                 row.get(7)?,
                 row.get(8)?,
+                Some(0),
+                Some(0),
+                Some(0),
                 row.get(9)?,
-                row.get(10)?,
-                row.get(11)?,
-                row.get(12)?,
             ))
         })
         .context("Failed to execute cfg_blocks query")?
@@ -375,7 +375,7 @@ pub(super) fn load_cfg_from_rows(
 /// # Examples
 ///
 /// ```no_run
-/// # use mirage_analyzer::storage::{resolve_function_name, MirageDb};
+/// # use mirage::storage::{resolve_function_name, MirageDb};
 /// # fn main() -> anyhow::Result<()> {
 /// # let db = MirageDb::open("test.db")?;
 /// let func_id = resolve_function_name(&db, "123")?;
@@ -395,7 +395,7 @@ pub fn resolve_function_name(db: &super::MirageDb, name_or_id: &str) -> Result<i
 /// # Examples
 ///
 /// ```no_run
-/// # use mirage_analyzer::storage::{resolve_function_name_with_file, MirageDb};
+/// # use mirage::storage::{resolve_function_name_with_file, MirageDb};
 /// # fn main() -> anyhow::Result<()> {
 /// # let db = MirageDb::open("test.db")?;
 /// let func_id = resolve_function_name_with_file(&db, "process", Some("src/lib.rs"))?;
@@ -499,7 +499,7 @@ pub fn resolve_function_name_with_conn(conn: &Connection, name_or_id: &str) -> R
 /// # Examples
 ///
 /// ```no_run
-/// # use mirage_analyzer::storage::{load_cfg_from_db, MirageDb};
+/// # use mirage::storage::{load_cfg_from_db, MirageDb};
 /// # fn main() -> anyhow::Result<()> {
 /// # let db = MirageDb::open("test.db")?;
 /// let cfg = load_cfg_from_db(&db, 123)?;

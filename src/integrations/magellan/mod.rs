@@ -23,7 +23,7 @@
 //! ## Example Usage
 //!
 //! ```rust,no_run
-//! use mirage_analyzer::integrations::magellan::{
+//! use mirage::integrations::magellan::{
 //!     MagellanAdapter, SymbolLookupResult, normalize_path_for_query,
 //! };
 //! use magellan::graph::GeometricBackend;

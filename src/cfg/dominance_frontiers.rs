@@ -25,11 +25,11 @@ use std::collections::{HashMap, HashSet};
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage_analyzer::cfg::dominance_frontiers::DominanceFrontiers;
-/// # use mirage_analyzer::cfg::dominators::DominatorTree;
-/// # use mirage_analyzer::cfg::Cfg;
+/// # use mirage::cfg::dominance_frontiers::DominanceFrontiers;
+/// # use mirage::cfg::dominators::DominatorTree;
+/// # use mirage::cfg::Cfg;
 /// # use petgraph::graph::NodeIndex;
-/// # let graph: Cfg = unimplemented!();
+/// # let graph = Cfg::new();
 /// # let dom_tree = DominatorTree::new(&graph).unwrap();
 /// # let frontiers = DominanceFrontiers::new(&graph, dom_tree);
 /// # let some_node = NodeIndex::new(0);
@@ -58,10 +58,10 @@ impl DominanceFrontiers {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::dominance_frontiers::DominanceFrontiers;
-    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
-    /// # let graph: Cfg = unimplemented!();
+    /// # use mirage::cfg::dominance_frontiers::DominanceFrontiers;
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
+    /// # let graph = Cfg::new();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
     /// let frontiers = DominanceFrontiers::new(&graph, dom_tree);
     /// ```
@@ -117,11 +117,11 @@ impl DominanceFrontiers {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::dominance_frontiers::DominanceFrontiers;
-    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
+    /// # use mirage::cfg::dominance_frontiers::DominanceFrontiers;
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
-    /// # let graph: Cfg = unimplemented!();
+    /// # let graph = Cfg::new();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
     /// # let frontiers = DominanceFrontiers::new(&graph, dom_tree);
     /// # let node = NodeIndex::new(0);
@@ -138,11 +138,11 @@ impl DominanceFrontiers {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::dominance_frontiers::DominanceFrontiers;
-    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
+    /// # use mirage::cfg::dominance_frontiers::DominanceFrontiers;
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
-    /// # let graph: Cfg = unimplemented!();
+    /// # let graph = Cfg::new();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
     /// # let frontiers = DominanceFrontiers::new(&graph, dom_tree);
     /// # let n = NodeIndex::new(0);
@@ -211,10 +211,10 @@ impl DominanceFrontiers {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage_analyzer::cfg::dominance_frontiers::compute_dominance_frontiers;
-/// # use mirage_analyzer::cfg::dominators::DominatorTree;
-/// # use mirage_analyzer::cfg::Cfg;
-/// # let graph: Cfg = unimplemented!();
+/// # use mirage::cfg::dominance_frontiers::compute_dominance_frontiers;
+/// # use mirage::cfg::dominators::DominatorTree;
+/// # use mirage::cfg::Cfg;
+/// # let graph = Cfg::new();
 /// # let dom_tree = DominatorTree::new(&graph).unwrap();
 /// let frontiers = compute_dominance_frontiers(&graph, dom_tree);
 /// ```

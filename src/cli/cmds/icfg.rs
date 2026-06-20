@@ -34,7 +34,7 @@ pub fn icfg(args: &IcfgArgs, cli: &Cli) -> Result<()> {
     };
 
     // Build ICFG
-    let icfg = match build_icfg(db.storage(), db.backend(), function_id, options) {
+    let icfg = match build_icfg(db.storage(), db.backend(), db.path(), function_id, options) {
         Ok(icfg) => icfg,
         Err(e) => {
             error(&format!("Failed to build ICFG: {}", e));

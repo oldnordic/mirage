@@ -59,16 +59,15 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
             id INTEGER PRIMARY KEY,
             function_id INTEGER NOT NULL,
             kind TEXT NOT NULL,
-            terminator TEXT,
-            byte_start INTEGER,
-            byte_end INTEGER,
-            start_line INTEGER,
-            start_col INTEGER,
-            end_line INTEGER,
-            end_col INTEGER,
-            coord_x INTEGER DEFAULT 0,
-            coord_y INTEGER DEFAULT 0,
-            coord_z INTEGER DEFAULT 0,
+            terminator TEXT NOT NULL,
+            byte_start INTEGER NOT NULL,
+            byte_end INTEGER NOT NULL,
+            start_line INTEGER NOT NULL,
+            start_col INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            end_col INTEGER NOT NULL,
+            cfg_hash TEXT,
+            statements TEXT,
             cfg_condition TEXT
         )",
         [],
@@ -78,22 +77,22 @@ fn create_test_database_sqlite() -> (TempDir, PathBuf) {
     // Insert test CFG blocks
     conn.execute(
         "INSERT INTO cfg_blocks
-         (id, function_id, kind, terminator, byte_start, byte_end, start_line, start_col, end_line, end_col, coord_x, coord_y, coord_z)
-         VALUES (1, 1, 'entry', 'fallthrough', 0, 10, 1, 0, 1, 10, 0, 0, 0)",
+         (id, function_id, kind, terminator, byte_start, byte_end, start_line, start_col, end_line, end_col)
+         VALUES (1, 1, 'entry', 'fallthrough', 0, 10, 1, 0, 1, 10)",
         [],
     )
     .unwrap();
     conn.execute(
         "INSERT INTO cfg_blocks
-         (id, function_id, kind, terminator, byte_start, byte_end, start_line, start_col, end_line, end_col, coord_x, coord_y, coord_z)
-         VALUES (2, 1, 'normal', 'conditional', 10, 50, 2, 0, 3, 20, 1, 0, 0)",
+         (id, function_id, kind, terminator, byte_start, byte_end, start_line, start_col, end_line, end_col)
+         VALUES (2, 1, 'normal', 'conditional', 10, 50, 2, 0, 3, 20)",
         [],
     )
     .unwrap();
     conn.execute(
         "INSERT INTO cfg_blocks
-         (id, function_id, kind, terminator, byte_start, byte_end, start_line, start_col, end_line, end_col, coord_x, coord_y, coord_z)
-         VALUES (3, 1, 'return', 'return', 50, 60, 5, 0, 5, 10, 2, 0, 2)",
+         (id, function_id, kind, terminator, byte_start, byte_end, start_line, start_col, end_line, end_col)
+         VALUES (3, 1, 'return', 'return', 50, 60, 5, 0, 5, 10)",
         [],
     )
     .unwrap();

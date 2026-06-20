@@ -17,7 +17,7 @@ use super::json_types::{CondensationJson, PathEnumerationJson, SliceWrapper};
 /// # Example
 ///
 /// ```no_run
-/// use mirage_analyzer::analysis::MagellanBridge;
+/// use mirage::analysis::MagellanBridge;
 ///
 /// // Open existing Magellan database
 /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
@@ -49,7 +49,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     /// # Ok::<(), anyhow::Error>(())
@@ -66,7 +66,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     ///
@@ -97,7 +97,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     ///
@@ -132,7 +132,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     ///
@@ -194,8 +194,8 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
-    /// use mirage_analyzer::cli::DeadSymbolJson;
+    /// use mirage::analysis::MagellanBridge;
+    /// use mirage::cli::DeadSymbolJson;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     ///
@@ -227,7 +227,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     ///
@@ -266,7 +266,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     ///
@@ -301,7 +301,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     ///
@@ -336,7 +336,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     ///
@@ -377,7 +377,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     /// let result = bridge.enumerate_paths_json("main", None, 50, 100)?;
@@ -416,7 +416,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     ///
@@ -442,7 +442,7 @@ impl MagellanBridge {
     /// # Example
     ///
     /// ```no_run
-    /// use mirage_analyzer::analysis::MagellanBridge;
+    /// use mirage::analysis::MagellanBridge;
     ///
     /// let bridge = MagellanBridge::open("codemcp/mirage.db")?;
     /// let condensed = bridge.condense_call_graph_json()?;

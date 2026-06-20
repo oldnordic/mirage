@@ -72,6 +72,7 @@ fn test_paths_args_function_extraction() {
         function: "test_function".to_string(),
         semantic_query: None,
         file: None,
+        inter_procedural: false,
         show_errors: false,
         max_length: None,
         with_blocks: false,
@@ -93,6 +94,7 @@ fn test_paths_args_with_flags() {
         function: "my_func".to_string(),
         semantic_query: None,
         file: None,
+        inter_procedural: true,
         show_errors: true,
         max_length: Some(10),
         with_blocks: true,
@@ -102,6 +104,10 @@ fn test_paths_args_with_flags() {
     };
 
     assert_eq!(args.function, "my_func");
+    assert!(
+        args.inter_procedural,
+        "inter_procedural flag should be true"
+    );
     assert!(args.show_errors, "show_errors flag should be true");
     assert_eq!(args.max_length, Some(10), "max_length should be Some(10)");
     assert!(args.with_blocks, "with_blocks flag should be true");
@@ -228,6 +234,7 @@ fn test_paths_args_with_blocks_flag() {
         function: "test".to_string(),
         semantic_query: None,
         file: None,
+        inter_procedural: false,
         show_errors: false,
         max_length: None,
         with_blocks: true,
@@ -240,6 +247,7 @@ fn test_paths_args_with_blocks_flag() {
         function: "test".to_string(),
         semantic_query: None,
         file: None,
+        inter_procedural: false,
         show_errors: false,
         max_length: None,
         with_blocks: false,
@@ -250,6 +258,25 @@ fn test_paths_args_with_blocks_flag() {
 
     assert!(args_with.with_blocks, "with_blocks should be true");
     assert!(!args_without.with_blocks, "with_blocks should be false");
+}
+
+#[test]
+fn test_paths_args_inter_procedural_flag() {
+    let args = PathsArgs {
+        function: "caller".to_string(),
+        semantic_query: None,
+        file: None,
+        inter_procedural: true,
+        show_errors: false,
+        max_length: Some(12),
+        with_blocks: false,
+        incremental: false,
+        since: None,
+        by_coverage: false,
+    };
+
+    assert!(args.inter_procedural);
+    assert_eq!(args.max_length, Some(12));
 }
 
 /// Test PathSummary::from_with_cfg with source locations

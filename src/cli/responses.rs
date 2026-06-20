@@ -12,6 +12,12 @@ pub(crate) struct PathsResponse {
 pub(crate) struct PathBlock {
     pub block_id: usize,
     pub terminator: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_type: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -40,6 +46,9 @@ impl From<crate::cfg::Path> for PathSummary {
             .map(|block_id| PathBlock {
                 block_id,
                 terminator: "Unknown".to_string(),
+                function_id: None,
+                function_name: None,
+                node_type: None,
             })
             .collect();
 
@@ -74,6 +83,9 @@ impl PathSummary {
                 PathBlock {
                     block_id,
                     terminator,
+                    function_id: None,
+                    function_name: None,
+                    node_type: None,
                 }
             })
             .collect();
@@ -115,6 +127,48 @@ impl PathSummary {
                 end_line: last.end_line,
             }),
             _ => None,
+        }
+    }
+
+    pub fn from_icfg_path(
+        path: crate::cfg::Path,
+        cfg: &crate::cfg::Cfg,
+        icfg: &crate::cfg::icfg::Icfg,
+    ) -> Self {
+        use crate::cfg::summarize_path;
+        use petgraph::graph::NodeIndex;
+
+        let summary = Some(summarize_path(cfg, &path));
+        let blocks = path
+            .blocks
+            .iter()
+            .map(|&block_id| {
+                let cfg_node_idx = cfg.node_indices().find(|&n| cfg[n].id == block_id);
+                let terminator = cfg_node_idx
+                    .map(|idx| format!("{:?}", cfg[idx].terminator))
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                let icfg_node = icfg.graph.node_weight(NodeIndex::new(block_id));
+
+                PathBlock {
+                    block_id,
+                    terminator,
+                    function_id: icfg_node.map(|node| node.function_id),
+                    function_name: icfg_node.and_then(|node| node.function_name.clone()),
+                    node_type: icfg_node.map(|node| format!("{:?}", node.node_type)),
+                }
+            })
+            .collect();
+
+        let length = path.len();
+
+        Self {
+            path_id: path.path_id,
+            kind: format!("{:?}", path.kind),
+            length,
+            summary,
+            source_range: None,
+            blocks,
         }
     }
 }

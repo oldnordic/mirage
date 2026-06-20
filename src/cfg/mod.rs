@@ -23,8 +23,6 @@ pub mod summary;
 pub use crate::storage::{
     load_cfg_from_db, resolve_function_name, resolve_function_name_with_file,
 };
-#[allow(unused_imports)]
-pub use analysis::{find_entry, find_exits};
 
 #[cfg(feature = "sqlite")]
 pub use crate::storage::load_cfg_from_db_with_conn;
@@ -32,16 +30,7 @@ pub use dominance_frontiers::compute_dominance_frontiers;
 pub use dominators::DominatorTree;
 pub use edge::EdgeType;
 pub use export::{export_dot, export_json, CFGExport};
-#[allow(unused_imports)] // Public API re-export, used directly by consumers
-pub use hotpaths::{compute_hot_paths, HotPath, HotpathsOptions};
 pub use loops::detect_natural_loops;
-#[allow(unused_imports)] // Used in tests within the module
-pub use paths::{
-    enumerate_paths, enumerate_paths_cached, enumerate_paths_cached_with_context,
-    enumerate_paths_incremental, enumerate_paths_iterative, enumerate_paths_with_context,
-    enumerate_paths_with_metadata, get_or_enumerate_paths, EnumerationContext, EnumerationStats,
-    IncrementalPathsResult, LimitsHit, Path, PathEnumerationResult, PathKind, PathLimits,
-};
 pub use patterns::{detect_if_else_patterns, detect_match_patterns};
 pub use post_dominators::PostDominatorTree;
 pub use reachability::{compute_path_impact, find_reachable_from_block, PathImpact};
@@ -53,10 +42,110 @@ use petgraph::graph::DiGraph;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub type HotPath = hotpaths::HotPath;
+pub type HotpathsOptions = hotpaths::HotpathsOptions;
+pub type Path = paths::Path;
+pub type EnumerationContext = paths::EnumerationContext;
+pub type EnumerationStats = paths::EnumerationStats;
+pub type IncrementalPathsResult = paths::IncrementalPathsResult;
+pub type LimitsHit = paths::LimitsHit;
+pub type PathEnumerationResult = paths::PathEnumerationResult;
+pub type PathKind = paths::PathKind;
+pub type PathLimits = paths::PathLimits;
+
+pub fn find_entry(cfg: &Cfg) -> Option<petgraph::graph::NodeIndex> {
+    analysis::find_entry(cfg)
+}
+
+pub fn find_exits(cfg: &Cfg) -> Vec<petgraph::graph::NodeIndex> {
+    analysis::find_exits(cfg)
+}
+
+pub fn compute_hot_paths(
+    graph: &Cfg,
+    paths: &[Path],
+    entry: petgraph::graph::NodeIndex,
+    loops: &[loops::NaturalLoop],
+    options: HotpathsOptions,
+) -> Result<Vec<HotPath>> {
+    hotpaths::compute_hot_paths(graph, paths, entry, loops, options)
+}
+
+pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
+    paths::enumerate_paths(cfg, limits)
+}
+
+pub fn enumerate_paths_cached(
+    cfg: &Cfg,
+    function_id: i64,
+    function_hash: &str,
+    limits: &PathLimits,
+    db_conn: &mut rusqlite::Connection,
+) -> anyhow::Result<Vec<Path>> {
+    paths::enumerate_paths_cached(cfg, function_id, function_hash, limits, db_conn)
+        .map_err(anyhow::Error::msg)
+}
+
+pub fn enumerate_paths_cached_with_context(
+    cfg: &Cfg,
+    function_id: i64,
+    function_hash: &str,
+    limits: &PathLimits,
+    ctx: &EnumerationContext,
+    db_conn: &mut rusqlite::Connection,
+) -> anyhow::Result<Vec<Path>> {
+    paths::enumerate_paths_cached_with_context(
+        cfg,
+        function_id,
+        function_hash,
+        limits,
+        ctx,
+        db_conn,
+    )
+    .map_err(anyhow::Error::msg)
+}
+
+pub fn enumerate_paths_incremental(
+    function_name: &str,
+    db: &crate::storage::MirageDb,
+    repo_path: &std::path::Path,
+    since: &str,
+    max_length: Option<usize>,
+) -> anyhow::Result<IncrementalPathsResult> {
+    paths::enumerate_paths_incremental(function_name, db, repo_path, since, max_length)
+}
+
+pub fn enumerate_paths_iterative(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
+    paths::enumerate_paths_iterative(cfg, limits)
+}
+
+pub fn enumerate_paths_with_context(
+    cfg: &Cfg,
+    limits: &PathLimits,
+    ctx: &EnumerationContext,
+) -> Vec<Path> {
+    paths::enumerate_paths_with_context(cfg, limits, ctx)
+}
+
+pub fn enumerate_paths_with_metadata(cfg: &Cfg, limits: &PathLimits) -> PathEnumerationResult {
+    paths::enumerate_paths_with_metadata(cfg, limits)
+}
+
+pub fn get_or_enumerate_paths(
+    cfg: &Cfg,
+    function_id: i64,
+    function_hash: &str,
+    limits: &PathLimits,
+    db_conn: &mut rusqlite::Connection,
+) -> anyhow::Result<Vec<Path>> {
+    paths::get_or_enumerate_paths(cfg, function_id, function_hash, limits, db_conn)
+        .map_err(anyhow::Error::msg)
+}
+
 /// Row tuple from cfg_blocks table queries
 /// Fields: id, kind, terminator, byte_start, byte_end,
 ///         start_line, start_col, end_line, end_col,
-///         coord_x, coord_y, coord_z, cfg_condition
+///         legacy coord_x, coord_y, coord_z defaults, cfg_condition
 type CfgBlockRow = (
     i64,
     String,
@@ -107,74 +196,56 @@ pub type Cfg = DiGraph<BasicBlock, EdgeType>;
 /// - Uses byte offsets to determine control flow order (not sequential indices)
 /// - Blocks are sorted by byte_start to determine execution order
 /// - Loop back-edges will be detected during loop analysis phase
-#[allow(clippy::type_complexity, clippy::collapsible_match)]
 pub fn build_edges_from_terminators(
     graph: &mut Cfg,
     blocks: &[CfgBlockRow],
     db_id_to_node: &HashMap<i64, usize>,
 ) -> Result<()> {
-    use petgraph::graph::NodeIndex;
-
     // Sort blocks by byte_start to get execution order
     // This is crucial because block IDs are not necessarily in control flow order
-    let mut blocks_with_idx: Vec<(usize, &CfgBlockRow)> = blocks.iter().enumerate().collect();
-    blocks_with_idx
-        .sort_by_key(|(_, (_, _, _, byte_start, _, _, _, _, _, _, _, _, _))| *byte_start);
+    let mut blocks_with_idx = blocks.iter().enumerate().collect::<Vec<_>>();
+    blocks_with_idx.sort_by_key(|(_, block)| block_byte_start(block));
 
     // Build a map from position in sorted order to node index
     let mut sorted_pos_to_node: HashMap<usize, usize> = HashMap::new();
-    for (sorted_pos, (_original_idx, (db_id, _, _, _, _, _, _, _, _, _, _, _, _))) in
-        blocks_with_idx.iter().enumerate()
-    {
-        if let Some(&node_idx) = db_id_to_node.get(db_id) {
+    for (sorted_pos, (_original_idx, block)) in blocks_with_idx.iter().enumerate() {
+        if let Some(&node_idx) = db_id_to_node.get(&block_id(block)) {
             sorted_pos_to_node.insert(sorted_pos, node_idx);
         }
     }
 
     // For each block in sorted order, analyze terminator to find successors
-    for (sorted_pos, (_original_idx, (_, _kind, terminator_opt, _, _, _, _, _, _, _, _, _, _))) in
-        blocks_with_idx.iter().enumerate()
-    {
-        let terminator = terminator_opt.as_deref().unwrap_or("");
+    for (sorted_pos, (_original_idx, block)) in blocks_with_idx.iter().enumerate() {
+        let terminator = block_terminator(block).unwrap_or("");
         let current_node = *sorted_pos_to_node.get(&sorted_pos).ok_or_else(|| {
             anyhow::anyhow!("Block at position {} not found in node map", sorted_pos)
         })?;
 
         match terminator {
             "fallthrough" | "goto" => {
-                // Edge to next block in byte order
-                if sorted_pos + 1 < blocks_with_idx.len() {
-                    if let Some(&target_node) = sorted_pos_to_node.get(&(sorted_pos + 1)) {
-                        graph.add_edge(
-                            NodeIndex::new(current_node),
-                            NodeIndex::new(target_node),
-                            EdgeType::Fallthrough,
-                        );
-                    }
-                }
+                add_cfg_edge(
+                    graph,
+                    &sorted_pos_to_node,
+                    current_node,
+                    sorted_pos + 1,
+                    EdgeType::Fallthrough,
+                );
             }
             "conditional" => {
-                // Two edges: true and false branches
-                // True branch is next block in byte order (if branch)
-                if sorted_pos + 1 < blocks_with_idx.len() {
-                    if let Some(&true_target) = sorted_pos_to_node.get(&(sorted_pos + 1)) {
-                        graph.add_edge(
-                            NodeIndex::new(current_node),
-                            NodeIndex::new(true_target),
-                            EdgeType::TrueBranch,
-                        );
-                    }
-                }
-                // False branch is block after next (else/end)
-                if sorted_pos + 2 < blocks_with_idx.len() {
-                    if let Some(&false_target) = sorted_pos_to_node.get(&(sorted_pos + 2)) {
-                        graph.add_edge(
-                            NodeIndex::new(current_node),
-                            NodeIndex::new(false_target),
-                            EdgeType::FalseBranch,
-                        );
-                    }
-                }
+                add_cfg_edge(
+                    graph,
+                    &sorted_pos_to_node,
+                    current_node,
+                    sorted_pos + 1,
+                    EdgeType::TrueBranch,
+                );
+                add_cfg_edge(
+                    graph,
+                    &sorted_pos_to_node,
+                    current_node,
+                    sorted_pos + 2,
+                    EdgeType::FalseBranch,
+                );
             }
             "return" | "panic" => {
                 // No outgoing edges (exit block)
@@ -184,16 +255,13 @@ pub fn build_edges_from_terminators(
                 // For now, no edge (will be refined with loop analysis)
             }
             "call" => {
-                // Function call - edge to next block (normal return path)
-                if sorted_pos + 1 < blocks_with_idx.len() {
-                    if let Some(&target_node) = sorted_pos_to_node.get(&(sorted_pos + 1)) {
-                        graph.add_edge(
-                            NodeIndex::new(current_node),
-                            NodeIndex::new(target_node),
-                            EdgeType::Call,
-                        );
-                    }
-                }
+                add_cfg_edge(
+                    graph,
+                    &sorted_pos_to_node,
+                    current_node,
+                    sorted_pos + 1,
+                    EdgeType::Call,
+                );
             }
             _ => {
                 // Unknown terminator - no edge
@@ -201,6 +269,36 @@ pub fn build_edges_from_terminators(
         }
     }
     Ok(())
+}
+
+fn block_id(block: &CfgBlockRow) -> i64 {
+    block.0
+}
+
+fn block_terminator(block: &CfgBlockRow) -> Option<&str> {
+    block.2.as_deref()
+}
+
+fn block_byte_start(block: &CfgBlockRow) -> Option<i64> {
+    block.3
+}
+
+fn add_cfg_edge(
+    graph: &mut Cfg,
+    sorted_pos_to_node: &HashMap<usize, usize>,
+    current_node: usize,
+    target_sorted_pos: usize,
+    edge_type: EdgeType,
+) {
+    use petgraph::graph::NodeIndex;
+
+    if let Some(&target_node) = sorted_pos_to_node.get(&target_sorted_pos) {
+        graph.add_edge(
+            NodeIndex::new(current_node),
+            NodeIndex::new(target_node),
+            edge_type,
+        );
+    }
 }
 
 /// Build CFG edges from Magellan's cfg_edges table data
@@ -276,7 +374,7 @@ pub struct BasicBlock {
     pub db_id: Option<i64>,
     /// Block kind (entry, normal, exit)
     pub kind: BlockKind,
-    /// Statements in this block (simplified for now)
+    /// Statements in this block (simplified textual form)
     pub statements: Vec<String>,
     /// Terminator instruction
     pub terminator: Terminator,

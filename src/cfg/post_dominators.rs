@@ -19,10 +19,10 @@ use std::collections::HashMap;
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage_analyzer::cfg::post_dominators::PostDominatorTree;
-/// # use mirage_analyzer::cfg::Cfg;
+/// # use mirage::cfg::post_dominators::PostDominatorTree;
+/// # use mirage::cfg::Cfg;
 /// # use petgraph::graph::NodeIndex;
-/// # let graph: Cfg = unimplemented!();
+/// # let graph = Cfg::new();
 /// # let node = NodeIndex::new(0);
 /// let post_dom_tree = PostDominatorTree::new(&graph).unwrap();
 /// if let Some(ipdom) = post_dom_tree.immediate_post_dominator(node) {
@@ -98,10 +98,10 @@ impl PostDominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::post_dominators::PostDominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
+    /// # use mirage::cfg::post_dominators::PostDominatorTree;
+    /// # use mirage::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
-    /// # let graph: Cfg = unimplemented!();
+    /// # let graph = Cfg::new();
     /// # let post_dom_tree = PostDominatorTree::new(&graph).unwrap();
     /// # let node = NodeIndex::new(0);
     /// if let Some(ipdom) = post_dom_tree.immediate_post_dominator(node) {
@@ -121,10 +121,10 @@ impl PostDominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::post_dominators::PostDominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
+    /// # use mirage::cfg::post_dominators::PostDominatorTree;
+    /// # use mirage::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
-    /// # let graph: Cfg = unimplemented!();
+    /// # let graph = Cfg::new();
     /// # let post_dom_tree = PostDominatorTree::new(&graph).unwrap();
     /// # let exit = NodeIndex::new(0);
     /// # let node = NodeIndex::new(1);
@@ -209,9 +209,9 @@ impl<'a> Iterator for PostDominators<'a> {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage_analyzer::cfg::post_dominators::compute_post_dominator_tree;
-/// # use mirage_analyzer::cfg::Cfg;
-/// # let graph: Cfg = unimplemented!();
+/// # use mirage::cfg::post_dominators::compute_post_dominator_tree;
+/// # use mirage::cfg::Cfg;
+/// # let graph = Cfg::new();
 /// let post_dom_tree = compute_post_dominator_tree(&graph).unwrap();
 /// ```
 pub fn compute_post_dominator_tree(cfg: &Cfg) -> Option<PostDominatorTree> {

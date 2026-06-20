@@ -3,122 +3,6 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::MirageDb;
 
-/// Store a CFG in the database for a given function
-///
-/// # Arguments
-///
-/// * `conn` - Database connection
-/// * `function_id` - ID of the function in graph_entities
-/// * `function_hash` - BLAKE3 hash of the function body for incremental updates
-/// * `cfg` - The control flow graph to store
-///
-/// # Notes
-///
-/// - DEPRECATED: Magellan handles CFG storage via cfg_blocks. Edges are computed in memory.
-/// - This function is kept for backward compatibility with existing tests.
-/// - cfg_edges table is managed by Magellan v11+; Mirage does not create or query it.
-/// - Uses BEGIN IMMEDIATE to acquire write lock early (prevents write conflicts)
-/// - Existing blocks are cleared for incremental updates
-/// - Block IDs are AUTOINCREMENT in the database
-#[deprecated(note = "Magellan handles CFG storage via cfg_blocks. Edges are computed in memory.")]
-#[allow(deprecated)]
-pub fn store_cfg(
-    conn: &mut Connection,
-    function_id: i64,
-    _function_hash: &str,
-    cfg: &crate::cfg::Cfg,
-) -> Result<()> {
-    use crate::cfg::{BlockKind, Terminator};
-
-    conn.execute("BEGIN IMMEDIATE TRANSACTION", [])
-        .context("Failed to begin transaction")?;
-
-    conn.execute(
-        "DELETE FROM cfg_blocks WHERE function_id = ?",
-        params![function_id],
-    )
-    .context("Failed to clear existing cfg_blocks")?;
-
-    let mut block_id_map: std::collections::HashMap<petgraph::graph::NodeIndex, i64> =
-        std::collections::HashMap::new();
-
-    let mut insert_block = conn
-        .prepare_cached(
-            "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
-                                  start_line, start_col, end_line, end_col,
-                                  coord_x, coord_y, coord_z)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .context("Failed to prepare block insert statement")?;
-
-    for node_idx in cfg.node_indices() {
-        let block = cfg
-            .node_weight(node_idx)
-            .context("CFG node has no weight")?;
-
-        let terminator_str = match &block.terminator {
-            Terminator::Goto { .. } => "goto",
-            Terminator::SwitchInt { .. } => "conditional",
-            Terminator::Return => "return",
-            Terminator::Call { .. } => "call",
-            Terminator::Abort(msg) if msg == "break" => "break",
-            Terminator::Abort(msg) if msg == "continue" => "continue",
-            Terminator::Abort(msg) if msg == "panic" => "panic",
-            _ => "fallthrough",
-        };
-
-        let (byte_start, byte_end) = block
-            .source_location
-            .as_ref()
-            .map(|loc| (Some(loc.byte_start as i64), Some(loc.byte_end as i64)))
-            .unwrap_or((None, None));
-
-        let (start_line, start_col, end_line, end_col) = block
-            .source_location
-            .as_ref()
-            .map(|loc| {
-                (
-                    Some(loc.start_line as i64),
-                    Some(loc.start_column as i64),
-                    Some(loc.end_line as i64),
-                    Some(loc.end_column as i64),
-                )
-            })
-            .unwrap_or((None, None, None, None));
-
-        let kind = match block.kind {
-            BlockKind::Entry => "entry",
-            BlockKind::Normal => "block",
-            BlockKind::Exit => "return",
-        };
-
-        insert_block
-            .execute(params![
-                function_id,
-                kind,
-                terminator_str,
-                byte_start,
-                byte_end,
-                start_line,
-                start_col,
-                end_line,
-                end_col,
-                block.coord_x,
-                block.coord_y,
-                block.coord_z,
-            ])
-            .context("Failed to insert cfg_block")?;
-
-        let db_id = conn.last_insert_rowid();
-        block_id_map.insert(node_idx, db_id);
-    }
-
-    conn.execute("COMMIT", [])
-        .context("Failed to commit transaction")?;
-
-    Ok(())
-}
-
 /// Check if a function is already indexed in the database
 ///
 /// # Arguments
@@ -183,29 +67,6 @@ pub fn get_function_hash(conn: &Connection, function_id: i64) -> Option<String> 
     .ok()
     .flatten()
     .flatten()
-}
-
-/// Compare two function hashes and return true if they differ
-///
-/// Used by the index command to decide whether to skip a function.
-///
-/// # Note
-///
-/// Compare stored cfg_hash against new hash to detect function changes.
-/// Returns true if hashes differ or no hash is found (indicating re-indexing needed).
-pub fn hash_changed(conn: &Connection, function_id: i64, _new_hash: &str) -> Result<bool> {
-    let old_hash: Option<String> = conn
-        .query_row(
-            "SELECT cfg_hash FROM cfg_blocks WHERE function_id = ? LIMIT 1",
-            params![function_id],
-            |row| row.get(0),
-        )
-        .optional()?;
-
-    match old_hash {
-        Some(old) => Ok(old != _new_hash),
-        None => Ok(true),
-    }
 }
 
 /// Compute the set of functions that need re-indexing based on git changes
@@ -351,7 +212,7 @@ pub fn compute_path_impact_from_db(
 /// # Examples
 ///
 /// ```no_run
-/// # use mirage_analyzer::storage::{get_function_name_db, MirageDb};
+/// # use mirage::storage::{get_function_name_db, MirageDb};
 /// # fn main() -> anyhow::Result<()> {
 /// # let db = MirageDb::open("test.db")?;
 /// if let Some(name) = get_function_name_db(&db, 123) {
@@ -372,7 +233,7 @@ pub fn get_function_name_db(db: &MirageDb, function_id: i64) -> Option<String> {
 /// # Examples
 ///
 /// ```no_run
-/// # use mirage_analyzer::storage::{get_function_file_db, MirageDb};
+/// # use mirage::storage::{get_function_file_db, MirageDb};
 /// # fn main() -> anyhow::Result<()> {
 /// # let db = MirageDb::open("test.db")?;
 /// if let Some(path) = get_function_file_db(&db, 123) {
@@ -393,7 +254,7 @@ pub fn get_function_file_db(db: &MirageDb, function_id: i64) -> Option<String> {
 /// # Examples
 ///
 /// ```no_run
-/// # use mirage_analyzer::storage::{get_function_hash_db, MirageDb};
+/// # use mirage::storage::{get_function_hash_db, MirageDb};
 /// # fn main() -> anyhow::Result<()> {
 /// # let db = MirageDb::open("test.db")?;
 /// if let Some(hash) = get_function_hash_db(&db, 123) {
@@ -415,238 +276,6 @@ mod tests {
         crate::storage::schema::create_test_db_with_schema()
     }
 
-    #[test]
-    #[allow(deprecated)]
-    fn test_store_cfg_retrieves_correctly() {
-        use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
-
-        let mut conn = Connection::open_in_memory().unwrap();
-
-        conn.execute(
-            "CREATE TABLE magellan_meta (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                magellan_schema_version INTEGER NOT NULL,
-                sqlitegraph_schema_version INTEGER NOT NULL,
-                created_at INTEGER NOT NULL
-            )",
-            [],
-        )
-        .unwrap();
-
-        conn.execute(
-            "CREATE TABLE graph_entities (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                kind TEXT NOT NULL,
-                name TEXT NOT NULL,
-                file_path TEXT,
-                data TEXT NOT NULL
-            )",
-            [],
-        )
-        .unwrap();
-
-        conn.execute(
-            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
-             VALUES (1, ?, ?, ?)",
-            rusqlite::params![super::super::REQUIRED_MAGELLAN_SCHEMA_VERSION, super::super::REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, 0],
-        ).unwrap();
-
-        super::super::schema::create_schema(&mut conn, super::super::TEST_MAGELLAN_SCHEMA_VERSION)
-            .unwrap();
-
-        conn.execute(
-            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
-            rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        )
-        .unwrap();
-
-        let function_id: i64 = conn.last_insert_rowid();
-
-        let mut cfg = Cfg::new();
-
-        let b0 = cfg.add_node(BasicBlock {
-            id: 0,
-            db_id: None,
-            kind: BlockKind::Entry,
-            statements: vec!["let x = 1".to_string()],
-            terminator: Terminator::Goto { target: 1 },
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
-            source_location: None,
-        });
-
-        let b1 = cfg.add_node(BasicBlock {
-            id: 1,
-            db_id: None,
-            kind: BlockKind::Normal,
-            statements: vec![],
-            terminator: Terminator::Return,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
-            source_location: None,
-        });
-
-        cfg.add_edge(b0, b1, EdgeType::Fallthrough);
-
-        store_cfg(&mut conn, function_id, "test_hash_123", &cfg).unwrap();
-
-        let block_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-                rusqlite::params![function_id],
-                |row| row.get(0),
-            )
-            .unwrap();
-
-        assert_eq!(block_count, 2, "Should have 2 blocks");
-
-        assert!(function_exists(&conn, function_id));
-        assert!(!function_exists(&conn, 9999));
-
-        let loaded_cfg =
-            super::super::operations::load_cfg_from_db_with_conn(&conn, function_id).unwrap();
-
-        assert_eq!(loaded_cfg.node_count(), 2);
-        assert_eq!(loaded_cfg.edge_count(), 1);
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_store_cfg_incremental_update_clears_old_data() {
-        use crate::cfg::{BasicBlock, BlockKind, Cfg, EdgeType, Terminator};
-
-        let mut conn = Connection::open_in_memory().unwrap();
-
-        conn.execute(
-            "CREATE TABLE magellan_meta (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                magellan_schema_version INTEGER NOT NULL,
-                sqlitegraph_schema_version INTEGER NOT NULL,
-                created_at INTEGER NOT NULL
-            )",
-            [],
-        )
-        .unwrap();
-
-        conn.execute(
-            "CREATE TABLE graph_entities (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                kind TEXT NOT NULL,
-                name TEXT NOT NULL,
-                file_path TEXT,
-                data TEXT NOT NULL
-            )",
-            [],
-        )
-        .unwrap();
-
-        conn.execute(
-            "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
-             VALUES (1, ?, ?, ?)",
-            rusqlite::params![super::super::REQUIRED_MAGELLAN_SCHEMA_VERSION, super::super::REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, 0],
-        ).unwrap();
-
-        super::super::schema::create_schema(&mut conn, super::super::TEST_MAGELLAN_SCHEMA_VERSION)
-            .unwrap();
-
-        conn.execute(
-            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
-            rusqlite::params!("function", "test_func", "test.rs", "{}"),
-        )
-        .unwrap();
-
-        let function_id: i64 = conn.last_insert_rowid();
-
-        let mut cfg1 = Cfg::new();
-        let b0 = cfg1.add_node(BasicBlock {
-            id: 0,
-            db_id: None,
-            kind: BlockKind::Entry,
-            statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
-            source_location: None,
-        });
-        let b1 = cfg1.add_node(BasicBlock {
-            id: 1,
-            db_id: None,
-            kind: BlockKind::Exit,
-            statements: vec![],
-            terminator: Terminator::Return,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
-            source_location: None,
-        });
-        cfg1.add_edge(b0, b1, EdgeType::Fallthrough);
-
-        store_cfg(&mut conn, function_id, "hash_v1", &cfg1).unwrap();
-
-        let block_count_v1: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-                rusqlite::params![function_id],
-                |row| row.get(0),
-            )
-            .unwrap();
-
-        assert_eq!(block_count_v1, 2);
-
-        let mut cfg2 = Cfg::new();
-        let b0 = cfg2.add_node(BasicBlock {
-            id: 0,
-            db_id: None,
-            kind: BlockKind::Entry,
-            statements: vec![],
-            terminator: Terminator::Goto { target: 1 },
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
-            source_location: None,
-        });
-        let b1 = cfg2.add_node(BasicBlock {
-            id: 1,
-            db_id: None,
-            kind: BlockKind::Normal,
-            statements: vec![],
-            terminator: Terminator::Goto { target: 2 },
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
-            source_location: None,
-        });
-        let b2 = cfg2.add_node(BasicBlock {
-            id: 2,
-            db_id: None,
-            kind: BlockKind::Exit,
-            statements: vec![],
-            terminator: Terminator::Return,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
-            source_location: None,
-        });
-        cfg2.add_edge(b0, b1, EdgeType::Fallthrough);
-        cfg2.add_edge(b1, b2, EdgeType::Fallthrough);
-
-        store_cfg(&mut conn, function_id, "hash_v3", &cfg2).unwrap();
-
-        let block_count_v3: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM cfg_blocks WHERE function_id = ?",
-                rusqlite::params![function_id],
-                |row| row.get(0),
-            )
-            .unwrap();
-
-        assert_eq!(block_count_v3, 3);
-    }
-
-    #[test]
     fn test_get_function_name() {
         let conn = create_test_db_with_schema();
 

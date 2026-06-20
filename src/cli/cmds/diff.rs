@@ -149,19 +149,19 @@ fn print_diff_human(diff: &crate::cfg::diff::CfgDiff, show_edges: bool, verbose:
         ));
         for change in &diff.modified_blocks {
             match &change.change_type {
-                crate::cfg::diff::ChangeType::TerminatorChanged { before, after } => {
+                crate::cfg::diff::ChangeType::Terminator { before, after } => {
                     println!("  ~ Block {}: {} -> {}", change.block_id, before, after);
                 }
-                crate::cfg::diff::ChangeType::SourceLocationChanged => {
+                crate::cfg::diff::ChangeType::SourceLocation => {
                     println!("  ~ Block {}: location changed", change.block_id);
                 }
-                crate::cfg::diff::ChangeType::BothChanged => {
+                crate::cfg::diff::ChangeType::Both => {
                     println!(
                         "  ~ Block {}: terminator and location changed",
                         change.block_id
                     );
                 }
-                crate::cfg::diff::ChangeType::EdgesChanged => {
+                crate::cfg::diff::ChangeType::Edges => {
                     println!("  ~ Block {}: edges changed", change.block_id);
                 }
             }

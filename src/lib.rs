@@ -7,7 +7,7 @@
 //! # Getting Started
 //!
 //! ```rust,no_run
-//! use mirage_analyzer::Backend;
+//! use mirage::Backend;
 //! use std::path::Path;
 //!
 //! // Auto-detect and open the database backend

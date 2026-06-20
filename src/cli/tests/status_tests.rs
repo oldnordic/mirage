@@ -83,7 +83,6 @@ fn create_test_db() -> anyhow::Result<(tempfile::NamedTempFile, MirageDb)> {
 /// Test that status() returns correct database statistics
 #[test]
 #[cfg(feature = "backend-sqlite")]
-#[allow(deprecated)]
 fn test_status_returns_correct_statistics() {
     let (_file, db) = create_test_db().unwrap();
     let status = db.status().unwrap();
@@ -109,7 +108,6 @@ fn test_status_returns_correct_statistics() {
 /// Test that human output format contains expected fields
 #[test]
 #[cfg(feature = "backend-sqlite")]
-#[allow(deprecated)]
 fn test_status_human_output_format() {
     let (_file, db) = create_test_db().unwrap();
     let status = db.status().unwrap();
@@ -219,7 +217,6 @@ fn test_status_database_open_error() {
 /// Test that status() with empty database returns zero counts
 #[test]
 #[cfg(feature = "backend-sqlite")]
-#[allow(deprecated)]
 fn test_status_empty_database_returns_zeros() {
     use crate::storage::{REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION};
 

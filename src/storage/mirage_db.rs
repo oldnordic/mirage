@@ -294,7 +294,6 @@ impl MirageDb {
                     )
                     .unwrap_or(0);
 
-                #[allow(deprecated)]
                 Ok(DatabaseStatus {
                     cfg_blocks,
                     cfg_edges,
@@ -311,7 +310,6 @@ impl MirageDb {
     /// Helper function to get status via storage backend (for non-SQLite backends)
     #[cfg(feature = "backend-sqlite")]
     fn status_via_storage(&self) -> Result<DatabaseStatus> {
-        #[allow(deprecated)]
         Ok(DatabaseStatus {
             cfg_blocks: 0,
             cfg_edges: 0,
@@ -327,7 +325,7 @@ impl MirageDb {
     /// # Examples
     ///
     /// ```no_run
-    /// # use mirage_analyzer::storage::MirageDb;
+    /// # use mirage::storage::MirageDb;
     /// # fn main() -> anyhow::Result<()> {
     /// # let db = MirageDb::open("test.db")?;
     /// let func_id = db.resolve_function_name("123")?;
@@ -415,7 +413,7 @@ impl MirageDb {
     /// # Examples
     ///
     /// ```no_run
-    /// # use mirage_analyzer::storage::MirageDb;
+    /// # use mirage::storage::MirageDb;
     /// # fn main() -> anyhow::Result<()> {
     /// # let db = MirageDb::open("test.db")?;
     /// let cfg = db.load_cfg(123)?;
@@ -449,9 +447,6 @@ impl MirageDb {
                     Some(b.start_col as i64),
                     Some(b.end_line as i64),
                     Some(b.end_col as i64),
-                    Some(b.coord_x),
-                    Some(b.coord_y),
-                    Some(b.coord_z),
                     b.cfg_condition,
                 )
             })
@@ -537,7 +532,6 @@ impl MirageDb {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DatabaseStatus {
     pub cfg_blocks: i64,
-    #[deprecated(note = "Edges are now computed in memory, not stored")]
     pub cfg_edges: i64,
     pub cfg_paths: i64,
     pub cfg_dominators: i64,

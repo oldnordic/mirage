@@ -14,8 +14,8 @@
 //! # Examples
 //!
 //! ```ignore
-//! # use mirage_analyzer::cfg::diff::{compute_cfg_diff, CfgDiff};
-//! # use mirage_analyzer::storage::Backend;
+//! # use mirage::cfg::diff::{compute_cfg_diff, CfgDiff};
+//! # use mirage::storage::Backend;
 //! # use anyhow::Result;
 //! # fn main() -> Result<()> {
 //! let before = Backend::detect_and_open("codegraph-before.db")?;
@@ -93,16 +93,15 @@ pub struct BlockChange {
 
 /// Type of change detected for a block
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::enum_variant_names)]
 pub enum ChangeType {
     /// Terminator instruction changed
-    TerminatorChanged { before: String, after: String },
+    Terminator { before: String, after: String },
     /// Source location changed (block moved within file)
-    SourceLocationChanged,
+    SourceLocation,
     /// Both terminator and location changed
-    BothChanged,
+    Both,
     /// Block's outgoing edges changed
-    EdgesChanged,
+    Edges,
 }
 
 /// Representation of a single edge for diff purposes
@@ -242,12 +241,12 @@ pub fn compute_cfg_diff_with_sources(
             let location_changed = before.source_location != after.source_location;
 
             let change_type = match (terminator_changed, location_changed) {
-                (true, false) => ChangeType::TerminatorChanged {
+                (true, false) => ChangeType::Terminator {
                     before: before.terminator.clone(),
                     after: after.terminator.clone(),
                 },
-                (false, true) => ChangeType::SourceLocationChanged,
-                (true, true) => ChangeType::BothChanged,
+                (false, true) => ChangeType::SourceLocation,
+                (true, true) => ChangeType::Both,
                 (false, false) => return None, // No change
             };
 
@@ -332,7 +331,6 @@ fn compute_edge_diff(
 /// This is a simplified implementation that creates edges based on
 /// terminator kind and sequential block ordering.
 /// Future versions will query actual edge data from the database.
-#[allow(clippy::collapsible_match)]
 fn derive_edges(blocks: &HashMap<i64, BlockDiff>) -> Vec<EdgeDiff> {
     let mut edges = Vec::new();
     let mut block_ids: Vec<_> = blocks.keys().copied().collect();
@@ -346,48 +344,17 @@ fn derive_edges(blocks: &HashMap<i64, BlockDiff>) -> Vec<EdgeDiff> {
 
         match block.terminator.as_str() {
             "fallthrough" | "goto" => {
-                // Edge to next block
-                if idx + 1 < block_ids.len() {
-                    edges.push(EdgeDiff {
-                        from_block: block_id,
-                        to_block: block_ids[idx + 1],
-                        edge_type: "fallthrough".to_string(),
-                    });
-                }
+                push_edge(&mut edges, &block_ids, idx + 1, block_id, "fallthrough");
             }
             "conditional" => {
-                // Two edges: true and false branches
-                if idx + 1 < block_ids.len() {
-                    edges.push(EdgeDiff {
-                        from_block: block_id,
-                        to_block: block_ids[idx + 1],
-                        edge_type: "true_branch".to_string(),
-                    });
-                }
-                if idx + 2 < block_ids.len() {
-                    edges.push(EdgeDiff {
-                        from_block: block_id,
-                        to_block: block_ids[idx + 2],
-                        edge_type: "false_branch".to_string(),
-                    });
-                }
-            }
-            "return" | "panic" => {
-                // No outgoing edges
+                push_edge(&mut edges, &block_ids, idx + 1, block_id, "true_branch");
+                push_edge(&mut edges, &block_ids, idx + 2, block_id, "false_branch");
             }
             "call" => {
-                // Edge to next block (return path)
-                if idx + 1 < block_ids.len() {
-                    edges.push(EdgeDiff {
-                        from_block: block_id,
-                        to_block: block_ids[idx + 1],
-                        edge_type: "call".to_string(),
-                    });
-                }
+                push_edge(&mut edges, &block_ids, idx + 1, block_id, "call");
             }
-            _ => {
-                // Unknown terminator - no edges
-            }
+            "return" | "panic" => {}
+            _ => {}
         }
     }
 
@@ -406,7 +373,6 @@ fn derive_edges(blocks: &HashMap<i64, BlockDiff>) -> Vec<EdgeDiff> {
 /// # Returns
 ///
 /// * `DiGraph<i64, ()>` - Graph where nodes are block IDs and edges are unlabeled
-#[allow(clippy::collapsible_match)]
 pub fn blocks_to_petgraph(blocks: &[CfgBlockData]) -> DiGraph<i64, ()> {
     let mut graph = DiGraph::new();
 
@@ -424,35 +390,45 @@ pub fn blocks_to_petgraph(blocks: &[CfgBlockData]) -> DiGraph<i64, ()> {
         let from_idx = node_indices[&from_id];
 
         match block.terminator.as_str() {
-            "fallthrough" | "goto" => {
-                if idx + 1 < blocks.len() {
-                    let to_idx = node_indices[&((idx + 1) as i64)];
-                    graph.add_edge(from_idx, to_idx, ());
-                }
+            "fallthrough" | "goto" | "call" => {
+                add_petgraph_edge(&mut graph, &node_indices, from_idx, idx + 1);
             }
             "conditional" => {
-                if idx + 1 < blocks.len() {
-                    let to_idx = node_indices[&((idx + 1) as i64)];
-                    graph.add_edge(from_idx, to_idx, ());
-                }
-                if idx + 2 < blocks.len() {
-                    let to_idx = node_indices[&((idx + 2) as i64)];
-                    graph.add_edge(from_idx, to_idx, ());
-                }
+                add_petgraph_edge(&mut graph, &node_indices, from_idx, idx + 1);
+                add_petgraph_edge(&mut graph, &node_indices, from_idx, idx + 2);
             }
-            "call" => {
-                if idx + 1 < blocks.len() {
-                    let to_idx = node_indices[&((idx + 1) as i64)];
-                    graph.add_edge(from_idx, to_idx, ());
-                }
-            }
-            _ => {
-                // No edges for return, panic, etc.
-            }
+            _ => {}
         }
     }
 
     graph
+}
+
+fn push_edge(
+    edges: &mut Vec<EdgeDiff>,
+    block_ids: &[i64],
+    target_idx: usize,
+    from_block: i64,
+    edge_type: &str,
+) {
+    if let Some(&to_block) = block_ids.get(target_idx) {
+        edges.push(EdgeDiff {
+            from_block,
+            to_block,
+            edge_type: edge_type.to_string(),
+        });
+    }
+}
+
+fn add_petgraph_edge(
+    graph: &mut DiGraph<i64, ()>,
+    node_indices: &HashMap<i64, petgraph::graph::NodeIndex>,
+    from_idx: petgraph::graph::NodeIndex,
+    target_block_idx: usize,
+) {
+    if let Some(&to_idx) = node_indices.get(&(target_block_idx as i64)) {
+        graph.add_edge(from_idx, to_idx, ());
+    }
 }
 
 #[cfg(test)]
@@ -492,9 +468,6 @@ mod tests {
                 start_col: 0,
                 end_line: 2,
                 end_col: 0,
-                coord_x: 0,
-                coord_y: 0,
-                coord_z: 0,
                 cfg_condition: None,
             },
             CfgBlockData {
@@ -507,9 +480,6 @@ mod tests {
                 start_col: 0,
                 end_line: 3,
                 end_col: 0,
-                coord_x: 0,
-                coord_y: 0,
-                coord_z: 0,
                 cfg_condition: None,
             },
         ];

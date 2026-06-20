@@ -1,11 +1,9 @@
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
-use std::path::Path;
 
-use super::{
-    MIRAGE_SCHEMA_VERSION, REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION,
-    TEST_MAGELLAN_SCHEMA_VERSION,
-};
+use super::{MIRAGE_SCHEMA_VERSION, REQUIRED_MAGELLAN_SCHEMA_VERSION};
+#[cfg(all(test, feature = "sqlite"))]
+use super::{REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, TEST_MAGELLAN_SCHEMA_VERSION};
 
 /// A schema migration
 struct Migration {
@@ -83,24 +81,23 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
         [],
     )?;
 
-    // Create cfg_blocks table (Magellan v7+ schema)
+    // Create cfg_blocks table matching the current Magellan contract.
     conn.execute(
         "CREATE TABLE IF NOT EXISTS cfg_blocks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             function_id INTEGER NOT NULL,
             kind TEXT NOT NULL,
             terminator TEXT NOT NULL,
-            byte_start INTEGER,
-            byte_end INTEGER,
-            start_line INTEGER,
-            start_col INTEGER,
-            end_line INTEGER,
-            end_col INTEGER,
-            coord_x INTEGER NOT NULL DEFAULT 0,
-            coord_y INTEGER NOT NULL DEFAULT 0,
-            coord_z INTEGER NOT NULL DEFAULT 0,
+            byte_start INTEGER NOT NULL,
+            byte_end INTEGER NOT NULL,
+            start_line INTEGER NOT NULL,
+            start_col INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            end_col INTEGER NOT NULL,
+            cfg_hash TEXT,
+            statements TEXT,
             cfg_condition TEXT,
-            FOREIGN KEY (function_id) REFERENCES graph_entities(id)
+            FOREIGN KEY (function_id) REFERENCES graph_entities(id) ON DELETE CASCADE
         )",
         [],
     )?;
@@ -192,83 +189,6 @@ pub fn create_schema(conn: &mut Connection, _magellan_schema_version: i32) -> Re
     Ok(())
 }
 
-/// Create a minimal Magellan-compatible database at the given path
-///
-/// This creates a new database with the minimal Magellan schema required
-/// for Mirage to store CFG data. For a full Magellan database, users
-/// should run `magellan watch` on their project.
-///
-/// # Arguments
-///
-/// * `path` - Path where the database should be created
-///
-/// # Returns
-///
-/// * `Ok(())` - Database created successfully
-/// * `Err(...)` - Error if creation fails
-pub fn create_minimal_database<P: AsRef<Path>>(path: P) -> Result<()> {
-    let path = path.as_ref();
-
-    // Don't overwrite existing database
-    if path.exists() {
-        anyhow::bail!("Database already exists: {}", path.display());
-    }
-
-    let mut conn = Connection::open(path).context("Failed to create database file")?;
-
-    // Create Magellan meta table
-    conn.execute(
-        "CREATE TABLE magellan_meta (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            magellan_schema_version INTEGER NOT NULL,
-            sqlitegraph_schema_version INTEGER NOT NULL,
-            created_at INTEGER NOT NULL
-        )",
-        [],
-    )
-    .context("Failed to create magellan_meta table")?;
-
-    // Create graph_entities table (minimal schema)
-    conn.execute(
-        "CREATE TABLE graph_entities (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kind TEXT NOT NULL,
-            name TEXT NOT NULL,
-            file_path TEXT,
-            data TEXT NOT NULL
-        )",
-        [],
-    )
-    .context("Failed to create graph_entities table")?;
-
-    // Create indexes for graph_entities
-    conn.execute(
-        "CREATE INDEX idx_graph_entities_kind ON graph_entities(kind)",
-        [],
-    )
-    .context("Failed to create index on graph_entities.kind")?;
-
-    conn.execute(
-        "CREATE INDEX idx_graph_entities_name ON graph_entities(name)",
-        [],
-    )
-    .context("Failed to create index on graph_entities.name")?;
-
-    // Initialize Magellan meta
-    let now = chrono::Utc::now().timestamp();
-    conn.execute(
-        "INSERT INTO magellan_meta (id, magellan_schema_version, sqlitegraph_schema_version, created_at)
-         VALUES (1, ?, ?, ?)",
-        params![REQUIRED_MAGELLAN_SCHEMA_VERSION, REQUIRED_SQLITEGRAPH_SCHEMA_VERSION, now],
-    ).context("Failed to initialize magellan_meta")?;
-
-    // Create Mirage schema
-    create_schema(&mut conn, TEST_MAGELLAN_SCHEMA_VERSION)
-        .context("Failed to create Mirage schema")?;
-
-    Ok(())
-}
-
 #[cfg(all(test, feature = "sqlite"))]
 pub(crate) fn create_test_db_with_schema() -> rusqlite::Connection {
     use rusqlite::Connection;
@@ -316,9 +236,9 @@ pub(crate) fn create_test_db_with_schema() -> rusqlite::Connection {
             start_col INTEGER NOT NULL,
             end_line INTEGER NOT NULL,
             end_col INTEGER NOT NULL,
-            coord_x INTEGER NOT NULL DEFAULT 0,
-            coord_y INTEGER NOT NULL DEFAULT 0,
-            coord_z INTEGER NOT NULL DEFAULT 0,
+            cfg_hash TEXT,
+            statements TEXT,
+            cfg_condition TEXT,
             FOREIGN KEY (function_id) REFERENCES graph_entities(id)
         )",
         [],

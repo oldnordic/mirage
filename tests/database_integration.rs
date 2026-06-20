@@ -6,13 +6,13 @@
 use anyhow::Result;
 use rusqlite::{Connection, OptionalExtension};
 
-/// Helper to create a minimal Magellan v7 database for testing
+/// Helper to create a minimal Magellan-backed database for testing
 ///
-/// This provides a real Magellan v7 database environment for testing Mirage's
+/// This provides a real Magellan database environment for testing Mirage's
 /// schema extensions. The database includes:
-/// - magellan_meta table with schema version 7 (Magellan v7)
+/// - magellan_meta table with the minimum supported Magellan schema version
 /// - graph_entities table for storing functions
-/// - cfg_blocks table with Magellan v7 schema (kind, terminator as lowercase TEXT)
+/// - cfg_blocks table with Magellan's current source-of-truth contract
 /// - graph_edges table for edge storage
 fn create_test_magellan_db() -> tempfile::NamedTempFile {
     let db = tempfile::NamedTempFile::new().unwrap();
@@ -53,7 +53,7 @@ fn create_test_magellan_db() -> tempfile::NamedTempFile {
     )
     .unwrap();
 
-    // Create Magellan v7 cfg_blocks table
+    // Create cfg_blocks table matching the current Magellan contract
     // Uses lowercase "kind" and "terminator" columns (not block_kind, not JSON)
     conn.execute(
         "CREATE TABLE cfg_blocks (
@@ -67,6 +67,8 @@ fn create_test_magellan_db() -> tempfile::NamedTempFile {
             start_col INTEGER NOT NULL,
             end_line INTEGER NOT NULL,
             end_col INTEGER NOT NULL,
+            cfg_hash TEXT,
+            statements TEXT,
             cfg_condition TEXT,
             FOREIGN KEY (function_id) REFERENCES graph_entities(id)
         )",

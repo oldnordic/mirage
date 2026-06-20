@@ -15,9 +15,6 @@ fn test_path_limits_max_length_long_path() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b1 = g.add_node(BasicBlock {
         id: 1,
@@ -26,9 +23,6 @@ fn test_path_limits_max_length_long_path() {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b2 = g.add_node(BasicBlock {
         id: 2,
@@ -37,9 +31,6 @@ fn test_path_limits_max_length_long_path() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b3 = g.add_node(BasicBlock {
         id: 3,
@@ -48,9 +39,6 @@ fn test_path_limits_max_length_long_path() {
         statements: vec![],
         terminator: Terminator::Goto { target: 4 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b4 = g.add_node(BasicBlock {
         id: 4,
@@ -59,9 +47,6 @@ fn test_path_limits_max_length_long_path() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(b0, b1, EdgeType::Fallthrough);
     g.add_edge(b1, b2, EdgeType::Fallthrough);
@@ -140,9 +125,6 @@ fn test_nested_loop_bounding_three_levels() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b1 = g.add_node(BasicBlock {
         id: 1,
@@ -154,9 +136,6 @@ fn test_nested_loop_bounding_three_levels() {
             otherwise: 6,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b2 = g.add_node(BasicBlock {
         id: 2,
@@ -168,9 +147,6 @@ fn test_nested_loop_bounding_three_levels() {
             otherwise: 1,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b3 = g.add_node(BasicBlock {
         id: 3,
@@ -182,9 +158,6 @@ fn test_nested_loop_bounding_three_levels() {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b4 = g.add_node(BasicBlock {
         id: 4,
@@ -193,9 +166,6 @@ fn test_nested_loop_bounding_three_levels() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b6 = g.add_node(BasicBlock {
         id: 6,
@@ -204,9 +174,6 @@ fn test_nested_loop_bounding_three_levels() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(b0, b1, EdgeType::Fallthrough);
     g.add_edge(b1, b2, EdgeType::TrueBranch);
@@ -356,9 +323,6 @@ fn test_perf_nested_loops() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b1 = g.add_node(BasicBlock {
         id: 1,
@@ -370,9 +334,6 @@ fn test_perf_nested_loops() {
             otherwise: 5,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b2 = g.add_node(BasicBlock {
         id: 2,
@@ -384,9 +345,6 @@ fn test_perf_nested_loops() {
             otherwise: 1,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b3 = g.add_node(BasicBlock {
         id: 3,
@@ -395,9 +353,6 @@ fn test_perf_nested_loops() {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b5 = g.add_node(BasicBlock {
         id: 5,
@@ -406,9 +361,6 @@ fn test_perf_nested_loops() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(b0, b1, EdgeType::Fallthrough);
     g.add_edge(b1, b2, EdgeType::TrueBranch);

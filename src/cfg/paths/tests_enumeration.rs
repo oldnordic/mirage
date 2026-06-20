@@ -86,9 +86,6 @@ fn test_enumerate_paths_single_block_cfg() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let paths = enumerate_paths(&g, &PathLimits::default());
     assert_eq!(paths.len(), 1);
@@ -105,9 +102,6 @@ fn test_enumerate_paths_with_unreachable_exit() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b1 = g.add_node(BasicBlock {
         id: 1,
@@ -116,9 +110,6 @@ fn test_enumerate_paths_with_unreachable_exit() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let _b2 = g.add_node(BasicBlock {
         id: 2,
@@ -127,9 +118,6 @@ fn test_enumerate_paths_with_unreachable_exit() {
         statements: vec![],
         terminator: Terminator::Unreachable,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(b0, b1, EdgeType::Fallthrough);
     let paths = enumerate_paths(&g, &PathLimits::default());
@@ -177,9 +165,6 @@ fn test_enumerate_paths_classification_mixed() {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b1 = g.add_node(BasicBlock {
         id: 1,
@@ -188,9 +173,6 @@ fn test_enumerate_paths_classification_mixed() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b2 = g.add_node(BasicBlock {
         id: 2,
@@ -199,9 +181,6 @@ fn test_enumerate_paths_classification_mixed() {
         statements: vec![],
         terminator: Terminator::Abort("panic!".to_string()),
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(b0, b1, EdgeType::TrueBranch);
     g.add_edge(b0, b2, EdgeType::FalseBranch);
@@ -227,9 +206,6 @@ fn test_enumerate_paths_try_operator_self_loop() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b1 = g.add_node(BasicBlock {
         id: 1,
@@ -241,9 +217,6 @@ fn test_enumerate_paths_try_operator_self_loop() {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b2 = g.add_node(BasicBlock {
         id: 2,
@@ -252,9 +225,6 @@ fn test_enumerate_paths_try_operator_self_loop() {
         statements: vec![],
         terminator: Terminator::Goto { target: 3 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b3 = g.add_node(BasicBlock {
         id: 3,
@@ -263,9 +233,6 @@ fn test_enumerate_paths_try_operator_self_loop() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(b0, b1, EdgeType::Fallthrough);
     g.add_edge(b1, b1, EdgeType::Return);
@@ -286,9 +253,6 @@ fn test_enumerate_paths_implicit_return_dead_end() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b1 = g.add_node(BasicBlock {
         id: 1,
@@ -297,9 +261,6 @@ fn test_enumerate_paths_implicit_return_dead_end() {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b2 = g.add_node(BasicBlock {
         id: 2,
@@ -308,9 +269,6 @@ fn test_enumerate_paths_implicit_return_dead_end() {
         statements: vec![],
         terminator: Terminator::Goto { target: 0 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(b0, b1, EdgeType::Fallthrough);
     g.add_edge(b1, b2, EdgeType::Fallthrough);
@@ -510,9 +468,6 @@ fn test_enumerate_paths_iterative_with_loop() {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b1 = g.add_node(BasicBlock {
         id: 1,
@@ -521,9 +476,6 @@ fn test_enumerate_paths_iterative_with_loop() {
         statements: vec![],
         terminator: Terminator::Goto { target: 0 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let b2 = g.add_node(BasicBlock {
         id: 2,
@@ -532,9 +484,6 @@ fn test_enumerate_paths_iterative_with_loop() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(b0, b1, EdgeType::TrueBranch);
     g.add_edge(b0, b2, EdgeType::FalseBranch);

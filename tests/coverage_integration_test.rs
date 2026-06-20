@@ -59,9 +59,8 @@ fn create_test_db_with_coverage() -> (TempDir, PathBuf) {
             start_col INTEGER NOT NULL,
             end_line INTEGER NOT NULL,
             end_col INTEGER NOT NULL,
-            coord_x INTEGER NOT NULL DEFAULT 0,
-            coord_y INTEGER NOT NULL DEFAULT 0,
-            coord_z INTEGER NOT NULL DEFAULT 0,
+            cfg_hash TEXT,
+            statements TEXT,
             cfg_condition TEXT
         )",
         [],
@@ -100,22 +99,22 @@ fn create_test_db_with_coverage() -> (TempDir, PathBuf) {
     // Insert blocks
     conn.execute(
         "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
-                                 start_line, start_col, end_line, end_col, coord_x, coord_y, coord_z)
-         VALUES (1, 'entry', 'fallthrough', 0, 10, 1, 0, 1, 10, 0, 0, 0)",
+                                 start_line, start_col, end_line, end_col)
+         VALUES (1, 'entry', 'fallthrough', 0, 10, 1, 0, 1, 10)",
         [],
     )
     .unwrap();
     conn.execute(
         "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
-                                 start_line, start_col, end_line, end_col, coord_x, coord_y, coord_z)
-         VALUES (1, 'normal', 'conditional', 10, 50, 2, 4, 5, 8, 1, 0, 1)",
+                                 start_line, start_col, end_line, end_col)
+         VALUES (1, 'normal', 'conditional', 10, 50, 2, 4, 5, 8)",
         [],
     )
     .unwrap();
     conn.execute(
         "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
-                                 start_line, start_col, end_line, end_col, coord_x, coord_y, coord_z)
-         VALUES (1, 'return', 'return', 50, 60, 5, 0, 5, 10, 2, 0, 2)",
+                                 start_line, start_col, end_line, end_col)
+         VALUES (1, 'return', 'return', 50, 60, 5, 0, 5, 10)",
         [],
     )
     .unwrap();
@@ -159,9 +158,6 @@ fn create_test_cfg_with_db_ids() -> Cfg {
         statements: vec!["entry".to_string()],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let b1 = g.add_node(BasicBlock {
@@ -174,9 +170,6 @@ fn create_test_cfg_with_db_ids() -> Cfg {
             otherwise: 2,
         },
         source_location: None,
-        coord_x: 1,
-        coord_y: 0,
-        coord_z: 1,
     });
 
     let b2 = g.add_node(BasicBlock {
@@ -186,9 +179,6 @@ fn create_test_cfg_with_db_ids() -> Cfg {
         statements: vec!["return".to_string()],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 2,
-        coord_y: 0,
-        coord_z: 2,
     });
 
     g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -255,9 +245,6 @@ fn test_export_json_coverage_db_id_none() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let mut coverage = HashMap::new();
@@ -299,20 +286,23 @@ fn test_coverage_query_from_database() {
 }
 
 #[test]
-fn test_cfg_blocks_table_has_coord_columns() {
+fn test_cfg_blocks_table_matches_current_magellan_schema() {
     let (_dir, db_path) = create_test_db_with_coverage();
     let conn = rusqlite::Connection::open(&db_path).unwrap();
 
-    let mut stmt = conn
-        .prepare("SELECT coord_x, coord_y, coord_z FROM cfg_blocks WHERE id = 1")
-        .unwrap();
-    let row: (i64, i64, i64) = stmt
-        .query_row([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+    let mut stmt = conn.prepare("PRAGMA table_info(cfg_blocks)").unwrap();
+    let columns: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
-    assert_eq!(row.0, 0, "coord_x should be 0");
-    assert_eq!(row.1, 0, "coord_y should be 0");
-    assert_eq!(row.2, 0, "coord_z should be 0");
+    assert!(columns.contains(&"cfg_hash".to_string()));
+    assert!(columns.contains(&"statements".to_string()));
+    assert!(columns.contains(&"cfg_condition".to_string()));
+    assert!(!columns.contains(&"coord_x".to_string()));
+    assert!(!columns.contains(&"coord_y".to_string()));
+    assert!(!columns.contains(&"coord_z".to_string()));
 }
 
 #[test]

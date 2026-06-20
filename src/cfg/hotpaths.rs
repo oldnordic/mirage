@@ -87,7 +87,7 @@ impl Default for HotpathsOptions {
 /// # Examples
 ///
 /// ```ignore
-/// # use mirage_analyzer::cfg::hotpaths::{compute_hot_paths, HotpathsOptions};
+/// # use mirage::cfg::hotpaths::{compute_hot_paths, HotpathsOptions};
 /// # use petgraph::graph::DiGraph;
 /// # let graph = DiGraph::new();
 /// # let paths = vec![];
@@ -233,9 +233,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // Block 1: loop header
@@ -249,9 +246,6 @@ mod tests {
                 otherwise: 3,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // Block 2: loop body
@@ -262,9 +256,6 @@ mod tests {
             statements: vec!["loop body".to_string()],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         // Block 3: exit
@@ -275,9 +266,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         graph.add_edge(b0, b1, EdgeType::Fallthrough);

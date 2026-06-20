@@ -11,9 +11,6 @@ fn test_summary_empty_statements() {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         },
         BasicBlock {
             id: 1,
@@ -22,9 +19,6 @@ fn test_summary_empty_statements() {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         },
     ];
 
@@ -43,9 +37,6 @@ fn test_summary_all_empty() {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         },
         BasicBlock {
             id: 1,
@@ -54,9 +45,6 @@ fn test_summary_all_empty() {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         },
     ];
 
@@ -76,9 +64,6 @@ fn test_summarize_path_empty_summary() {
         statements: vec![],
         terminator: Terminator::Goto { target: 1 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let _b1 = cfg.add_node(BasicBlock {
         id: 1,
@@ -87,9 +72,6 @@ fn test_summarize_path_empty_summary() {
         statements: vec![],
         terminator: Terminator::Goto { target: 2 },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
 
     let path = Path::new(vec![0, 1], PathKind::Normal);

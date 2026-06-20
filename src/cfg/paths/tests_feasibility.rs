@@ -67,9 +67,6 @@ fn test_classify_path_single_block() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let path = vec![0];
     let kind = classify_path(&g, &path);
@@ -283,9 +280,6 @@ fn test_is_feasible_path_call_no_unwind() {
             unwind: None,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let _b1 = g.add_node(BasicBlock {
         id: 1,
@@ -294,9 +288,6 @@ fn test_is_feasible_path_call_no_unwind() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(
         b0,
@@ -336,9 +327,6 @@ fn test_is_feasible_path_call_always_unwinds() {
             unwind: Some(1),
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let _b1 = g.add_node(BasicBlock {
         id: 1,
@@ -347,9 +335,6 @@ fn test_is_feasible_path_call_always_unwinds() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(
         b0,
@@ -545,9 +530,6 @@ fn test_classify_with_feasibility_call_terminator() {
             unwind: None,
         },
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     let _b1 = g.add_node(BasicBlock {
         id: 1,
@@ -556,9 +538,6 @@ fn test_classify_with_feasibility_call_terminator() {
         statements: vec![],
         terminator: Terminator::Return,
         source_location: None,
-        coord_x: 0,
-        coord_y: 0,
-        coord_z: 0,
     });
     g.add_edge(
         b0,

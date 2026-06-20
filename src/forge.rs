@@ -7,13 +7,17 @@
 //!
 //! ```no_run
 //! use std::path::Path;
-//! use mirage_analyzer::forge;
+//! use mirage::forge;
 //!
 //! let db = Path::new(".magellan/myproject.db");
 //!
 //! // Get CFG for a function by name
 //! let cfg = forge::get_function_cfg("my_function", None, db).unwrap();
-//! println!("{} blocks, {} edges", cfg.blocks.len(), cfg.edges.len());
+//! println!(
+//!     "{} blocks, {} edges",
+//!     cfg.cfg.node_count(),
+//!     cfg.cfg.edge_count()
+//! );
 //!
 //! // Detect cycles in the call graph
 //! let cycles = forge::detect_cycles(db).unwrap();

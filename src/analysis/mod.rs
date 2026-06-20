@@ -26,15 +26,6 @@ pub use magellan::{
     PathEnumerationResult, SymbolInfo,
 };
 
-#[allow(unused_imports)]
-use magellan::{
-    CondensationGraph, PathStatistics, ProgramSlice, SliceDirection, SliceResult, SliceStatistics,
-    Supernode,
-};
-
-#[allow(unused_imports)]
-use anyhow::Result;
-
 pub use analysis_types::{
     CycleInfo, EnhancedBlastZone, EnhancedCycles, EnhancedDeadCode, LoopInfo, PathImpactSummary,
 };
@@ -52,7 +43,7 @@ mod tests {
 
     #[test]
     fn test_magellan_bridge_creation() {
-        let _ = || -> Result<()> {
+        let _ = || -> anyhow::Result<()> {
             let _bridge = MagellanBridge::open("test.db")?;
             Ok(())
         };
@@ -661,13 +652,13 @@ mod tests {
 
     #[test]
     fn test_all_magellan_imports_utilized() {
-        let _ = std::marker::PhantomData::<CondensationGraph>;
+        let _ = std::marker::PhantomData::<magellan::CondensationGraph>;
         let _ = std::marker::PhantomData::<CondensationResult>;
-        let _ = std::marker::PhantomData::<Supernode>;
+        let _ = std::marker::PhantomData::<magellan::Supernode>;
 
         let _ = std::marker::PhantomData::<ExecutionPath>;
         let _ = std::marker::PhantomData::<PathEnumerationResult>;
-        let _ = std::marker::PhantomData::<PathStatistics>;
+        let _ = std::marker::PhantomData::<magellan::PathStatistics>;
 
         let _ = std::marker::PhantomData::<CondensationJson>;
         let _ = std::marker::PhantomData::<SupernodeJson>;
@@ -675,10 +666,10 @@ mod tests {
         let _ = std::marker::PhantomData::<PathEnumerationJson>;
         let _ = std::marker::PhantomData::<PathStatisticsJson>;
 
-        let _ = std::marker::PhantomData::<ProgramSlice>;
-        let _ = std::marker::PhantomData::<SliceDirection>;
-        let _ = std::marker::PhantomData::<SliceResult>;
-        let _ = std::marker::PhantomData::<SliceStatistics>;
+        let _ = std::marker::PhantomData::<magellan::ProgramSlice>;
+        let _ = std::marker::PhantomData::<magellan::SliceDirection>;
+        let _ = std::marker::PhantomData::<magellan::SliceResult>;
+        let _ = std::marker::PhantomData::<magellan::SliceStatistics>;
     }
 
     #[test]

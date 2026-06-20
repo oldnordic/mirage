@@ -4,6 +4,7 @@ use crate::output;
 use anyhow::Result;
 
 pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
+    use crate::cfg::icfg::{build_icfg, enumerate_icfg_paths, project_icfg_to_cfg, IcfgOptions};
     use crate::cfg::load_cfg_from_db;
     use crate::cfg::{enumerate_paths_incremental, get_or_enumerate_paths, PathKind, PathLimits};
     use crate::storage::resolve_function_or_semantic;
@@ -162,68 +163,83 @@ pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
         }
     };
 
-    // Load CFG from database
-    let cfg = match load_cfg_from_db(&db, function_id) {
-        Ok(cfg) => cfg,
-        Err(_e) => {
-            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::new(
-                    "CgfLoadError",
-                    &format!("Failed to load CFG for function '{}'", args.function),
-                    output::E_CFG_ERROR,
-                );
-                let wrapper = output::JsonResponse::new(error);
-                println!("{}", wrapper.to_json());
-                std::process::exit(output::EXIT_DATABASE);
-            } else {
-                output::error(&format!(
-                    "Failed to load CFG for function '{}'",
-                    args.function
-                ));
-                output::info("The function may be corrupted. Try re-running 'magellan watch'");
-                std::process::exit(output::EXIT_DATABASE);
-            }
-        }
-    };
-
     // Build path limits based on args
     let mut limits = PathLimits::default();
     if let Some(max_length) = args.max_length {
         limits = limits.with_max_length(max_length);
     }
 
-    // Enumerate paths (backend-agnostic)
-    // For SQLite backend: use get_or_enumerate_paths for caching
-    let mut paths = if db.is_sqlite() {
-        // SQLite backend: use caching layer
-        let function_hash = match get_function_hash_db(&db, function_id) {
-            Some(hash) => hash,
-            None => {
+    let mut projected_icfg = None;
+
+    let mut paths = if args.inter_procedural {
+        let icfg = build_icfg(
+            db.storage(),
+            db.backend(),
+            db.path(),
+            function_id,
+            IcfgOptions {
+                max_depth: limits.max_length,
+                include_return_edges: true,
+            },
+        )
+        .map_err(|e| anyhow::anyhow!("ICFG path enumeration failed: {}", e))?;
+        let synthetic_cfg = project_icfg_to_cfg(&icfg);
+        let paths = enumerate_icfg_paths(&icfg, &limits);
+        projected_icfg = Some((icfg, synthetic_cfg));
+        paths
+    } else {
+        // Load CFG from database
+        let cfg = match load_cfg_from_db(&db, function_id) {
+            Ok(cfg) => cfg,
+            Err(_e) => {
                 if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
                     let error = output::JsonError::new(
-                        "HashNotFound",
-                        &format!("Function hash not found for '{}'", args.function),
+                        "CgfLoadError",
+                        &format!("Failed to load CFG for function '{}'", args.function),
                         output::E_CFG_ERROR,
                     );
                     let wrapper = output::JsonResponse::new(error);
                     println!("{}", wrapper.to_json());
                     std::process::exit(output::EXIT_DATABASE);
                 } else {
-                    output::error(&format!("Function hash not found for '{}'", args.function));
-                    output::info(
-                        "The function data may be incomplete. Try re-running 'magellan watch'",
-                    );
+                    output::error(&format!(
+                        "Failed to load CFG for function '{}'",
+                        args.function
+                    ));
+                    output::info("The function may be corrupted. Try re-running 'magellan watch'");
                     std::process::exit(output::EXIT_DATABASE);
                 }
             }
         };
 
-        get_or_enumerate_paths(&cfg, function_id, &function_hash, &limits, db.conn_mut()?)
-            .map_err(|e| anyhow::anyhow!("Path enumeration failed: {}", e))?
-    } else {
-        // Native-v3 backend: enumerate directly without caching
-        // Magellan manages its own caching
-        crate::cfg::enumerate_paths(&cfg, &limits)
+        if db.is_sqlite() {
+            let function_hash = match get_function_hash_db(&db, function_id) {
+                Some(hash) => hash,
+                None => {
+                    if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
+                        let error = output::JsonError::new(
+                            "HashNotFound",
+                            &format!("Function hash not found for '{}'", args.function),
+                            output::E_CFG_ERROR,
+                        );
+                        let wrapper = output::JsonResponse::new(error);
+                        println!("{}", wrapper.to_json());
+                        std::process::exit(output::EXIT_DATABASE);
+                    } else {
+                        output::error(&format!("Function hash not found for '{}'", args.function));
+                        output::info(
+                            "The function data may be incomplete. Try re-running 'magellan watch'",
+                        );
+                        std::process::exit(output::EXIT_DATABASE);
+                    }
+                }
+            };
+
+            get_or_enumerate_paths(&cfg, function_id, &function_hash, &limits, db.conn_mut()?)
+                .map_err(|e| anyhow::anyhow!("Path enumeration failed: {}", e))?
+        } else {
+            crate::cfg::enumerate_paths(&cfg, &limits)
+        }
     };
 
     // Filter to error paths if requested
@@ -258,30 +274,52 @@ pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
             .unwrap_or_default();
 
         // Build graph node index -> hit_count lookup via db_id
-        let node_hits: std::collections::HashMap<usize, i64> = cfg
-            .node_indices()
-            .filter_map(|idx| {
-                cfg.node_weight(idx).and_then(|b| {
-                    b.db_id
-                        .and_then(|db_id| coverage_map.get(&db_id).copied())
-                        .map(|hits| (b.id, hits))
+        if let Some((_, synthetic_cfg)) = projected_icfg.as_ref() {
+            let node_hits: std::collections::HashMap<usize, i64> = synthetic_cfg
+                .node_indices()
+                .filter_map(|idx| synthetic_cfg.node_weight(idx).map(|b| (b.id, 0)))
+                .collect();
+            paths.sort_by(|a, b| {
+                let total_a: i64 = a
+                    .blocks
+                    .iter()
+                    .map(|bid| node_hits.get(bid).copied().unwrap_or(0))
+                    .sum();
+                let total_b: i64 = b
+                    .blocks
+                    .iter()
+                    .map(|bid| node_hits.get(bid).copied().unwrap_or(0))
+                    .sum();
+                total_b.cmp(&total_a)
+            });
+        } else {
+            let cfg = load_cfg_from_db(&db, function_id)
+                .map_err(|e| anyhow::anyhow!("Failed to reload CFG for coverage sorting: {}", e))?;
+            let node_hits: std::collections::HashMap<usize, i64> = cfg
+                .node_indices()
+                .filter_map(|idx| {
+                    cfg.node_weight(idx).and_then(|b| {
+                        b.db_id
+                            .and_then(|db_id| coverage_map.get(&db_id).copied())
+                            .map(|hits| (b.id, hits))
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        paths.sort_by(|a, b| {
-            let total_a: i64 = a
-                .blocks
-                .iter()
-                .map(|bid| node_hits.get(bid).copied().unwrap_or(0))
-                .sum();
-            let total_b: i64 = b
-                .blocks
-                .iter()
-                .map(|bid| node_hits.get(bid).copied().unwrap_or(0))
-                .sum();
-            total_b.cmp(&total_a) // descending
-        });
+            paths.sort_by(|a, b| {
+                let total_a: i64 = a
+                    .blocks
+                    .iter()
+                    .map(|bid| node_hits.get(bid).copied().unwrap_or(0))
+                    .sum();
+                let total_b: i64 = b
+                    .blocks
+                    .iter()
+                    .map(|bid| node_hits.get(bid).copied().unwrap_or(0))
+                    .sum();
+                total_b.cmp(&total_a)
+            });
+        }
     }
 
     // Count error paths for reporting
@@ -310,42 +348,77 @@ pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
                 println!("  Kind: {:?}", path.kind);
                 println!("  Length: {} blocks", path.len());
                 if args.with_blocks {
-                    println!(
-                        "  Blocks: {}",
+                    let rendered_blocks = if let Some((icfg, _)) = projected_icfg.as_ref() {
+                        path.blocks
+                            .iter()
+                            .map(|id| {
+                                let node = &icfg.graph[petgraph::graph::NodeIndex::new(*id)];
+                                match (&node.function_name, node.block_id) {
+                                    (Some(function_name), block_id) if block_id >= 0 => {
+                                        format!("{}:{}", function_name, block_id)
+                                    }
+                                    (Some(function_name), -1) => format!("{}:entry", function_name),
+                                    (Some(function_name), -2) => format!("{}:exit", function_name),
+                                    (Some(function_name), block_id) => {
+                                        format!("{}:{}", function_name, block_id)
+                                    }
+                                    (None, block_id) => block_id.to_string(),
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
                         path.blocks
                             .iter()
                             .map(|id| id.to_string())
                             .collect::<Vec<_>>()
-                            .join(" -> ")
-                    );
+                    };
+                    println!("  Blocks: {}", rendered_blocks.join(" -> "));
                 }
                 println!();
             }
         }
         OutputFormat::Json => {
-            // Compact JSON with source locations from CFG
             let response = PathsResponse {
                 function: args.function.clone(),
                 total_paths: paths.len(),
                 error_paths: error_count,
-                paths: paths
-                    .iter()
-                    .map(|p| PathSummary::from_with_cfg(p.clone(), &cfg))
-                    .collect(),
+                paths: if let Some((icfg, synthetic_cfg)) = projected_icfg.as_ref() {
+                    paths
+                        .iter()
+                        .map(|p| PathSummary::from_icfg_path(p.clone(), synthetic_cfg, icfg))
+                        .collect()
+                } else {
+                    let cfg = load_cfg_from_db(&db, function_id).map_err(|e| {
+                        anyhow::anyhow!("Failed to reload CFG for JSON path output: {}", e)
+                    })?;
+                    paths
+                        .iter()
+                        .map(|p| PathSummary::from_with_cfg(p.clone(), &cfg))
+                        .collect()
+                },
             };
             let wrapper = output::JsonResponse::new(response);
             println!("{}", wrapper.to_json());
         }
         OutputFormat::Pretty => {
-            // Formatted JSON with indentation and source locations from CFG
             let response = PathsResponse {
                 function: args.function.clone(),
                 total_paths: paths.len(),
                 error_paths: error_count,
-                paths: paths
-                    .iter()
-                    .map(|p| PathSummary::from_with_cfg(p.clone(), &cfg))
-                    .collect(),
+                paths: if let Some((icfg, synthetic_cfg)) = projected_icfg.as_ref() {
+                    paths
+                        .iter()
+                        .map(|p| PathSummary::from_icfg_path(p.clone(), synthetic_cfg, icfg))
+                        .collect()
+                } else {
+                    let cfg = load_cfg_from_db(&db, function_id).map_err(|e| {
+                        anyhow::anyhow!("Failed to reload CFG for pretty path output: {}", e)
+                    })?;
+                    paths
+                        .iter()
+                        .map(|p| PathSummary::from_with_cfg(p.clone(), &cfg))
+                        .collect()
+                },
             };
             let wrapper = output::JsonResponse::new(response);
             println!("{}", wrapper.to_pretty_json());

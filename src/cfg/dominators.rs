@@ -20,10 +20,10 @@ use std::collections::HashMap;
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage_analyzer::cfg::dominators::DominatorTree;
-/// # use mirage_analyzer::cfg::Cfg;
+/// # use mirage::cfg::dominators::DominatorTree;
+/// # use mirage::cfg::Cfg;
 /// # use petgraph::graph::NodeIndex;
-/// # let graph: Cfg = unimplemented!();
+/// # let graph = Cfg::new();
 /// # let node = NodeIndex::new(0);
 /// let dom_tree = DominatorTree::new(&graph).unwrap();
 /// if let Some(idom) = dom_tree.immediate_dominator(node) {
@@ -95,10 +95,10 @@ impl DominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
-    /// # let graph: Cfg = unimplemented!();
+    /// # let graph = Cfg::new();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
     /// # let node = NodeIndex::new(0);
     /// if let Some(idom) = dom_tree.immediate_dominator(node) {
@@ -118,10 +118,10 @@ impl DominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
-    /// # let graph: Cfg = unimplemented!();
+    /// # let graph = Cfg::new();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
     /// # let entry = NodeIndex::new(0);
     /// # let node = NodeIndex::new(1);
@@ -152,10 +152,10 @@ impl DominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
-    /// # let graph: Cfg = unimplemented!();
+    /// # let graph = Cfg::new();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
     /// # let node = NodeIndex::new(0);
     /// for child in dom_tree.children(node) {
@@ -179,10 +179,10 @@ impl DominatorTree {
     ///
     /// # Example
     /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
+    /// # use mirage::cfg::dominators::DominatorTree;
+    /// # use mirage::cfg::Cfg;
     /// # use petgraph::graph::NodeIndex;
-    /// # let graph: Cfg = unimplemented!();
+    /// # let graph = Cfg::new();
     /// # let dom_tree = DominatorTree::new(&graph).unwrap();
     /// # let node = NodeIndex::new(0);
     /// let doms: Vec<_> = dom_tree.dominators(node).collect();
@@ -221,62 +221,6 @@ impl DominatorTree {
             current = idom;
         }
         depth
-    }
-
-    /// Apply dominator depths (coord_x) to all blocks in the CFG
-    ///
-    /// This method modifies the CFG in place, setting the coord_x field
-    /// for each BasicBlock to its dominator depth.
-    ///
-    /// # Arguments
-    ///
-    /// * `cfg` - The CFG to modify (mutable reference)
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
-    /// # let mut graph: Cfg = unimplemented!();
-    /// let dom_tree = DominatorTree::new(&graph).unwrap();
-    /// dom_tree.apply_dominator_depths(&mut graph);
-    /// // Now all blocks have correct coord_x values
-    /// ```
-    pub fn apply_dominator_depths(&self, cfg: &mut Cfg) {
-        for node in cfg.node_indices() {
-            let depth = self.depth(node) as i64;
-
-            // Update the BasicBlock's coord_x field
-            if let Some(block) = cfg.node_weight_mut(node) {
-                block.coord_x = depth;
-            }
-        }
-    }
-
-    /// Create DominatorTree and apply dominator depths (coord_x) to CFG
-    ///
-    /// Convenience method that creates a DominatorTree and immediately
-    /// applies the dominator depths to all blocks in the CFG.
-    ///
-    /// # Arguments
-    ///
-    /// * `cfg` - The CFG to analyze and modify (mutable reference)
-    ///
-    /// # Returns
-    ///
-    /// * `Option<DominatorTree>` - The dominator tree, or None if CFG has no entry
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// # use mirage_analyzer::cfg::dominators::DominatorTree;
-    /// # use mirage_analyzer::cfg::Cfg;
-    /// # let mut graph: Cfg = unimplemented!();
-    /// let dom_tree = DominatorTree::new_with_depths(&mut graph).unwrap();
-    /// // CFG blocks now have correct coord_x values
-    /// ```
-    pub fn new_with_depths(cfg: &mut Cfg) -> Option<Self> {
-        let dom_tree = Self::new(cfg)?;
-        dom_tree.apply_dominator_depths(cfg);
-        Some(dom_tree)
     }
 
     /// Create DominatorTree from pre-computed parts
@@ -318,9 +262,9 @@ impl<'a> Iterator for Dominators<'a> {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use mirage_analyzer::cfg::dominators::compute_dominator_tree;
-/// # use mirage_analyzer::cfg::Cfg;
-/// # let graph: Cfg = unimplemented!();
+/// # use mirage::cfg::dominators::compute_dominator_tree;
+/// # use mirage::cfg::Cfg;
+/// # let graph = Cfg::new();
 /// let dom_tree = compute_dominator_tree(&graph).unwrap();
 /// ```
 pub fn compute_dominator_tree(cfg: &Cfg) -> Option<DominatorTree> {
@@ -370,9 +314,6 @@ mod tests {
                 otherwise: 2,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -382,9 +323,6 @@ mod tests {
             statements: vec!["branch 1".to_string()],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -394,9 +332,6 @@ mod tests {
             statements: vec!["branch 2".to_string()],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -406,9 +341,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::TrueBranch);
@@ -563,9 +495,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -575,9 +504,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -587,9 +513,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -599,9 +522,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -618,39 +538,38 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_dominator_depths_diamond_cfg() {
+    fn test_dominator_depths_diamond_cfg() {
         // Given: A diamond CFG with all coord_x set to 0
-        let mut cfg = create_diamond_cfg();
+        let cfg = create_diamond_cfg();
 
         // When: Applying dominator depths
         let dom_tree = DominatorTree::new(&cfg).expect("CFG has entry");
-        dom_tree.apply_dominator_depths(&mut cfg);
 
         // Then: coord_x should reflect dominator depth
         assert_eq!(
-            cfg[NodeIndex::new(0)].coord_x,
+            dom_tree.depth(NodeIndex::new(0)) as i64,
             0,
             "Entry should have depth 0"
         );
         assert_eq!(
-            cfg[NodeIndex::new(1)].coord_x,
+            dom_tree.depth(NodeIndex::new(1)) as i64,
             1,
             "Node 1 should have depth 1"
         );
         assert_eq!(
-            cfg[NodeIndex::new(2)].coord_x,
+            dom_tree.depth(NodeIndex::new(2)) as i64,
             1,
             "Node 2 should have depth 1"
         );
         assert_eq!(
-            cfg[NodeIndex::new(3)].coord_x,
+            dom_tree.depth(NodeIndex::new(3)) as i64,
             1,
             "Node 3 should have depth 1"
         );
     }
 
     #[test]
-    fn test_apply_dominator_depths_linear_cfg() {
+    fn test_dominator_depths_linear_cfg() {
         // Given: A linear CFG A -> B -> C -> D
         let mut g = DiGraph::new();
 
@@ -661,9 +580,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -673,9 +589,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -685,9 +598,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 3 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -697,9 +607,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -708,66 +615,44 @@ mod tests {
 
         // When: Applying dominator depths
         let dom_tree = DominatorTree::new(&g).expect("CFG has entry");
-        dom_tree.apply_dominator_depths(&mut g);
 
         // Then: coord_x should increase by 1 for each level
-        assert_eq!(g[b0].coord_x, 0, "Entry should have depth 0");
-        assert_eq!(g[b1].coord_x, 1, "Node 1 should have depth 1");
-        assert_eq!(g[b2].coord_x, 2, "Node 2 should have depth 2");
-        assert_eq!(g[b3].coord_x, 3, "Node 3 should have depth 3");
+        assert_eq!(dom_tree.depth(b0) as i64, 0, "Entry should have depth 0");
+        assert_eq!(dom_tree.depth(b1) as i64, 1, "Node 1 should have depth 1");
+        assert_eq!(dom_tree.depth(b2) as i64, 2, "Node 2 should have depth 2");
+        assert_eq!(dom_tree.depth(b3) as i64, 3, "Node 3 should have depth 3");
     }
 
     #[test]
-    fn test_new_with_depths_diamond_cfg() {
+    fn test_new_depths_diamond_cfg() {
         // Given: A diamond CFG with all coord_x set to 0
-        let mut cfg = create_diamond_cfg();
+        let cfg = create_diamond_cfg();
 
         // When: Creating DominatorTree with depths
-        let dom_tree = DominatorTree::new_with_depths(&mut cfg).expect("CFG has entry");
+        let dom_tree = DominatorTree::new(&cfg).expect("CFG has entry");
 
         // Then: Dominator tree should be created and coord_x should be set
         assert_eq!(dom_tree.root(), NodeIndex::new(0));
         assert_eq!(
-            cfg[NodeIndex::new(0)].coord_x,
+            dom_tree.depth(NodeIndex::new(0)) as i64,
             0,
             "Entry should have depth 0"
         );
         assert_eq!(
-            cfg[NodeIndex::new(1)].coord_x,
+            dom_tree.depth(NodeIndex::new(1)) as i64,
             1,
             "Node 1 should have depth 1"
         );
         assert_eq!(
-            cfg[NodeIndex::new(2)].coord_x,
+            dom_tree.depth(NodeIndex::new(2)) as i64,
             1,
             "Node 2 should have depth 1"
         );
         assert_eq!(
-            cfg[NodeIndex::new(3)].coord_x,
+            dom_tree.depth(NodeIndex::new(3)) as i64,
             1,
             "Node 3 should have depth 1"
         );
-    }
-
-    #[test]
-    fn test_depth_method_matches_coord_x() {
-        // Given: A diamond CFG
-        let mut cfg = create_diamond_cfg();
-
-        // When: Applying dominator depths
-        let dom_tree = DominatorTree::new(&cfg).expect("CFG has entry");
-        dom_tree.apply_dominator_depths(&mut cfg);
-
-        // Then: depth() method should return same value as coord_x
-        for node in cfg.node_indices() {
-            let expected_depth = dom_tree.depth(node) as i64;
-            let actual_coord_x = cfg[node].coord_x;
-            assert_eq!(
-                actual_coord_x, expected_depth,
-                "Node {:?} coord_x should match depth()",
-                node
-            );
-        }
     }
 
     #[test]
@@ -783,9 +668,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 1 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b1 = g.add_node(BasicBlock {
@@ -795,9 +677,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 2 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b2 = g.add_node(BasicBlock {
@@ -810,9 +689,6 @@ mod tests {
                 otherwise: 4,
             },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b3 = g.add_node(BasicBlock {
@@ -822,9 +698,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 5 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b4 = g.add_node(BasicBlock {
@@ -834,9 +707,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Goto { target: 5 },
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         let b5 = g.add_node(BasicBlock {
@@ -846,9 +716,6 @@ mod tests {
             statements: vec![],
             terminator: Terminator::Return,
             source_location: None,
-            coord_x: 0,
-            coord_y: 0,
-            coord_z: 0,
         });
 
         g.add_edge(b0, b1, EdgeType::Fallthrough);
@@ -860,14 +727,13 @@ mod tests {
 
         // When: Applying dominator depths
         let dom_tree = DominatorTree::new(&g).expect("CFG has entry");
-        dom_tree.apply_dominator_depths(&mut g);
 
         // Then: coord_x should reflect the nested structure
-        assert_eq!(g[b0].coord_x, 0, "Entry should have depth 0");
-        assert_eq!(g[b1].coord_x, 1, "Node 1 should have depth 1");
-        assert_eq!(g[b2].coord_x, 2, "Node 2 should have depth 2");
-        assert_eq!(g[b3].coord_x, 3, "Node 3 should have depth 3");
-        assert_eq!(g[b4].coord_x, 3, "Node 4 should have depth 3");
-        assert_eq!(g[b5].coord_x, 3, "Node 5 should have depth 3");
+        assert_eq!(dom_tree.depth(b0) as i64, 0, "Entry should have depth 0");
+        assert_eq!(dom_tree.depth(b1) as i64, 1, "Node 1 should have depth 1");
+        assert_eq!(dom_tree.depth(b2) as i64, 2, "Node 2 should have depth 2");
+        assert_eq!(dom_tree.depth(b3) as i64, 3, "Node 3 should have depth 3");
+        assert_eq!(dom_tree.depth(b4) as i64, 3, "Node 4 should have depth 3");
+        assert_eq!(dom_tree.depth(b5) as i64, 3, "Node 5 should have depth 3");
     }
 }

@@ -22,7 +22,7 @@ use std::path::Path;
 /// # Examples
 ///
 /// ```no_run
-/// use mirage_analyzer::cfg::git_utils::get_changed_rust_files;
+/// use mirage::cfg::git_utils::get_changed_rust_files;
 /// use std::path::Path;
 ///
 /// let changed = get_changed_rust_files(Path::new("."), "HEAD~1").unwrap();

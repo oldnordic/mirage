@@ -1,6 +1,6 @@
 # Mirage User Manual
 
-Version 1.8.0
+Version 1.8.2
 
 ---
 
@@ -42,43 +42,25 @@ cargo install --path .
 
 ### Requirements
 
-- **Magellan 3.3.3+ / Schema v14** (or v11+ for basic CFG, v13+ for source documents)
-  - For CFG extraction and 4D spatial coordinates
+- **Magellan SQLite `.db` database**
+  - Current release verified with Magellan schema v18
+  - Minimum CFG-compatible Magellan schema remains v7
   - Run `magellan watch --root ./src --db .magellan/mirage.db` first
 - **Rust 1.70+**
 
-### Magellan v10 → v11 Migration
+### Magellan Schema Compatibility
 
-If you're upgrading from Magellan v10 to v11, follow these steps:
+Mirage reads Magellan-managed CFG data and does not require Magellan's temporal tables directly, but it is verified to open current schema-v18 databases cleanly.
 
 ```bash
-# 1. Check your current Magellan schema version
+# Check the embedded Magellan schema version
 mirage status --db .magellan/mirage.db
-# Look for: "Schema version: 1 (Magellan: X)"
+# Example: "Schema version: 1 (Magellan: 18)"
 
-# 2. If it shows v10 or earlier, rebuild your Magellan database
+# If the database is too old, rebuild it with current Magellan
 rm .magellan/mirage.db
 magellan watch --root ./src --db .magellan/mirage.db --scan-initial
-
-# 3. Verify the new schema
-mirage status --db .magellan/mirage.db
-# Should show: "Schema version: 1 (Magellan: 11)"
-
-# 4. Clear old path caches (they use function_hash, v11 uses cfg_hash)
-# This is automatic - Mirage will rebuild caches on first run
-mirage paths --function "some_function" --db .magellan/mirage.db
-
-# 5. Verify 4D coordinates are available
-mirage cfg --function "main" --output json --db .magellan/mirage.db | jq '.data.blocks[0]'
-# Should include: coord_x, coord_y, coord_z, coord_t
 ```
-
-**What changed in Magellan v11:**
-- Added `coord_t` column for temporal/type metadata
-- Changed from `function_hash` to `cfg_hash` for cache invalidation
-- Better cache invalidation when CFG structure changes
-
-**Backward compatibility:** Mirage 1.2.4+ works with both v10 and v11 databases, but v11 is recommended for the full 4D coordinate experience.
 
 ### Full Workflow Setup
 

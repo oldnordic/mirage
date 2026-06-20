@@ -5,6 +5,55 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-06-20
+
+### Fixed
+
+- **Magellan schema v18 compatibility verification**:
+  - Added regression coverage proving `MirageDb` opens a Magellan schema-18 database cleanly.
+  - Verified live analysis commands against the current unified Magellan database after the temporal schema rollout.
+
+### Changed
+
+- **Release docs refresh**:
+  - Updated README and manual requirements to reflect current Magellan schema support and removed stale 4D-coordinate migration guidance from the public path.
+
+## [1.8.1] - 2026-06-20
+
+### Added
+
+- **`mirage paths --inter-procedural`** now enumerates cross-function paths from live Magellan call stitching:
+  - Reuses the shared path engine over a projected ICFG instead of falling back to function-local CFG-only traversal.
+  - Path output now carries per-block function provenance when traversing across caller, callee, and return-to-resume edges.
+
+### Changed
+
+- **ICFG stitching now consumes live Magellan callsite data** (`src/cfg/icfg.rs`, `src/cli/cmds/icfg.rs`, `Cargo.toml`):
+  - `mirage icfg` now builds against the local Magellan crate and uses `CodeGraph::direct_call_icfg_edges()` when stitching interprocedural edges.
+  - Call edges now connect the caller's real `CallSite` block to the callee's real function-entry sentinel instead of incorrectly jumping from the caller function entry.
+  - Return edges now connect callee `return` blocks back to the caller's real continuation block when available, with the older function-exit fallback retained only for cases where precise stitching data is unavailable.
+  - Added a regression test that indexes real Rust code through Magellan, opens the same database through Mirage, and asserts exact callsite/resume stitching.
+
+- Mirage's SQLite reader now matches Magellan's current `cfg_blocks` schema:
+  - `cfg_blocks` reads no longer require persisted `coord_x`/`coord_y`/`coord_z` columns.
+  - Test fixtures and local schema helpers now model Magellan's current `cfg_hash` / `statements` / `cfg_condition` shape instead of the old coordinate-heavy variant.
+  - Coverage and backend parity tests now explicitly assert that `coord_*` columns are absent from the current schema contract.
+- CFG/status compatibility cleanup:
+  - `DatabaseStatus.cfg_edges` remains a normal compatibility field for Magellan-backed status output instead of being marked deprecated while still in active use.
+  - Legacy in-memory `coord_*` fields are now documented as analysis-time values, not persisted database columns.
+- Dynamic schema version alignment:
+  - Updated `REQUIRED_SQLITEGRAPH_SCHEMA_VERSION` to dynamically reference `sqlitegraph::schema::SCHEMA_VERSION as i32` instead of hardcoding `3`, aligning with sqlitegraph v3.3.1 (schema v6).
+- Source hygiene cleanup:
+  - Removed a dead AST CFG builder field and cleaned up stale doctest placeholders that used `unimplemented!()`.
+  - Replaced stale wording that implied temporary or 4D-backed behavior where Mirage now only reads Magellan-managed CFG data.
+  - Refreshed doctest examples to the current `mirage::...` crate path and removed the last warning suppressions in `src`, so the current tree passes strict clippy without `#[allow(...)]` escape hatches.
+
+### Removed
+
+- Deprecated internal CFG-writing compatibility path (`store_cfg`) and its self-contained tests. Mirage now treats Magellan as the sole owner of persisted CFG blocks.
+- Unused standalone database bootstrap helper (`create_minimal_database`); Mirage only supports reading Magellan-managed databases.
+- Unused `hash_changed` compatibility helper and related deprecated re-export surface that no longer participated in Mirage's live read path.
+
 ## [1.8.0] - 2026-06-08
 
 ### Added

@@ -22,8 +22,8 @@
 //! # Examples
 //!
 //! ```no_run
-//! use mirage_analyzer::cfg::icfg::{build_icfg, IcfgOptions, to_dot};
-//! use mirage_analyzer::storage::MirageDb;
+//! use mirage::cfg::icfg::{build_icfg, IcfgOptions, to_dot};
+//! use mirage::storage::MirageDb;
 //!
 //! # fn main() -> anyhow::Result<()> {
 //! let db = MirageDb::open("codegraph.db")?;
@@ -37,6 +37,7 @@
 //! let icfg = build_icfg(
 //!     db.storage(),
 //!     db.backend(),
+//!     db.path(),
 //!     function_id,
 //!     options,
 //! )?;
@@ -48,8 +49,11 @@
 
 use anyhow::Result;
 use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::visit::EdgeRef;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use sqlitegraph::{GraphBackend, NeighborQuery, SnapshotId};
 
@@ -146,10 +150,12 @@ impl Default for IcfgOptions {
 pub fn build_icfg(
     storage: &dyn crate::storage::StorageTrait,
     backend: &dyn GraphBackend,
+    db_path: &Path,
     entry_function: i64,
     options: IcfgOptions,
 ) -> Result<Icfg> {
     let snapshot = SnapshotId::current();
+    let mut magellan_graph = magellan::CodeGraph::open(db_path)?;
 
     let mut icfg = Icfg {
         graph: DiGraph::new(),
@@ -163,7 +169,7 @@ pub fn build_icfg(
     // Collect caller->callee relationships for second-pass edge insertion.
     // We defer inter-procedural edges until after all functions have been
     // processed so that callee nodes are guaranteed to exist.
-    let mut call_relations: Vec<(i64, Vec<i64>)> = Vec::new();
+    let mut call_relations: Vec<PreciseCallRelation> = Vec::new();
 
     while let Some((function_id, depth)) = queue.pop() {
         if depth > options.max_depth || visited.contains(&function_id) {
@@ -178,7 +184,6 @@ pub fn build_icfg(
             // No CFG data - skip this function
             continue;
         }
-
         // Add entry/exit nodes
         let entry_idx = icfg.graph.add_node(IcfgNode {
             function_id,
@@ -212,44 +217,23 @@ pub fn build_icfg(
         }
 
         // Add intra-procedural edges
-        #[allow(clippy::collapsible_match)]
         for (idx, block) in blocks.iter().enumerate() {
             let from_idx = icfg.node_map[&(function_id, block.id)];
 
             match block.terminator.as_str() {
                 "fallthrough" | "goto" | "call" => {
-                    if idx + 1 < blocks.len() {
-                        let to_idx = icfg.node_map[&(function_id, blocks[idx + 1].id)];
-                        icfg.graph.add_edge(
-                            from_idx,
-                            to_idx,
-                            IcfgEdge::IntraProcedural {
-                                edge_type: "fallthrough".to_string(),
-                            },
-                        );
-                    }
+                    add_intra_edge(
+                        &mut icfg,
+                        function_id,
+                        &blocks,
+                        idx + 1,
+                        from_idx,
+                        "fallthrough",
+                    );
                 }
                 "conditional" => {
-                    if idx + 1 < blocks.len() {
-                        let to_idx = icfg.node_map[&(function_id, blocks[idx + 1].id)];
-                        icfg.graph.add_edge(
-                            from_idx,
-                            to_idx,
-                            IcfgEdge::IntraProcedural {
-                                edge_type: "true".to_string(),
-                            },
-                        );
-                    }
-                    if idx + 2 < blocks.len() {
-                        let to_idx = icfg.node_map[&(function_id, blocks[idx + 2].id)];
-                        icfg.graph.add_edge(
-                            from_idx,
-                            to_idx,
-                            IcfgEdge::IntraProcedural {
-                                edge_type: "false".to_string(),
-                            },
-                        );
-                    }
+                    add_intra_edge(&mut icfg, function_id, &blocks, idx + 1, from_idx, "true");
+                    add_intra_edge(&mut icfg, function_id, &blocks, idx + 2, from_idx, "false");
                 }
                 "return" | "panic" | "break" | "continue" => {}
                 _ => {}
@@ -277,6 +261,16 @@ pub fn build_icfg(
         let calls_result = backend.neighbors(snapshot, function_id, query);
 
         let mut callee_ids = calls_result.unwrap_or_default();
+        let precise_relations = get_precise_call_relations(
+            &mut magellan_graph,
+            backend,
+            db_path,
+            function_id,
+            options.include_return_edges,
+        )?;
+        if !precise_relations.is_empty() {
+            callee_ids = precise_relations.iter().map(|rel| rel.callee_id).collect();
+        }
 
         // Fallback: if GraphBackend returns empty, try storage.get_callees.
         if callee_ids.is_empty() {
@@ -293,45 +287,149 @@ pub fn build_icfg(
         }
 
         // Record caller->callee relationship for second-pass edge insertion
-        if !callee_ids.is_empty() {
-            call_relations.push((function_id, callee_ids));
+        if !precise_relations.is_empty() {
+            call_relations.extend(precise_relations);
+        } else if !callee_ids.is_empty() {
+            call_relations.extend(callee_ids.into_iter().map(|callee_id| PreciseCallRelation {
+                caller_id: function_id,
+                callee_id,
+                caller_call_block_id: None,
+                caller_resume_block_id: None,
+                callee_return_block_ids: Vec::new(),
+            }));
         }
     }
 
     // Second pass: add inter-procedural edges after all nodes exist.
-    for (function_id, callee_ids) in &call_relations {
-        let entry_idx = icfg.node_map[&(*function_id, -1)];
-        for callee_id in callee_ids {
-            if let Some(&callee_entry_idx) = icfg.node_map.get(&(*callee_id, -1)) {
-                icfg.graph.add_edge(
-                    entry_idx,
-                    callee_entry_idx,
-                    IcfgEdge::Call {
-                        from_function: *function_id,
-                        to_function: *callee_id,
-                    },
-                );
+    for relation in &call_relations {
+        let caller_edge_from = relation
+            .caller_call_block_id
+            .and_then(|block_id| icfg.node_map.get(&(relation.caller_id, block_id)).copied())
+            .unwrap_or_else(|| icfg.node_map[&(relation.caller_id, -1)]);
+
+        if let Some(&callee_entry_idx) = icfg.node_map.get(&(relation.callee_id, -1)) {
+            icfg.graph.add_edge(
+                caller_edge_from,
+                callee_entry_idx,
+                IcfgEdge::Call {
+                    from_function: relation.caller_id,
+                    to_function: relation.callee_id,
+                },
+            );
+        }
+
+        if options.include_return_edges {
+            if !relation.callee_return_block_ids.is_empty() {
+                if let Some(caller_resume_idx) =
+                    relation.caller_resume_block_id.and_then(|block_id| {
+                        icfg.node_map.get(&(relation.caller_id, block_id)).copied()
+                    })
+                {
+                    for return_block_id in &relation.callee_return_block_ids {
+                        if let Some(&callee_return_idx) =
+                            icfg.node_map.get(&(relation.callee_id, *return_block_id))
+                        {
+                            icfg.graph.add_edge(
+                                callee_return_idx,
+                                caller_resume_idx,
+                                IcfgEdge::Return {
+                                    from_function: relation.callee_id,
+                                    to_function: relation.caller_id,
+                                },
+                            );
+                        }
+                    }
+                    continue;
+                }
             }
 
-            if options.include_return_edges {
-                if let (Some(&callee_exit_idx), Some(&caller_exit_idx)) = (
-                    icfg.node_map.get(&(*callee_id, -2)),
-                    icfg.node_map.get(&(*function_id, -2)),
-                ) {
-                    icfg.graph.add_edge(
-                        callee_exit_idx,
-                        caller_exit_idx,
-                        IcfgEdge::Return {
-                            from_function: *callee_id,
-                            to_function: *function_id,
-                        },
-                    );
-                }
+            if let (Some(&callee_exit_idx), Some(&caller_exit_idx)) = (
+                icfg.node_map.get(&(relation.callee_id, -2)),
+                icfg.node_map.get(&(relation.caller_id, -2)),
+            ) {
+                icfg.graph.add_edge(
+                    callee_exit_idx,
+                    caller_exit_idx,
+                    IcfgEdge::Return {
+                        from_function: relation.callee_id,
+                        to_function: relation.caller_id,
+                    },
+                );
             }
         }
     }
 
     Ok(icfg)
+}
+
+/// Enumerate execution paths through an ICFG by projecting it into the shared
+/// CFG path engine with synthetic node IDs equal to ICFG node indices.
+pub fn enumerate_icfg_paths(icfg: &Icfg, limits: &crate::cfg::PathLimits) -> Vec<crate::cfg::Path> {
+    let cfg = project_icfg_to_cfg(icfg);
+    crate::cfg::enumerate_paths(&cfg, limits)
+}
+
+/// Project an ICFG onto Mirage's CFG core so existing loop-aware path
+/// enumeration can reason across call and return edges without duplicating the
+/// DFS machinery.
+pub fn project_icfg_to_cfg(icfg: &Icfg) -> crate::cfg::Cfg {
+    use crate::cfg::{BasicBlock, BlockKind, EdgeType};
+
+    let mut cfg = DiGraph::new();
+    let mut node_map = HashMap::new();
+
+    for node_idx in icfg.graph.node_indices() {
+        let node = &icfg.graph[node_idx];
+        let synthetic_id = node_idx.index();
+        let outgoing = sorted_icfg_successors(icfg, node_idx);
+        let terminator = synthetic_terminator(node, &outgoing);
+        let kind = match node.node_type {
+            IcfgNodeType::FunctionEntry => BlockKind::Entry,
+            IcfgNodeType::FunctionExit => BlockKind::Exit,
+            _ if outgoing.is_empty() => BlockKind::Exit,
+            _ => BlockKind::Normal,
+        };
+
+        let statements = vec![match (&node.function_name, node.block_id) {
+            (Some(function_name), block_id) if block_id >= 0 => {
+                format!("{}::block_{}", function_name, block_id)
+            }
+            (Some(function_name), -1) => format!("{}::entry", function_name),
+            (Some(function_name), -2) => format!("{}::exit", function_name),
+            (Some(function_name), block_id) => format!("{}::block_{}", function_name, block_id),
+            (None, block_id) => format!("block_{}", block_id),
+        }];
+
+        let cfg_idx = cfg.add_node(BasicBlock {
+            id: synthetic_id,
+            db_id: None,
+            kind,
+            statements,
+            terminator,
+            source_location: None,
+        });
+        node_map.insert(node_idx, cfg_idx);
+    }
+
+    for edge_idx in icfg.graph.edge_indices() {
+        let (from, to) = icfg
+            .graph
+            .edge_endpoints(edge_idx)
+            .expect("invariant: edge from graph.edge_indices()");
+        let edge_type = match &icfg.graph[edge_idx] {
+            IcfgEdge::IntraProcedural { edge_type } => match edge_type.as_str() {
+                "true" => EdgeType::TrueBranch,
+                "false" => EdgeType::FalseBranch,
+                "loop" => EdgeType::LoopBack,
+                _ => EdgeType::Fallthrough,
+            },
+            IcfgEdge::Call { .. } => EdgeType::Call,
+            IcfgEdge::Return { .. } => EdgeType::Return,
+        };
+        cfg.add_edge(node_map[&from], node_map[&to], edge_type);
+    }
+
+    cfg
 }
 
 /// Get function name from entity ID
@@ -343,6 +441,157 @@ fn get_function_name(backend: &dyn GraphBackend, entity_id: i64) -> Result<Optio
         Ok(entity) => Ok(Some(entity.name)),
         Err(_) => Ok(None),
     }
+}
+
+#[derive(Debug, Clone)]
+struct PreciseCallRelation {
+    caller_id: i64,
+    callee_id: i64,
+    caller_call_block_id: Option<i64>,
+    caller_resume_block_id: Option<i64>,
+    callee_return_block_ids: Vec<i64>,
+}
+
+fn get_precise_call_relations(
+    magellan_graph: &mut magellan::CodeGraph,
+    backend: &dyn GraphBackend,
+    db_path: &Path,
+    function_id: i64,
+    include_return_edges: bool,
+) -> Result<Vec<PreciseCallRelation>> {
+    let snapshot = SnapshotId::current();
+    let entity = match backend.get_node(snapshot, function_id) {
+        Ok(entity) => entity,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let Some(file_path) = entity.file_path.as_deref() else {
+        return Ok(Vec::new());
+    };
+
+    let stitched = magellan_graph.direct_call_icfg_edges(file_path, &entity.name)?;
+    let caller_block_ids = load_cfg_block_ids_in_magellan_order(db_path, function_id)?;
+    let mut relations = Vec::new();
+    for edge in stitched {
+        if edge.caller_symbol_id != function_id {
+            continue;
+        }
+
+        let caller_call_block_id = caller_block_ids.get(edge.caller_block_idx).copied();
+        let caller_resume_block_id = edge
+            .caller_resume_block_idx
+            .and_then(|idx| caller_block_ids.get(idx).copied());
+
+        let callee_return_block_ids = if include_return_edges {
+            let callee_block_ids =
+                load_cfg_block_ids_in_magellan_order(db_path, edge.callee_symbol_id)?;
+            edge.callee_return_block_indices
+                .iter()
+                .filter_map(|idx| callee_block_ids.get(*idx).copied())
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        relations.push(PreciseCallRelation {
+            caller_id: function_id,
+            callee_id: edge.callee_symbol_id,
+            caller_call_block_id,
+            caller_resume_block_id,
+            callee_return_block_ids,
+        });
+    }
+
+    Ok(relations)
+}
+
+fn load_cfg_block_ids_in_magellan_order(db_path: &Path, function_id: i64) -> Result<Vec<i64>> {
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT id
+         FROM cfg_blocks
+         WHERE function_id = ?1
+         ORDER BY byte_start, id",
+    )?;
+    let ids = stmt
+        .query_map(rusqlite::params![function_id], |row| row.get(0))?
+        .collect::<Result<Vec<i64>, _>>()?;
+    Ok(ids)
+}
+
+fn add_intra_edge(
+    icfg: &mut Icfg,
+    function_id: i64,
+    blocks: &[crate::storage::CfgBlockData],
+    target_idx: usize,
+    from_idx: NodeIndex,
+    edge_type: &str,
+) {
+    if let Some(target_block) = blocks.get(target_idx) {
+        let to_idx = icfg.node_map[&(function_id, target_block.id)];
+        icfg.graph.add_edge(
+            from_idx,
+            to_idx,
+            IcfgEdge::IntraProcedural {
+                edge_type: edge_type.to_string(),
+            },
+        );
+    }
+}
+
+fn sorted_icfg_successors(icfg: &Icfg, node_idx: NodeIndex) -> Vec<(NodeIndex, &IcfgEdge)> {
+    let mut successors: Vec<_> = icfg
+        .graph
+        .edges(node_idx)
+        .map(|edge| (edge.target(), edge.weight()))
+        .collect();
+    successors.sort_by_key(|(target, edge)| (icfg_edge_sort_key(edge), target.index()));
+    successors
+}
+
+fn icfg_edge_sort_key(edge: &IcfgEdge) -> usize {
+    match edge {
+        IcfgEdge::IntraProcedural { edge_type } if edge_type == "true" => 0,
+        IcfgEdge::IntraProcedural { edge_type } if edge_type == "false" => 1,
+        IcfgEdge::IntraProcedural { .. } => 2,
+        IcfgEdge::Call { .. } => 3,
+        IcfgEdge::Return { .. } => 4,
+    }
+}
+
+fn synthetic_terminator(
+    node: &IcfgNode,
+    outgoing: &[(NodeIndex, &IcfgEdge)],
+) -> crate::cfg::Terminator {
+    use crate::cfg::Terminator;
+
+    if matches!(node.node_type, IcfgNodeType::FunctionExit) || outgoing.is_empty() {
+        return Terminator::Return;
+    }
+
+    if outgoing.len() == 1 {
+        let (target, edge) = outgoing[0];
+        return match edge {
+            IcfgEdge::Call { .. } => Terminator::Call {
+                target: Some(target.index()),
+                unwind: None,
+            },
+            _ => Terminator::Goto {
+                target: target.index(),
+            },
+        };
+    }
+
+    let targets: Vec<_> = outgoing
+        .iter()
+        .take(outgoing.len() - 1)
+        .map(|(target, _)| target.index())
+        .collect();
+    let otherwise = outgoing
+        .last()
+        .map(|(target, _)| target.index())
+        .expect("non-empty outgoing when building SwitchInt");
+
+    Terminator::SwitchInt { targets, otherwise }
 }
 
 /// Export ICFG to DOT format for visualization
@@ -494,6 +743,11 @@ impl IcfgJson {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cfg::PathLimits;
+    use crate::storage::MirageDb;
+    use magellan::CodeGraph;
+    use petgraph::visit::EdgeRef;
+    use tempfile::TempDir;
 
     #[test]
     fn test_icfg_options_default() {
@@ -513,5 +767,165 @@ mod tests {
         assert_eq!(exit, IcfgNodeType::FunctionExit);
         assert_eq!(call, IcfgNodeType::CallSite);
         assert_eq!(basic, IcfgNodeType::BasicBlock);
+    }
+
+    #[test]
+    fn test_build_icfg_stitches_real_callsite_and_resume_blocks() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("icfg.db");
+
+        let callee_source = r#"
+fn callee(x: i32) -> i32 {
+    return x + 1;
+}
+"#;
+
+        let caller_source = r#"
+fn caller() -> i32 {
+    let y = callee(41);
+    return y + 1;
+}
+"#;
+
+        let mut graph = CodeGraph::open(&db_path).unwrap();
+        graph
+            .index_file("callee.rs", callee_source.as_bytes())
+            .unwrap();
+        graph
+            .index_file("caller.rs", caller_source.as_bytes())
+            .unwrap();
+
+        let db = MirageDb::open(&db_path).unwrap();
+        let caller_id = db.resolve_function_name("caller").unwrap();
+        let caller_blocks = db.storage().get_cfg_blocks(caller_id).unwrap();
+        let callee_id = db.resolve_function_name("callee").unwrap();
+        let callee_blocks = db.storage().get_cfg_blocks(callee_id).unwrap();
+
+        let call_block_id = caller_blocks
+            .iter()
+            .find(|block| block.kind == "call" && block.terminator == "call")
+            .map(|block| block.id)
+            .expect("caller should have a call block");
+        let caller_resume_block_id = caller_blocks
+            .iter()
+            .find(|block| block.kind == "return")
+            .map(|block| block.id)
+            .expect("caller should have a return continuation block");
+        let callee_return_block_id = callee_blocks
+            .iter()
+            .find(|block| block.kind == "return")
+            .map(|block| block.id)
+            .expect("callee should have a return block");
+
+        let icfg = build_icfg(
+            db.storage(),
+            db.backend(),
+            db.path(),
+            caller_id,
+            IcfgOptions::default(),
+        )
+        .unwrap();
+
+        let caller_callsite_idx = icfg.node_map[&(caller_id, call_block_id)];
+        let callee_entry_idx = icfg.node_map[&(callee_id, -1)];
+        let callee_return_idx = icfg.node_map[&(callee_id, callee_return_block_id)];
+        let caller_resume_idx = icfg.node_map[&(caller_id, caller_resume_block_id)];
+
+        let has_precise_call_edge = icfg.graph.edges(caller_callsite_idx).any(|edge| {
+            edge.target() == callee_entry_idx && matches!(edge.weight(), IcfgEdge::Call { .. })
+        });
+        assert!(
+            has_precise_call_edge,
+            "ICFG should connect caller callsite to callee entry"
+        );
+
+        let has_precise_return_edge = icfg.graph.edges(callee_return_idx).any(|edge| {
+            edge.target() == caller_resume_idx && matches!(edge.weight(), IcfgEdge::Return { .. })
+        });
+        assert!(
+            has_precise_return_edge,
+            "ICFG should connect callee return block to caller continuation"
+        );
+    }
+
+    #[test]
+    fn test_enumerate_icfg_paths_crosses_call_and_return_edges() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("icfg-paths.db");
+
+        let callee_source = r#"
+fn callee(x: i32) -> i32 {
+    return x + 1;
+}
+"#;
+
+        let caller_source = r#"
+fn caller() -> i32 {
+    let y = callee(41);
+    return y + 1;
+}
+"#;
+
+        let mut graph = CodeGraph::open(&db_path).unwrap();
+        graph
+            .index_file("callee.rs", callee_source.as_bytes())
+            .unwrap();
+        graph
+            .index_file("caller.rs", caller_source.as_bytes())
+            .unwrap();
+
+        let db = MirageDb::open(&db_path).unwrap();
+        let caller_id = db.resolve_function_name("caller").unwrap();
+        let callee_id = db.resolve_function_name("callee").unwrap();
+        let caller_blocks = db.storage().get_cfg_blocks(caller_id).unwrap();
+        let callee_blocks = db.storage().get_cfg_blocks(callee_id).unwrap();
+
+        let caller_call_block_id = caller_blocks
+            .iter()
+            .find(|block| block.kind == "call" && block.terminator == "call")
+            .map(|block| block.id)
+            .expect("caller should have a call block");
+        let caller_resume_block_id = caller_blocks
+            .iter()
+            .find(|block| block.kind == "return")
+            .map(|block| block.id)
+            .expect("caller should have a return continuation block");
+        let callee_return_block_id = callee_blocks
+            .iter()
+            .find(|block| block.kind == "return")
+            .map(|block| block.id)
+            .expect("callee should have a return block");
+
+        let icfg = build_icfg(
+            db.storage(),
+            db.backend(),
+            db.path(),
+            caller_id,
+            IcfgOptions::default(),
+        )
+        .unwrap();
+
+        let paths = enumerate_icfg_paths(&icfg, &PathLimits::default());
+
+        assert!(
+            paths.iter().any(|path| {
+                let caller_call_pos = path.blocks.iter().position(|block_id| {
+                    *block_id == icfg.node_map[&(caller_id, caller_call_block_id)].index()
+                });
+                let callee_return_pos = path.blocks.iter().position(|block_id| {
+                    *block_id == icfg.node_map[&(callee_id, callee_return_block_id)].index()
+                });
+                let caller_resume_pos = path.blocks.iter().position(|block_id| {
+                    *block_id == icfg.node_map[&(caller_id, caller_resume_block_id)].index()
+                });
+
+                matches!(
+                    (caller_call_pos, callee_return_pos, caller_resume_pos),
+                    (Some(call_pos), Some(return_pos), Some(resume_pos))
+                        if call_pos < return_pos && return_pos < resume_pos
+                )
+            }),
+            "ICFG path enumeration should include caller -> callee -> caller continuation flow"
+        );
     }
 }

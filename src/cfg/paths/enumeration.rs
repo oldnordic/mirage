@@ -4,6 +4,214 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use super::{classify_path_precomputed, EnumerationContext, Path, PathLimits};
 
+struct ContextPathEnumerator<'a> {
+    cfg: &'a Cfg,
+    limits: &'a PathLimits,
+    ctx: &'a EnumerationContext,
+    paths: Vec<Path>,
+    current_path: Vec<BlockId>,
+    visited: HashSet<NodeIndex>,
+    loop_iterations: HashMap<NodeIndex, usize>,
+}
+
+impl<'a> ContextPathEnumerator<'a> {
+    fn new(cfg: &'a Cfg, limits: &'a PathLimits, ctx: &'a EnumerationContext) -> Self {
+        Self {
+            cfg,
+            limits,
+            ctx,
+            paths: Vec::new(),
+            current_path: Vec::new(),
+            visited: HashSet::new(),
+            loop_iterations: HashMap::new(),
+        }
+    }
+
+    fn enumerate(mut self, entry: NodeIndex) -> Vec<Path> {
+        self.dfs(entry);
+        self.paths
+    }
+
+    fn dfs(&mut self, current: NodeIndex) {
+        let block_id = match self.cfg.node_weight(current) {
+            Some(block) => block.id,
+            None => return,
+        };
+
+        self.current_path.push(block_id);
+
+        if self.current_path.len() > self.limits.max_length {
+            self.current_path.pop();
+            return;
+        }
+
+        if self.ctx.is_exit(current) {
+            let kind =
+                classify_path_precomputed(self.cfg, &self.current_path, &self.ctx.reachable_blocks);
+            self.paths.push(Path::new(self.current_path.clone(), kind));
+            self.current_path.pop();
+            return;
+        }
+
+        if self.paths.len() >= self.limits.max_paths {
+            self.current_path.pop();
+            return;
+        }
+
+        if self.visited.contains(&current) && !self.ctx.is_loop_header(current) {
+            self.current_path.pop();
+            return;
+        }
+
+        self.visited.insert(current);
+
+        let is_loop_header = self.ctx.is_loop_header(current);
+        if is_loop_header {
+            let count = self.loop_iterations.entry(current).or_insert(0);
+            if *count >= self.limits.loop_unroll_limit {
+                self.visited.remove(&current);
+                self.current_path.pop();
+                return;
+            }
+            *count += 1;
+        }
+
+        let neighbors: Vec<_> = self.cfg.neighbors(current).collect();
+        for next in neighbors {
+            self.dfs(next);
+        }
+
+        if is_loop_header {
+            if let Some(count) = self.loop_iterations.get_mut(&current) {
+                *count = count.saturating_sub(1);
+            }
+        }
+
+        self.visited.remove(&current);
+        self.current_path.pop();
+    }
+}
+
+struct PathEnumerator<'a> {
+    cfg: &'a Cfg,
+    exits: HashSet<NodeIndex>,
+    limits: &'a PathLimits,
+    loop_headers: HashSet<NodeIndex>,
+    reachable_blocks: HashSet<BlockId>,
+    paths: Vec<Path>,
+    current_path: Vec<BlockId>,
+    visited: HashSet<NodeIndex>,
+    loop_iterations: HashMap<NodeIndex, usize>,
+}
+
+impl<'a> PathEnumerator<'a> {
+    fn new(
+        cfg: &'a Cfg,
+        exits: HashSet<NodeIndex>,
+        limits: &'a PathLimits,
+        loop_headers: HashSet<NodeIndex>,
+        reachable_blocks: HashSet<BlockId>,
+    ) -> Self {
+        Self {
+            cfg,
+            exits,
+            limits,
+            loop_headers,
+            reachable_blocks,
+            paths: Vec::new(),
+            current_path: Vec::new(),
+            visited: HashSet::new(),
+            loop_iterations: HashMap::new(),
+        }
+    }
+
+    fn enumerate(mut self, entry: NodeIndex) -> Vec<Path> {
+        self.dfs(entry);
+        self.paths
+    }
+
+    fn dfs(&mut self, current: NodeIndex) {
+        let block_id = match self.cfg.node_weight(current) {
+            Some(block) => block.id,
+            None => return,
+        };
+
+        self.current_path.push(block_id);
+
+        if self.current_path.len() > self.limits.max_length {
+            self.current_path.pop();
+            return;
+        }
+
+        if self.exits.contains(&current) {
+            let kind =
+                classify_path_precomputed(self.cfg, &self.current_path, &self.reachable_blocks);
+            self.paths.push(Path::new(self.current_path.clone(), kind));
+            self.current_path.pop();
+            return;
+        }
+
+        if self.paths.len() >= self.limits.max_paths {
+            self.current_path.pop();
+            return;
+        }
+
+        let is_loop_header = self.loop_headers.contains(&current);
+        if is_loop_header {
+            let count = self.loop_iterations.entry(current).or_insert(0);
+            if *count >= self.limits.loop_unroll_limit {
+                self.current_path.pop();
+                return;
+            }
+            *count += 1;
+        }
+
+        let was_visited = self.visited.insert(current);
+
+        let mut successors: Vec<NodeIndex> = self.cfg.neighbors(current).collect();
+        successors.sort_by_key(|n| n.index());
+
+        if successors.is_empty() {
+            let kind =
+                classify_path_precomputed(self.cfg, &self.current_path, &self.reachable_blocks);
+            self.paths.push(Path::new(self.current_path.clone(), kind));
+        } else {
+            for succ in successors {
+                let is_back_edge =
+                    self.loop_headers.contains(&succ) && self.loop_iterations.contains_key(&succ);
+                if self.visited.contains(&succ) && !is_back_edge {
+                    continue;
+                }
+
+                if is_back_edge {
+                    let count = self.loop_iterations.get(&succ).copied().unwrap_or(0);
+                    if count >= self.limits.loop_unroll_limit {
+                        continue;
+                    }
+                }
+
+                self.dfs(succ);
+
+                if self.paths.len() >= self.limits.max_paths {
+                    break;
+                }
+            }
+        }
+
+        if was_visited {
+            self.visited.remove(&current);
+        }
+
+        if is_loop_header {
+            self.loop_iterations
+                .entry(current)
+                .and_modify(|count| *count = count.saturating_sub(1));
+        }
+
+        self.current_path.pop();
+    }
+}
+
 pub fn enumerate_paths_with_context(
     cfg: &Cfg,
     limits: &PathLimits,
@@ -18,102 +226,7 @@ pub fn enumerate_paths_with_context(
         return vec![];
     }
 
-    let mut paths = Vec::new();
-    let mut current_path = Vec::new();
-    let mut visited = HashSet::new();
-    let mut loop_iterations: HashMap<NodeIndex, usize> = HashMap::new();
-
-    dfs_enumerate_with_context(
-        cfg,
-        entry,
-        limits,
-        &mut paths,
-        &mut current_path,
-        &mut visited,
-        ctx,
-        &mut loop_iterations,
-    );
-
-    paths
-}
-
-#[allow(clippy::too_many_arguments)]
-fn dfs_enumerate_with_context(
-    cfg: &Cfg,
-    current: NodeIndex,
-    limits: &PathLimits,
-    paths: &mut Vec<Path>,
-    current_path: &mut Vec<BlockId>,
-    visited: &mut HashSet<NodeIndex>,
-    ctx: &EnumerationContext,
-    loop_iterations: &mut HashMap<NodeIndex, usize>,
-) {
-    let block_id = match cfg.node_weight(current) {
-        Some(block) => block.id,
-        None => return,
-    };
-
-    current_path.push(block_id);
-
-    if current_path.len() > limits.max_length {
-        current_path.pop();
-        return;
-    }
-
-    if ctx.is_exit(current) {
-        let kind = classify_path_precomputed(cfg, current_path, &ctx.reachable_blocks);
-        let path = Path::new(current_path.clone(), kind);
-        paths.push(path);
-        current_path.pop();
-        return;
-    }
-
-    if paths.len() >= limits.max_paths {
-        current_path.pop();
-        return;
-    }
-
-    if visited.contains(&current) && !ctx.is_loop_header(current) {
-        current_path.pop();
-        return;
-    }
-
-    visited.insert(current);
-
-    let is_loop_header = ctx.is_loop_header(current);
-    if is_loop_header {
-        let count = loop_iterations.entry(current).or_insert(0);
-        if *count >= limits.loop_unroll_limit {
-            visited.remove(&current);
-            current_path.pop();
-            return;
-        }
-        *count += 1;
-    }
-
-    let neighbors: Vec<_> = cfg.neighbors(current).collect();
-
-    for next in neighbors {
-        dfs_enumerate_with_context(
-            cfg,
-            next,
-            limits,
-            paths,
-            current_path,
-            visited,
-            ctx,
-            loop_iterations,
-        );
-    }
-
-    if is_loop_header {
-        if let Some(count) = loop_iterations.get_mut(&current) {
-            *count = count.saturating_sub(1);
-        }
-    }
-
-    visited.remove(&current);
-    current_path.pop();
+    ContextPathEnumerator::new(cfg, limits, ctx).enumerate(entry)
 }
 
 pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
@@ -140,128 +253,8 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
     let reachable_blocks: HashSet<BlockId> =
         reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
-    let mut paths = Vec::new();
-    let mut current_path = Vec::new();
-    let mut visited = HashSet::new();
-
     let loop_headers = crate::cfg::loops::find_loop_headers(cfg);
-    let mut loop_iterations: HashMap<NodeIndex, usize> = HashMap::new();
-
-    dfs_enumerate(
-        cfg,
-        entry,
-        &exits,
-        limits,
-        &mut paths,
-        &mut current_path,
-        &mut visited,
-        &loop_headers,
-        &mut loop_iterations,
-        &reachable_blocks,
-    );
-
-    paths
-}
-
-#[allow(clippy::too_many_arguments)]
-fn dfs_enumerate(
-    cfg: &Cfg,
-    current: NodeIndex,
-    exits: &HashSet<NodeIndex>,
-    limits: &PathLimits,
-    paths: &mut Vec<Path>,
-    current_path: &mut Vec<BlockId>,
-    visited: &mut HashSet<NodeIndex>,
-    loop_headers: &HashSet<NodeIndex>,
-    loop_iterations: &mut HashMap<NodeIndex, usize>,
-    reachable_blocks: &HashSet<BlockId>,
-) {
-    let block_id = match cfg.node_weight(current) {
-        Some(block) => block.id,
-        None => return,
-    };
-
-    current_path.push(block_id);
-
-    if current_path.len() > limits.max_length {
-        current_path.pop();
-        return;
-    }
-
-    if exits.contains(&current) {
-        let kind = classify_path_precomputed(cfg, current_path, reachable_blocks);
-        let path = Path::new(current_path.clone(), kind);
-        paths.push(path);
-        current_path.pop();
-        return;
-    }
-
-    if paths.len() >= limits.max_paths {
-        current_path.pop();
-        return;
-    }
-
-    let is_loop_header = loop_headers.contains(&current);
-    if is_loop_header {
-        let count = loop_iterations.entry(current).or_insert(0);
-        if *count >= limits.loop_unroll_limit {
-            current_path.pop();
-            return;
-        }
-        *count += 1;
-    }
-
-    let was_visited = visited.insert(current);
-
-    let mut successors: Vec<NodeIndex> = cfg.neighbors(current).collect();
-    successors.sort_by_key(|n| n.index());
-
-    if successors.is_empty() {
-        let kind = classify_path_precomputed(cfg, current_path, reachable_blocks);
-        let path = Path::new(current_path.clone(), kind);
-        paths.push(path);
-    } else {
-        for succ in successors {
-            let is_back_edge = loop_headers.contains(&succ) && loop_iterations.contains_key(&succ);
-            if visited.contains(&succ) && !is_back_edge {
-                continue;
-            }
-
-            if is_back_edge {
-                let count = loop_iterations.get(&succ).copied().unwrap_or(0);
-                if count >= limits.loop_unroll_limit {
-                    continue;
-                }
-            }
-
-            dfs_enumerate(
-                cfg,
-                succ,
-                exits,
-                limits,
-                paths,
-                current_path,
-                visited,
-                loop_headers,
-                loop_iterations,
-                reachable_blocks,
-            );
-
-            if paths.len() >= limits.max_paths {
-                break;
-            }
-        }
-    }
-
-    if was_visited {
-        visited.remove(&current);
-    }
-
-    if is_loop_header {
-        loop_iterations.entry(current).and_modify(|c| *c -= 1);
-    }
-
-    current_path.pop();
+    PathEnumerator::new(cfg, exits, limits, loop_headers, reachable_blocks).enumerate(entry)
 }
 
 /// Iterative DFS path enumeration (stack-based, no recursion)

@@ -6,13 +6,13 @@
 //!
 //! - Implements `StorageTrait` for SQLite databases
 //! - Uses `prepare_cached` for query performance
-//! - Leverages Magellan's cfg_blocks table (schema v7+)
+//! - Leverages Magellan's current cfg_blocks schema contract
 //! - Provides backend-agnostic `CfgBlockData` from SQL queries
 //!
 //! # Examples
 //!
 //! ```ignore
-//! # use mirage_analyzer::storage::sqlite_backend::SqliteStorage;
+//! # use mirage::storage::sqlite_backend::SqliteStorage;
 //! # use anyhow::Result;
 //! # fn main() -> Result<()> {
 //! let storage = SqliteStorage::open("/path/to/codegraph.db")?;
@@ -63,7 +63,7 @@ impl SqliteStorage {
     /// # Examples
     ///
     /// ```ignore
-    /// # use mirage_analyzer::storage::sqlite_backend::SqliteStorage;
+    /// # use mirage::storage::sqlite_backend::SqliteStorage;
     /// # fn main() -> anyhow::Result<()> {
     /// let storage = SqliteStorage::open("codegraph.db")?;
     /// # Ok(())
@@ -103,16 +103,36 @@ impl StorageTrait for SqliteStorage {
     /// - Uses prepare_cached for performance on repeated calls
     /// - Returns empty Vec if function has no CFG blocks (not an error)
     fn get_cfg_blocks(&self, function_id: i64) -> Result<Vec<CfgBlockData>> {
-        let mut stmt = self
+        let has_cfg_condition: bool = self
             .conn
-            .prepare_cached(
-                "SELECT id, kind, terminator, byte_start, byte_end,
+            .query_row(
+                "SELECT 1 FROM pragma_table_info('cfg_blocks') WHERE name='cfg_condition' LIMIT 1",
+                [],
+                |_| Ok(true),
+            )
+            .optional()
+            .unwrap_or(None)
+            .unwrap_or(false);
+
+        let query = if has_cfg_condition {
+            "SELECT id, kind, terminator, byte_start, byte_end,
                     start_line, start_col, end_line, end_col,
-                    coord_x, coord_y, coord_z, cfg_condition
+                    cfg_condition
              FROM cfg_blocks
              WHERE function_id = ?
-             ORDER BY id ASC",
-            )
+             ORDER BY id ASC"
+        } else {
+            "SELECT id, kind, terminator, byte_start, byte_end,
+                    start_line, start_col, end_line, end_col,
+                    NULL
+             FROM cfg_blocks
+             WHERE function_id = ?
+             ORDER BY id ASC"
+        };
+
+        let mut stmt = self
+            .conn
+            .prepare_cached(query)
             .map_err(|e| anyhow::anyhow!("Failed to prepare cfg_blocks query: {}", e))?;
 
         let blocks = stmt
@@ -127,11 +147,7 @@ impl StorageTrait for SqliteStorage {
                     start_col: row.get::<_, Option<i64>>(6)?.unwrap_or(0) as u64,
                     end_line: row.get::<_, Option<i64>>(7)?.unwrap_or(0) as u64,
                     end_col: row.get::<_, Option<i64>>(8)?.unwrap_or(0) as u64,
-                    // 4D spatial coordinates from Magellan's cfg_blocks table
-                    coord_x: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
-                    coord_y: row.get::<_, Option<i64>>(10)?.unwrap_or(0),
-                    coord_z: row.get::<_, Option<i64>>(11)?.unwrap_or(0),
-                    cfg_condition: row.get(12)?,
+                    cfg_condition: row.get(9)?,
                 })
             })
             .map_err(|e| anyhow::anyhow!("Failed to execute cfg_blocks query: {}", e))?
@@ -469,15 +485,14 @@ mod tests {
                 function_id INTEGER NOT NULL,
                 kind TEXT NOT NULL,
                 terminator TEXT NOT NULL,
-                byte_start INTEGER,
-                byte_end INTEGER,
-                start_line INTEGER,
-                start_col INTEGER,
-                end_line INTEGER,
-                end_col INTEGER,
-                coord_x INTEGER DEFAULT 0,
-                coord_y INTEGER DEFAULT 0,
-                coord_z INTEGER DEFAULT 0,
+                byte_start INTEGER NOT NULL,
+                byte_end INTEGER NOT NULL,
+                start_line INTEGER NOT NULL,
+                start_col INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+                end_col INTEGER NOT NULL,
+                cfg_hash TEXT,
+                statements TEXT,
                 cfg_condition TEXT,
                 FOREIGN KEY (function_id) REFERENCES graph_entities(id)
             )",

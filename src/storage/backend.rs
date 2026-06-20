@@ -13,11 +13,10 @@ use super::sqlite_backend::SqliteStorage;
 ///
 /// Follows llmgrep's Backend pattern for consistency across tools.
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
 pub enum Backend {
     /// SQLite storage backend (traditional, always available)
     #[cfg(feature = "backend-sqlite")]
-    Sqlite(SqliteStorage),
+    Sqlite(Box<SqliteStorage>),
 }
 
 impl Backend {
@@ -37,7 +36,7 @@ impl Backend {
     /// # Examples
     ///
     /// ```ignore
-    /// # use mirage_analyzer::storage::Backend;
+    /// # use mirage::storage::Backend;
     /// # fn main() -> anyhow::Result<()> {
     /// let backend = Backend::detect_and_open("/path/to/codegraph.db")?;
     /// # Ok(())
@@ -52,7 +51,7 @@ impl Backend {
         #[cfg(feature = "backend-sqlite")]
         {
             if sqlite_detected {
-                SqliteStorage::open(db_path).map(Backend::Sqlite)
+                SqliteStorage::open(db_path).map(|storage| Backend::Sqlite(Box::new(storage)))
             } else {
                 Err(anyhow::anyhow!(
                     "Unsupported database format; use a SQLite .db"

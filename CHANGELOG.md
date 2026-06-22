@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-06-22
+
+### Changed
+- Removed stale 4D-coordinate references from source comments and `CLAUDE.md`. The `coord_x`/`coord_y`/`coord_z`/`coord_t` fields were removed from `BasicBlock` in an earlier release; the remaining doc and test comments no longer reflected current behavior and have been rewritten to match the actual `dom_tree.depth()` assertions.
+
 ## [1.9.0] - 2026-06-22
 
 ### Added

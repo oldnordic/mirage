@@ -1,4 +1,4 @@
-//! CFG export to DOT and JSON formats with 4D coordinate visualization
+//! CFG export to DOT and JSON formats
 
 use crate::cfg::{BlockKind, Cfg, EdgeType, Terminator};
 use serde::{Deserialize, Serialize};

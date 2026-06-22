@@ -4,8 +4,7 @@
 //! must go through d. The immediate dominator of a node is its unique
 //! closest strict dominator.
 //!
-//! This module wraps petgraph's dominance algorithm with a more ergonomic API
-//! and provides coordinate-aware functionality for 4D spatial analysis.
+//! This module wraps petgraph's dominance algorithm with a more ergonomic API.
 
 use crate::cfg::analysis::find_entry;
 use crate::cfg::{BlockId, Cfg};
@@ -539,13 +538,13 @@ mod tests {
 
     #[test]
     fn test_dominator_depths_diamond_cfg() {
-        // Given: A diamond CFG with all coord_x set to 0
+        // Given: A diamond CFG
         let cfg = create_diamond_cfg();
 
         // When: Applying dominator depths
         let dom_tree = DominatorTree::new(&cfg).expect("CFG has entry");
 
-        // Then: coord_x should reflect dominator depth
+        // Then: Dominator depth should reflect nesting
         assert_eq!(
             dom_tree.depth(NodeIndex::new(0)) as i64,
             0,
@@ -616,7 +615,7 @@ mod tests {
         // When: Applying dominator depths
         let dom_tree = DominatorTree::new(&g).expect("CFG has entry");
 
-        // Then: coord_x should increase by 1 for each level
+        // Then: Dominator depth should increase by 1 for each level
         assert_eq!(dom_tree.depth(b0) as i64, 0, "Entry should have depth 0");
         assert_eq!(dom_tree.depth(b1) as i64, 1, "Node 1 should have depth 1");
         assert_eq!(dom_tree.depth(b2) as i64, 2, "Node 2 should have depth 2");
@@ -625,13 +624,13 @@ mod tests {
 
     #[test]
     fn test_new_depths_diamond_cfg() {
-        // Given: A diamond CFG with all coord_x set to 0
+        // Given: A diamond CFG
         let cfg = create_diamond_cfg();
 
         // When: Creating DominatorTree with depths
         let dom_tree = DominatorTree::new(&cfg).expect("CFG has entry");
 
-        // Then: Dominator tree should be created and coord_x should be set
+        // Then: Dominator tree should be created with correct depths
         assert_eq!(dom_tree.root(), NodeIndex::new(0));
         assert_eq!(
             dom_tree.depth(NodeIndex::new(0)) as i64,
@@ -728,7 +727,7 @@ mod tests {
         // When: Applying dominator depths
         let dom_tree = DominatorTree::new(&g).expect("CFG has entry");
 
-        // Then: coord_x should reflect the nested structure
+        // Then: Dominator depth should reflect the nested structure
         assert_eq!(dom_tree.depth(b0) as i64, 0, "Entry should have depth 0");
         assert_eq!(dom_tree.depth(b1) as i64, 1, "Node 1 should have depth 1");
         assert_eq!(dom_tree.depth(b2) as i64, 2, "Node 2 should have depth 2");

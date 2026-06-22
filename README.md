@@ -19,6 +19,25 @@ Mirage reads Magellan code graphs and provides control-flow analysis:
 - Source document listing from graph memory tables
 - **Semantic entry point discovery** — find functions by natural-language query via HNSW embeddings
 
+## Technical Architecture
+
+**Reads Magellan code graphs directly** — no separate index.
+
+**Analyses**
+- Path enumeration through functions
+- Dominance, post-dominance, dominance frontiers
+- Natural loop detection
+- Dead / unreachable code detection
+- Call graph cycle detection
+- Interprocedural reachability with depth-aware blast zone (`blast-zone`)
+- Hotspot detection (interprocedural by default)
+- Pattern matching — if/else, match arms
+- Semantic entry point discovery via HNSW embeddings (natural-language query)
+
+**Output formats** — `human` · `json` · `pretty` · `dot`
+
+**Keyword index:** control-flow graph · CFG · path enumeration · dominance · post-dominance · natural loops · dead code · call graph cycles · interprocedural reachability · blast radius · hotspots · pattern matching · HNSW · Rust
+
 ## Quick Start
 
 ```bash

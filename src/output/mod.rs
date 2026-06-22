@@ -48,10 +48,29 @@ pub fn success(msg: &str) {
 
 /// Print section header
 pub fn header(msg: &str) {
-    let bold = if is_terminal() { BOLD } else { "" };
+    let color = if is_terminal() { BOLD } else { "" };
     let reset = if is_terminal() { NC } else { "" };
-    println!("{}===>{} {}", bold, reset, msg);
-    println!();
+    println!("{}{}{}", color, msg, reset);
+}
+
+/// Apply token budget to formatted output if specified
+pub fn apply_token_budget(output: String, tokens: Option<usize>) -> String {
+    if let Some(token_limit) = tokens {
+        if token_limit > 0 {
+            let tokens_est = output.len() / 4;
+            if tokens_est > token_limit {
+                let char_limit = token_limit * 4;
+                let truncated = output.chars().take(char_limit).collect::<String>();
+                format!("{}\n\n*[~{} tokens, truncated]*", truncated, token_limit)
+            } else {
+                output
+            }
+        } else {
+            output
+        }
+    } else {
+        output
+    }
 }
 
 /// Print command being executed
@@ -115,6 +134,10 @@ pub struct JsonResponse<T> {
     pub tool: String,
     pub timestamp: String,
     pub data: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_estimated: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<bool>,
 }
 
 impl<T: serde::Serialize> JsonResponse<T> {
@@ -137,6 +160,8 @@ impl<T: serde::Serialize> JsonResponse<T> {
             tool: "mirage".to_string(),
             timestamp,
             data,
+            tokens_estimated: None,
+            truncated: None,
         }
     }
 
@@ -146,6 +171,16 @@ impl<T: serde::Serialize> JsonResponse<T> {
 
     pub fn to_pretty_json(&self) -> String {
         serde_json::to_string_pretty(self).unwrap_or_default()
+    }
+
+    pub fn with_tokens(mut self, tokens: usize) -> Self {
+        self.tokens_estimated = Some(tokens);
+        self
+    }
+
+    pub fn with_truncated(mut self, truncated: bool) -> Self {
+        self.truncated = Some(truncated);
+        self
     }
 }
 

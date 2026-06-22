@@ -151,6 +151,10 @@ pub struct PathsArgs {
     #[arg(long)]
     pub file: Option<String>,
 
+    /// Token budget for output (approximate, 0 = no limit)
+    #[arg(long)]
+    pub tokens: Option<usize>,
+
     /// Traverse inter-procedural control flow using Magellan call stitching
     #[arg(long)]
     pub inter_procedural: bool,
@@ -193,6 +197,10 @@ pub struct CfgArgs {
     /// File path to disambiguate functions with same name (optional)
     #[arg(long)]
     pub file: Option<String>,
+
+    /// Token budget for output (approximate, 0 = no limit)
+    #[arg(long)]
+    pub tokens: Option<usize>,
 
     /// Output format
     #[arg(long, value_enum)]
@@ -361,6 +369,10 @@ pub struct BlastZoneArgs {
     /// Call graph traversal depth for inter-procedural analysis (default: unlimited)
     #[arg(long, default_value_t = 0)]
     pub call_depth: usize,
+
+    /// Token budget for output (0 or absent = no limit)
+    #[arg(long)]
+    pub tokens: Option<usize>,
 }
 
 /// Cycle type filter for the cycles command
@@ -395,6 +407,10 @@ pub struct CyclesArgs {
     /// Verbose output (show cycle members/loop bodies)
     #[arg(long)]
     pub verbose: bool,
+
+    /// Token budget for output (0 or absent = no limit)
+    #[arg(long)]
+    pub tokens: Option<usize>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -410,6 +426,10 @@ pub struct SliceArgs {
     /// Show detailed symbol information
     #[arg(long)]
     pub verbose: bool,
+
+    /// Token budget for output (0 or absent = no limit)
+    #[arg(long)]
+    pub tokens: Option<usize>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -438,6 +458,10 @@ pub struct HotspotsArgs {
     /// Use intra-procedural analysis only (faster, but may show 0 functions if cfg_blocks not populated)
     #[arg(long, conflicts_with = "inter_procedural")]
     pub intra_procedural: bool,
+
+    /// Token budget for output (0 or absent = no limit)
+    #[arg(long)]
+    pub tokens: Option<usize>,
 }
 
 /// Hot path detection arguments
@@ -462,6 +486,10 @@ pub struct HotpathsArgs {
     /// Minimum hotness threshold (0.0 to 1.0)
     #[arg(long)]
     pub min_score: Option<f64>,
+
+    /// Token budget for output (0 or absent = no limit)
+    #[arg(long)]
+    pub tokens: Option<usize>,
 }
 
 /// Migrate database between storage backends

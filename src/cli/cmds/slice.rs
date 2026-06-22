@@ -38,52 +38,71 @@ pub fn slice(args: &SliceArgs, cli: &Cli) -> Result<()> {
     // Output based on format
     match cli.output {
         OutputFormat::Human => {
-            println!("Program Slice: {}", slice_result.direction);
-            println!();
+            let mut output = String::new();
+            output.push_str(&format!("Program Slice: {}\n", slice_result.direction));
+            output.push_str("\n");
 
             // Target symbol
-            println!("Target:");
-            println!(
-                "  Symbol: {}",
+            output.push_str("Target:\n");
+            output.push_str(&format!(
+                "  Symbol: {}\n",
                 slice_result.target.fqn.as_deref().unwrap_or(&args.symbol)
-            );
-            println!("  Kind: {}", slice_result.target.kind);
-            println!("  File: {}", slice_result.target.file_path);
-            println!();
+            ));
+            output.push_str(&format!("  Kind: {}\n", slice_result.target.kind));
+            output.push_str(&format!("  File: {}\n", slice_result.target.file_path));
+            output.push_str("\n");
 
             // Statistics
-            println!("Statistics:");
-            println!("  Total symbols in slice: {}", slice_result.symbol_count);
-            println!(
-                "  Data dependencies: {}",
+            output.push_str("Statistics:\n");
+            output.push_str(&format!(
+                "  Total symbols in slice: {}\n",
+                slice_result.symbol_count
+            ));
+            output.push_str(&format!(
+                "  Data dependencies: {}\n",
                 slice_result.statistics.data_dependencies
-            );
-            println!(
-                "  Control dependencies: {}",
+            ));
+            output.push_str(&format!(
+                "  Control dependencies: {}\n",
                 slice_result.statistics.control_dependencies
-            );
-            println!();
+            ));
+            output.push_str("\n");
 
             // Included symbols (verbose only)
             if args.verbose {
-                println!(
-                    "Included symbols ({}):",
+                output.push_str(&format!(
+                    "Included symbols ({}):\n",
                     slice_result.included_symbols.len()
-                );
+                ));
                 for (i, symbol) in slice_result.included_symbols.iter().enumerate() {
-                    println!(
-                        "  {}. {}",
+                    output.push_str(&format!(
+                        "  {}. {}\n",
                         i + 1,
                         symbol.fqn.as_deref().unwrap_or("<unknown>")
-                    );
-                    println!("     Kind: {}, File: {}", symbol.kind, symbol.file_path);
+                    ));
+                    output.push_str(&format!(
+                        "     Kind: {}, File: {}\n",
+                        symbol.kind, symbol.file_path
+                    ));
                 }
             } else {
-                println!("Use --verbose to see all included symbols");
+                output.push_str("Use --verbose to see all included symbols\n");
             }
+            let processed = output::apply_token_budget(output, args.tokens);
+            print!("{}", processed);
         }
         OutputFormat::Json | OutputFormat::Pretty => {
-            let wrapper = output::JsonResponse::new(slice_result);
+            let json_str = if matches!(cli.output, OutputFormat::Pretty) {
+                serde_json::to_string_pretty(&slice_result).unwrap_or_default()
+            } else {
+                serde_json::to_string(&slice_result).unwrap_or_default()
+            };
+            let processed = output::apply_token_budget(json_str, args.tokens);
+            let tokens_est = processed.len() / 4;
+            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let wrapper = output::JsonResponse::new(slice_result)
+                .with_tokens(tokens_est)
+                .with_truncated(truncated);
             match cli.output {
                 OutputFormat::Json => println!("{}", wrapper.to_json()),
                 OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),

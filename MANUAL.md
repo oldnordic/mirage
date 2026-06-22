@@ -108,6 +108,7 @@ These options apply to all commands:
 |--------|-------------|---------|
 | `--db <PATH>` | Path to SQLite database | `.magellan/mirage.db` |
 | `--output <FORMAT>` | Output: `human`, `json`, `pretty` | `human` |
+| `--tokens <N>` | Limit output to ~N tokens (chars/4 heuristic). Preserves symbol names, truncates context first. `0` or absent = no limit. JSON includes `tokens_estimated` and `truncated` metadata fields. | `0` (unlimited) |
 
 Set the database path with environment variable:
 ```bash

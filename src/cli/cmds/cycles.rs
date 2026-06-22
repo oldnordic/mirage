@@ -149,64 +149,93 @@ pub fn cycles(args: &CyclesArgs, cli: &Cli) -> Result<()> {
     // Output based on format
     match cli.output {
         OutputFormat::Human => {
-            println!("Cycle Detection Report");
-            println!();
+            let mut output = String::new();
+            output.push_str("Cycle Detection Report\n");
+            output.push_str("\n");
 
             if show_call_graph {
-                println!(
-                    "Call Graph Cycles (Inter-procedural): {}",
+                output.push_str(&format!(
+                    "Call Graph Cycles (Inter-procedural): {}\n",
                     enhanced_cycles.call_graph_cycles.len()
-                );
+                ));
                 if enhanced_cycles.call_graph_cycles.is_empty() {
-                    println!("  No call graph cycles detected");
+                    output.push_str("  No call graph cycles detected\n");
                 } else {
                     for (i, cycle) in enhanced_cycles.call_graph_cycles.iter().enumerate() {
-                        println!("  Cycle {}:", i + 1);
-                        println!("    Type: {}", cycle.cycle_type);
-                        println!("    Size: {} symbols", cycle.size);
+                        output.push_str(&format!("  Cycle {}:\n", i + 1));
+                        output.push_str(&format!("    Type: {}\n", cycle.cycle_type));
+                        output.push_str(&format!("    Size: {} symbols\n", cycle.size));
                         if args.verbose {
-                            println!("    Members:");
+                            output.push_str("    Members:\n");
                             for member in &cycle.members {
-                                println!("      - {}", member);
+                                output.push_str(&format!("      - {}\n", member));
                             }
                         }
                     }
                 }
-                println!();
+                output.push_str("\n");
             }
 
             if show_function_loops {
-                println!(
-                    "Function Loops (Intra-procedural): {} functions with loops",
+                output.push_str(&format!(
+                    "Function Loops (Intra-procedural): {} functions with loops\n",
                     enhanced_cycles.function_loops.len()
-                );
+                ));
                 if enhanced_cycles.function_loops.is_empty() {
-                    println!("  No natural loops detected in any function");
+                    output.push_str("  No natural loops detected in any function\n");
                 } else {
                     for (function_name, loops) in &enhanced_cycles.function_loops {
-                        println!("  Function: {} ({} loops)", function_name, loops.len());
+                        output.push_str(&format!(
+                            "  Function: {} ({} loops)\n",
+                            function_name,
+                            loops.len()
+                        ));
                         if args.verbose {
                             for (i, loop_info) in loops.iter().enumerate() {
-                                println!("    Loop {}:", i + 1);
-                                println!("      Header: Block {}", loop_info.header);
-                                println!(
-                                    "      Back edge from: Block {}",
+                                output.push_str(&format!("    Loop {}:\n", i + 1));
+                                output.push_str(&format!(
+                                    "      Header: Block {}\n",
+                                    loop_info.header
+                                ));
+                                output.push_str(&format!(
+                                    "      Back edge from: Block {}\n",
                                     loop_info.back_edge_from
-                                );
-                                println!("      Body size: {} blocks", loop_info.body_size);
-                                println!("      Nesting level: {}", loop_info.nesting_level);
-                                println!("      Body blocks: {:?}", loop_info.body_blocks);
+                                ));
+                                output.push_str(&format!(
+                                    "      Body size: {} blocks\n",
+                                    loop_info.body_size
+                                ));
+                                output.push_str(&format!(
+                                    "      Nesting level: {}\n",
+                                    loop_info.nesting_level
+                                ));
+                                output.push_str(&format!(
+                                    "      Body blocks: {:?}\n",
+                                    loop_info.body_blocks
+                                ));
                             }
                         }
                     }
                 }
-                println!();
+                output.push_str("\n");
             }
 
-            println!("Total cycles: {}", total_cycles);
+            output.push_str(&format!("Total cycles: {}\n", total_cycles));
+            let processed = output::apply_token_budget(output, args.tokens);
+            print!("{}", processed);
         }
         OutputFormat::Json | OutputFormat::Pretty => {
-            let wrapper = output::JsonResponse::new(enhanced_cycles);
+            let json_str = if matches!(cli.output, OutputFormat::Pretty) {
+                serde_json::to_string_pretty(&enhanced_cycles).unwrap_or_default()
+            } else {
+                serde_json::to_string(&enhanced_cycles).unwrap_or_default()
+            };
+            let processed = output::apply_token_budget(json_str, args.tokens);
+            let tokens_est = processed.len() / 4;
+            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let wrapper = output::JsonResponse::new(enhanced_cycles)
+                .with_tokens(tokens_est)
+                .with_truncated(truncated);
             match cli.output {
                 OutputFormat::Json => println!("{}", wrapper.to_json()),
                 OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),

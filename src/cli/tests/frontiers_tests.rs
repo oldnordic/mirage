@@ -337,6 +337,7 @@ fn test_hotspots_args_parsing() {
         verbose: true,
         inter_procedural: false,
         intra_procedural: false,
+        tokens: None,
     };
 
     assert_eq!(args.entry, "main");
@@ -356,6 +357,7 @@ fn test_hotspots_args_default_entry() {
         verbose: false,
         inter_procedural: false,
         intra_procedural: false,
+        tokens: None,
     };
 
     assert_eq!(args.entry, "main");
@@ -459,6 +461,7 @@ fn test_hotpaths_args_parsing() {
         top: 5,
         rationale: true,
         min_score: Some(0.5),
+        tokens: None,
     };
 
     assert_eq!(args.function, "my_function");
@@ -476,6 +479,7 @@ fn test_hotpaths_args_defaults() {
         top: 10, // default value
         rationale: false,
         min_score: None,
+        tokens: None,
     };
 
     assert_eq!(args.function, "main");

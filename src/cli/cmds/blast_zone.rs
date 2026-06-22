@@ -260,72 +260,84 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
         // Output
         match cli.output {
             OutputFormat::Human => {
-                println!("Path Impact Analysis");
-                println!();
-                println!("Path ID: {}", impact.path_id);
-                println!("Function: {}", function_name);
-                println!("Path kind: {}", path_kind);
-                println!("Path length: {} blocks", impact.path_length);
-                println!();
+                let mut output = String::new();
+                output.push_str("Path Impact Analysis\n");
+                output.push_str("\n");
+                output.push_str(&format!("Path ID: {}\n", impact.path_id));
+                output.push_str(&format!("Function: {}\n", function_name));
+                output.push_str(&format!("Path kind: {}\n", path_kind));
+                output.push_str(&format!("Path length: {} blocks\n", impact.path_length));
+                output.push_str("\n");
 
                 // Show call graph impact if available
                 if let Some(ref forward) = forward_impact {
                     if args.call_depth > 0 {
-                        println!(
-                            "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):",
+                        output.push_str(&format!(
+                            "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):\n",
                             args.call_depth
-                        );
+                        ));
                     } else {
-                        println!("Inter-Procedural Impact (Call Graph):");
+                        output.push_str("Inter-Procedural Impact (Call Graph):\n");
                     }
-                    println!("  Forward Impact: {} functions reached", forward.len());
+                    output.push_str(&format!(
+                        "  Forward Impact: {} functions reached\n",
+                        forward.len()
+                    ));
                     for sym in forward {
                         let name = sym.fqn.as_deref().unwrap_or(&sym.file_path);
                         if let Some(d) = sym.depth {
-                            println!("    [d{}] {}", d, name);
+                            output.push_str(&format!("    [d{}] {}\n", d, name));
                         } else {
-                            println!("    - {}", name);
+                            output.push_str(&format!("    - {}\n", name));
                         }
                     }
                 }
                 if let Some(ref backward) = backward_impact {
                     if !backward.is_empty() {
                         if forward_impact.is_none() && args.call_depth > 0 {
-                            println!(
-                                "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):",
+                            output.push_str(&format!(
+                                "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):\n",
                                 args.call_depth
-                            );
+                            ));
                         } else if forward_impact.is_none() {
-                            println!("Inter-Procedural Impact (Call Graph):");
+                            output.push_str("Inter-Procedural Impact (Call Graph):\n");
                         }
-                        println!(
-                            "  Backward Impact: {} functions can reach this",
+                        output.push_str(&format!(
+                            "  Backward Impact: {} functions can reach this\n",
                             backward.len()
-                        );
+                        ));
                         for sym in backward {
                             let name = sym.fqn.as_deref().unwrap_or(&sym.file_path);
                             if let Some(d) = sym.depth {
-                                println!("    [d{}] {}", d, name);
+                                output.push_str(&format!("    [d{}] {}\n", d, name));
                             } else {
-                                println!("    - {}", name);
+                                output.push_str(&format!("    - {}\n", name));
                             }
                         }
                     }
                 }
-                println!();
+                output.push_str("\n");
 
-                println!("Intra-Procedural Impact (CFG):");
-                println!("  Unique blocks affected: {}", impact.impact_count);
+                output.push_str("Intra-Procedural Impact (CFG):\n");
+                output.push_str(&format!(
+                    "  Unique blocks affected: {}\n",
+                    impact.impact_count
+                ));
                 if impact.impact_count > 0 {
-                    println!("  Affected blocks: {:?}", impact.unique_blocks_affected);
+                    output.push_str(&format!(
+                        "  Affected blocks: {:?}\n",
+                        impact.unique_blocks_affected
+                    ));
                 } else {
-                    println!("  Affected blocks: (none - path has no downstream impact)");
+                    output.push_str("  Affected blocks: (none - path has no downstream impact)\n");
                 }
                 if let Some(depth) = max_depth {
-                    println!("  Max depth: {}", depth);
+                    output.push_str(&format!("  Max depth: {}\n", depth));
                 } else {
-                    println!("  Max depth: unlimited");
+                    output.push_str("  Max depth: unlimited\n");
                 }
+                let processed = output::apply_token_budget(output, args.tokens);
+                print!("{}", processed);
             }
             OutputFormat::Json | OutputFormat::Pretty => {
                 let response = PathImpactResponse {
@@ -336,7 +348,17 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
                     forward_impact: forward_impact.clone(),
                     backward_impact: backward_impact.clone(),
                 };
-                let wrapper = output::JsonResponse::new(response);
+                let json_str = if matches!(cli.output, OutputFormat::Pretty) {
+                    serde_json::to_string_pretty(&response).unwrap_or_default()
+                } else {
+                    serde_json::to_string(&response).unwrap_or_default()
+                };
+                let processed = output::apply_token_budget(json_str, args.tokens);
+                let tokens_est = processed.len() / 4;
+                let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+                let wrapper = output::JsonResponse::new(response)
+                    .with_tokens(tokens_est)
+                    .with_truncated(truncated);
                 match cli.output {
                     OutputFormat::Json => println!("{}", wrapper.to_json()),
                     OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
@@ -523,79 +545,91 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
         // Output
         match cli.output {
             OutputFormat::Human => {
-                println!("Block Impact Analysis (Blast Zone)");
-                println!();
-                println!("Function: {}", function_name);
-                println!("Source block: {}", impact.source_block_id);
-                println!();
+                let mut output = String::new();
+                output.push_str("Block Impact Analysis (Blast Zone)\n");
+                output.push_str("\n");
+                output.push_str(&format!("Function: {}\n", function_name));
+                output.push_str(&format!("Source block: {}\n", impact.source_block_id));
+                output.push_str("\n");
 
                 // Show call graph impact if available
                 if let Some(ref forward) = forward_impact {
                     if args.call_depth > 0 {
-                        println!(
-                            "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):",
+                        output.push_str(&format!(
+                            "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):\n",
                             args.call_depth
-                        );
+                        ));
                     } else {
-                        println!("Inter-Procedural Impact (Call Graph):");
+                        output.push_str("Inter-Procedural Impact (Call Graph):\n");
                     }
-                    println!("  Forward Impact: {} functions reached", forward.len());
+                    output.push_str(&format!(
+                        "  Forward Impact: {} functions reached\n",
+                        forward.len()
+                    ));
                     for sym in forward {
                         let name = sym.fqn.as_deref().unwrap_or(&sym.file_path);
                         if let Some(d) = sym.depth {
-                            println!("    [d{}] {}", d, name);
+                            output.push_str(&format!("    [d{}] {}\n", d, name));
                         } else {
-                            println!("    - {}", name);
+                            output.push_str(&format!("    - {}\n", name));
                         }
                     }
                 }
                 if let Some(ref backward) = backward_impact {
                     if !backward.is_empty() {
                         if forward_impact.is_none() && args.call_depth > 0 {
-                            println!(
-                                "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):",
+                            output.push_str(&format!(
+                                "Inter-Procedural Impact (Call Graph, depth-aware, max depth {}):\n",
                                 args.call_depth
-                            );
+                            ));
                         } else if forward_impact.is_none() {
-                            println!("Inter-Procedural Impact (Call Graph):");
+                            output.push_str("Inter-Procedural Impact (Call Graph):\n");
                         }
-                        println!(
-                            "  Backward Impact: {} functions can reach this",
+                        output.push_str(&format!(
+                            "  Backward Impact: {} functions can reach this\n",
                             backward.len()
-                        );
+                        ));
                         for sym in backward {
                             let name = sym.fqn.as_deref().unwrap_or(&sym.file_path);
                             if let Some(d) = sym.depth {
-                                println!("    [d{}] {}", d, name);
+                                output.push_str(&format!("    [d{}] {}\n", d, name));
                             } else {
-                                println!("    - {}", name);
+                                output.push_str(&format!("    - {}\n", name));
                             }
                         }
                     }
                 }
-                println!();
+                output.push_str("\n");
 
-                println!("Intra-Procedural Impact (CFG):");
-                println!("  Reachable blocks: {}", impact.reachable_count);
+                output.push_str("Intra-Procedural Impact (CFG):\n");
+                output.push_str(&format!("  Reachable blocks: {}\n", impact.reachable_count));
                 if impact.reachable_count > 0 {
-                    println!("  Affected blocks: {:?}", impact.reachable_blocks);
+                    output.push_str(&format!(
+                        "  Affected blocks: {:?}\n",
+                        impact.reachable_blocks
+                    ));
                 } else {
-                    println!("  Affected blocks: (none - block has no downstream impact)");
+                    output.push_str("  Affected blocks: (none - block has no downstream impact)\n");
                 }
-                println!("  Max depth reached: {}", impact.max_depth_reached);
-                println!(
-                    "  Contains cycles: {}",
+                output.push_str(&format!(
+                    "  Max depth reached: {}\n",
+                    impact.max_depth_reached
+                ));
+                output.push_str(&format!(
+                    "  Contains cycles: {}\n",
                     if impact.has_cycles {
                         "yes (loop detected)"
                     } else {
                         "no"
                     }
-                );
+                ));
                 if let Some(depth) = max_depth {
-                    println!("  Depth limit: {}", depth);
+                    output.push_str(&format!("  Depth limit: {}\n", depth));
                 } else {
-                    println!("  Depth limit: unlimited");
+                    output.push_str("  Depth limit: unlimited\n");
                 }
+                let processed = output::apply_token_budget(output, args.tokens);
+                print!("{}", processed);
             }
             OutputFormat::Json | OutputFormat::Pretty => {
                 let response = BlockImpactResponse {
@@ -608,7 +642,17 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
                     forward_impact: forward_impact.clone(),
                     backward_impact: backward_impact.clone(),
                 };
-                let wrapper = output::JsonResponse::new(response);
+                let json_str = if matches!(cli.output, OutputFormat::Pretty) {
+                    serde_json::to_string_pretty(&response).unwrap_or_default()
+                } else {
+                    serde_json::to_string(&response).unwrap_or_default()
+                };
+                let processed = output::apply_token_budget(json_str, args.tokens);
+                let tokens_est = processed.len() / 4;
+                let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+                let wrapper = output::JsonResponse::new(response)
+                    .with_tokens(tokens_est)
+                    .with_truncated(truncated);
                 match cli.output {
                     OutputFormat::Json => println!("{}", wrapper.to_json()),
                     OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),

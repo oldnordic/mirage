@@ -169,47 +169,63 @@ pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
 
     match cli.output {
         OutputFormat::Human => {
-            output::header(&format!(
-                "Hotspots Analysis (entry: {})",
+            let mut output = String::new();
+            output.push_str(&format!(
+                "Hotspots Analysis (entry: {})\n",
                 response.entry_point
             ));
+            output.push_str("\n");
 
             // Add helpful hint if 0 functions found with intra-procedural mode
             if response.total_functions == 0 && response.mode == "intra-procedural" {
-                output::warn("No functions found. This may be because:");
-                output::info("  1. The database hasn't been indexed yet");
-                output::info("  2. You need to run: magellan watch --db <path>");
-                output::info("  3. Try --inter-procedural for call-graph-based analysis");
-                println!();
+                output.push_str("No functions found. This may be because:\n");
+                output.push_str("  1. The database hasn't been indexed yet\n");
+                output.push_str("  2. You need to run: magellan watch --db <path>\n");
+                output.push_str("  3. Try --inter-procedural for call-graph-based analysis\n");
+                output.push_str("\n");
             }
 
-            output::info(&format!(
-                "Found {} hotspots out of {} functions",
+            output.push_str(&format!(
+                "Found {} hotspots out of {} functions\n",
                 hotspots.len(),
                 response.total_functions
             ));
-            println!();
+            output.push_str("\n");
 
             for (i, hotspot) in hotspots.iter().enumerate() {
-                println!(
-                    "{}. {} (risk: {:.1})",
+                output.push_str(&format!(
+                    "{}. {} (risk: {:.1})\n",
                     i + 1,
                     hotspot.function,
                     hotspot.risk_score
-                );
+                ));
                 if args.verbose {
-                    println!("   Paths: {}", hotspot.path_count);
-                    println!("   Dominance: {:.1}", hotspot.dominance_factor);
-                    println!("   Complexity: {}", hotspot.complexity);
+                    output.push_str(&format!("   Paths: {}\n", hotspot.path_count));
+                    output.push_str(&format!("   Dominance: {:.1}\n", hotspot.dominance_factor));
+                    output.push_str(&format!("   Complexity: {}\n", hotspot.complexity));
                 }
             }
+            let processed = output::apply_token_budget(output, args.tokens);
+            print!("{}", processed);
         }
         OutputFormat::Json => {
-            let wrapper = output::JsonResponse::new(response);
+            let json_str = serde_json::to_string(&response).unwrap_or_default();
+            let processed = output::apply_token_budget(json_str, args.tokens);
+            let tokens_est = processed.len() / 4;
+            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let wrapper = output::JsonResponse::new(response)
+                .with_tokens(tokens_est)
+                .with_truncated(truncated);
             println!("{}", wrapper.to_json());
         }
         OutputFormat::Pretty => {
-            let wrapper = output::JsonResponse::new(response);
+            let json_str = serde_json::to_string_pretty(&response).unwrap_or_default();
+            let processed = output::apply_token_budget(json_str, args.tokens);
+            let tokens_est = processed.len() / 4;
+            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let wrapper = output::JsonResponse::new(response)
+                .with_tokens(tokens_est)
+                .with_truncated(truncated);
             println!("{}", wrapper.to_pretty_json());
         }
     }

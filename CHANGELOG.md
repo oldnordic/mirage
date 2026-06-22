@@ -5,6 +5,24 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.9.0] - 2026-06-22
+
+### Added
+
+- **Token budget feature** (`--tokens N` flag):
+  - Added `--tokens N` flag to all analysis commands
+  - Commands updated: `cfg`, `paths`, `blast-zone`, `cycles`, `slice`, `hotspots`, `hotpaths`
+  - `--tokens 0` or absent flag = no limit (backward compatible default)
+  - Token estimation using `chars / 4` heuristic
+  - Domain-specific truncation: preserve function names and path IDs, truncate block details first
+  - Both Human and JSON/Pretty output modes supported
+  - JSON metadata: `tokens_estimated` and `truncated` fields in JsonResponse
+  - Implementation in `src/output/mod.rs` and all `src/cli/cmds/*.rs` files
+  - Helper function: `apply_token_budget()` for token-aware output truncation
+  - Updated all test files to include `tokens` field in Args structs
+
 ## [1.8.2] - 2026-06-20
 
 ### Fixed

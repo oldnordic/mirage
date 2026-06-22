@@ -111,12 +111,23 @@ pub fn cfg(args: &CfgArgs, cli: &Cli) -> Result<()> {
         CfgFormat::Human | CfgFormat::Dot => {
             // Both Human and Dot use DOT format
             let dot = export_dot(&cfg);
-            println!("{}", dot);
+            let processed = output::apply_token_budget(dot, args.tokens);
+            println!("{}", processed);
         }
         CfgFormat::Json => {
             // Export to JSON and wrap in JsonResponse for consistency
             let export: CFGExport = export_json(&cfg, &args.function, coverage.as_ref());
-            let response = output::JsonResponse::new(export);
+            let json_str = if matches!(cli.output, OutputFormat::Pretty) {
+                serde_json::to_string_pretty(&export).unwrap_or_default()
+            } else {
+                serde_json::to_string(&export).unwrap_or_default()
+            };
+            let processed = output::apply_token_budget(json_str, args.tokens);
+            let tokens_est = processed.len() / 4;
+            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let response = output::JsonResponse::new(export)
+                .with_tokens(tokens_est)
+                .with_truncated(truncated);
 
             match cli.output {
                 OutputFormat::Json => println!("{}", response.to_json()),

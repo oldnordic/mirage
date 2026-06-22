@@ -127,55 +127,67 @@ pub fn hotpaths(args: &HotpathsArgs, cli: &Cli) -> Result<()> {
     // Output based on format
     match cli.output {
         OutputFormat::Human => {
-            print_hotpaths_human(&hot_paths, args.rationale);
+            print_hotpaths_human(&hot_paths, args.rationale, args.tokens);
         }
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string(&hot_paths)?);
+            let json_str = serde_json::to_string(&hot_paths)?;
+            let processed = output::apply_token_budget(json_str, args.tokens);
+            println!("{}", processed);
         }
         OutputFormat::Pretty => {
-            println!("{}", serde_json::to_string_pretty(&hot_paths)?);
+            let json_str = serde_json::to_string_pretty(&hot_paths)?;
+            let processed = output::apply_token_budget(json_str, args.tokens);
+            println!("{}", processed);
         }
     }
 
     Ok(())
 }
 
-fn print_hotpaths_human(hot_paths: &[crate::cfg::hotpaths::HotPath], show_rationale: bool) {
+fn print_hotpaths_human(
+    hot_paths: &[crate::cfg::hotpaths::HotPath],
+    show_rationale: bool,
+    tokens: Option<usize>,
+) {
     use crate::output;
 
-    output::header(&format!("Hot Paths (top {})", hot_paths.len()));
+    let mut output = String::new();
+    output.push_str(&format!("Hot Paths (top {})\n", hot_paths.len()));
+    output.push_str("\n");
 
     if hot_paths.is_empty() {
-        output::info("No hot paths found");
+        output.push_str("No hot paths found\n");
+        let processed = output::apply_token_budget(output, tokens);
+        print!("{}", processed);
         return;
     }
 
     for (i, hp) in hot_paths.iter().enumerate() {
-        println!(
-            "\n{}. Path {} - Score: {:.2}",
+        output.push_str(&format!(
+            "\n{}. Path {} - Score: {:.2}\n",
             i + 1,
             hp.path_id,
             hp.hotness_score
-        );
+        ));
 
         if show_rationale && !hp.rationale.is_empty() {
-            println!("   Rationale:");
+            output.push_str("   Rationale:\n");
             for r in &hp.rationale {
-                println!("     - {}", r);
+                output.push_str(&format!("     - {}\n", r));
             }
         }
 
-        println!("   Blocks: {} blocks", hp.blocks.len());
+        output.push_str(&format!("   Blocks: {} blocks\n", hp.blocks.len()));
         for (j, block) in hp.blocks.iter().enumerate() {
             if j < 5 || j == hp.blocks.len() - 1 {
-                print!("     {}", block);
+                output.push_str(&format!("     {}\n", block));
                 if j == 4 && hp.blocks.len() > 6 {
-                    println!(" ... (+{} more)", hp.blocks.len() - 6);
+                    output.push_str(&format!(" ... (+{} more)\n", hp.blocks.len() - 6));
                     break;
-                } else {
-                    println!();
                 }
             }
         }
     }
+    let processed = output::apply_token_budget(output, tokens);
+    print!("{}", processed);
 }

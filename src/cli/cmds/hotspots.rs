@@ -174,7 +174,7 @@ pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
                 "Hotspots Analysis (entry: {})\n",
                 response.entry_point
             ));
-            output.push_str("\n");
+            output.push('\n');
 
             // Add helpful hint if 0 functions found with intra-procedural mode
             if response.total_functions == 0 && response.mode == "intra-procedural" {
@@ -182,7 +182,7 @@ pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
                 output.push_str("  1. The database hasn't been indexed yet\n");
                 output.push_str("  2. You need to run: magellan watch --db <path>\n");
                 output.push_str("  3. Try --inter-procedural for call-graph-based analysis\n");
-                output.push_str("\n");
+                output.push('\n');
             }
 
             output.push_str(&format!(
@@ -190,7 +190,7 @@ pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
                 hotspots.len(),
                 response.total_functions
             ));
-            output.push_str("\n");
+            output.push('\n');
 
             for (i, hotspot) in hotspots.iter().enumerate() {
                 output.push_str(&format!(
@@ -212,7 +212,7 @@ pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
             let json_str = serde_json::to_string(&response).unwrap_or_default();
             let processed = output::apply_token_budget(json_str, args.tokens);
             let tokens_est = processed.len() / 4;
-            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
             let wrapper = output::JsonResponse::new(response)
                 .with_tokens(tokens_est)
                 .with_truncated(truncated);
@@ -222,7 +222,7 @@ pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
             let json_str = serde_json::to_string_pretty(&response).unwrap_or_default();
             let processed = output::apply_token_budget(json_str, args.tokens);
             let tokens_est = processed.len() / 4;
-            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
             let wrapper = output::JsonResponse::new(response)
                 .with_tokens(tokens_est)
                 .with_truncated(truncated);

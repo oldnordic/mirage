@@ -262,12 +262,12 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
             OutputFormat::Human => {
                 let mut output = String::new();
                 output.push_str("Path Impact Analysis\n");
-                output.push_str("\n");
+                output.push('\n');
                 output.push_str(&format!("Path ID: {}\n", impact.path_id));
                 output.push_str(&format!("Function: {}\n", function_name));
                 output.push_str(&format!("Path kind: {}\n", path_kind));
                 output.push_str(&format!("Path length: {} blocks\n", impact.path_length));
-                output.push_str("\n");
+                output.push('\n');
 
                 // Show call graph impact if available
                 if let Some(ref forward) = forward_impact {
@@ -316,7 +316,7 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
                         }
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
 
                 output.push_str("Intra-Procedural Impact (CFG):\n");
                 output.push_str(&format!(
@@ -355,7 +355,7 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
                 };
                 let processed = output::apply_token_budget(json_str, args.tokens);
                 let tokens_est = processed.len() / 4;
-                let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+                let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
                 let wrapper = output::JsonResponse::new(response)
                     .with_tokens(tokens_est)
                     .with_truncated(truncated);
@@ -547,10 +547,10 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
             OutputFormat::Human => {
                 let mut output = String::new();
                 output.push_str("Block Impact Analysis (Blast Zone)\n");
-                output.push_str("\n");
+                output.push('\n');
                 output.push_str(&format!("Function: {}\n", function_name));
                 output.push_str(&format!("Source block: {}\n", impact.source_block_id));
-                output.push_str("\n");
+                output.push('\n');
 
                 // Show call graph impact if available
                 if let Some(ref forward) = forward_impact {
@@ -599,7 +599,7 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
                         }
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
 
                 output.push_str("Intra-Procedural Impact (CFG):\n");
                 output.push_str(&format!("  Reachable blocks: {}\n", impact.reachable_count));
@@ -649,7 +649,7 @@ pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
                 };
                 let processed = output::apply_token_budget(json_str, args.tokens);
                 let tokens_est = processed.len() / 4;
-                let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+                let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
                 let wrapper = output::JsonResponse::new(response)
                     .with_tokens(tokens_est)
                     .with_truncated(truncated);

@@ -151,7 +151,7 @@ pub fn cycles(args: &CyclesArgs, cli: &Cli) -> Result<()> {
         OutputFormat::Human => {
             let mut output = String::new();
             output.push_str("Cycle Detection Report\n");
-            output.push_str("\n");
+            output.push('\n');
 
             if show_call_graph {
                 output.push_str(&format!(
@@ -173,7 +173,7 @@ pub fn cycles(args: &CyclesArgs, cli: &Cli) -> Result<()> {
                         }
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
 
             if show_function_loops {
@@ -217,7 +217,7 @@ pub fn cycles(args: &CyclesArgs, cli: &Cli) -> Result<()> {
                         }
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
 
             output.push_str(&format!("Total cycles: {}\n", total_cycles));
@@ -232,7 +232,7 @@ pub fn cycles(args: &CyclesArgs, cli: &Cli) -> Result<()> {
             };
             let processed = output::apply_token_budget(json_str, args.tokens);
             let tokens_est = processed.len() / 4;
-            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
             let wrapper = output::JsonResponse::new(enhanced_cycles)
                 .with_tokens(tokens_est)
                 .with_truncated(truncated);

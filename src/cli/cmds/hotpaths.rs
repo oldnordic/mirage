@@ -153,7 +153,7 @@ fn print_hotpaths_human(
 
     let mut output = String::new();
     output.push_str(&format!("Hot Paths (top {})\n", hot_paths.len()));
-    output.push_str("\n");
+    output.push('\n');
 
     if hot_paths.is_empty() {
         output.push_str("No hot paths found\n");

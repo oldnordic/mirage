@@ -112,7 +112,7 @@ pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
                 let json_str = serde_json::to_string(&response).unwrap_or_default();
                 let processed = output::apply_token_budget(json_str, args.tokens);
                 let tokens_est = processed.len() / 4;
-                let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+                let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
                 let wrapper = output::JsonResponse::new(response)
                     .with_tokens(tokens_est)
                     .with_truncated(truncated);
@@ -130,7 +130,7 @@ pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
                 let json_str = serde_json::to_string_pretty(&response).unwrap_or_default();
                 let processed = output::apply_token_budget(json_str, args.tokens);
                 let tokens_est = processed.len() / 4;
-                let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+                let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
                 let wrapper = output::JsonResponse::new(response)
                     .with_tokens(tokens_est)
                     .with_truncated(truncated);
@@ -360,7 +360,7 @@ pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
             } else {
                 output.push_str(&format!("Error paths: {}\n", error_count));
             }
-            output.push_str("\n");
+            output.push('\n');
 
             if paths.is_empty() {
                 let processed = output::apply_token_budget(output, args.tokens);
@@ -400,7 +400,7 @@ pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
                     };
                     output.push_str(&format!("  Blocks: {}\n", rendered_blocks.join(" -> ")));
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
             let processed = output::apply_token_budget(output, args.tokens);
             print!("{}", processed);
@@ -428,7 +428,7 @@ pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
             let json_str = serde_json::to_string(&response).unwrap_or_default();
             let processed = output::apply_token_budget(json_str, args.tokens);
             let tokens_est = processed.len() / 4;
-            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
             let wrapper = output::JsonResponse::new(response)
                 .with_tokens(tokens_est)
                 .with_truncated(truncated);
@@ -457,7 +457,7 @@ pub fn paths(args: &PathsArgs, cli: &Cli) -> Result<()> {
             let json_str = serde_json::to_string_pretty(&response).unwrap_or_default();
             let processed = output::apply_token_budget(json_str, args.tokens);
             let tokens_est = processed.len() / 4;
-            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
             let wrapper = output::JsonResponse::new(response)
                 .with_tokens(tokens_est)
                 .with_truncated(truncated);

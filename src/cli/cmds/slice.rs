@@ -40,7 +40,7 @@ pub fn slice(args: &SliceArgs, cli: &Cli) -> Result<()> {
         OutputFormat::Human => {
             let mut output = String::new();
             output.push_str(&format!("Program Slice: {}\n", slice_result.direction));
-            output.push_str("\n");
+            output.push('\n');
 
             // Target symbol
             output.push_str("Target:\n");
@@ -50,7 +50,7 @@ pub fn slice(args: &SliceArgs, cli: &Cli) -> Result<()> {
             ));
             output.push_str(&format!("  Kind: {}\n", slice_result.target.kind));
             output.push_str(&format!("  File: {}\n", slice_result.target.file_path));
-            output.push_str("\n");
+            output.push('\n');
 
             // Statistics
             output.push_str("Statistics:\n");
@@ -66,7 +66,7 @@ pub fn slice(args: &SliceArgs, cli: &Cli) -> Result<()> {
                 "  Control dependencies: {}\n",
                 slice_result.statistics.control_dependencies
             ));
-            output.push_str("\n");
+            output.push('\n');
 
             // Included symbols (verbose only)
             if args.verbose {
@@ -99,7 +99,7 @@ pub fn slice(args: &SliceArgs, cli: &Cli) -> Result<()> {
             };
             let processed = output::apply_token_budget(json_str, args.tokens);
             let tokens_est = processed.len() / 4;
-            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
             let wrapper = output::JsonResponse::new(slice_result)
                 .with_tokens(tokens_est)
                 .with_truncated(truncated);

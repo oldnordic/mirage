@@ -124,7 +124,7 @@ pub fn cfg(args: &CfgArgs, cli: &Cli) -> Result<()> {
             };
             let processed = output::apply_token_budget(json_str, args.tokens);
             let tokens_est = processed.len() / 4;
-            let truncated = args.tokens.map_or(false, |t| t > 0 && tokens_est > t);
+            let truncated = args.tokens.is_some_and(|t| t > 0 && tokens_est > t);
             let response = output::JsonResponse::new(export)
                 .with_tokens(tokens_est)
                 .with_truncated(truncated);

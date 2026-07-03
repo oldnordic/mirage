@@ -409,6 +409,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
+name = "cpp_demangle"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0667304c32ea56cb4cd6d2d7c0cfe9a2f8041229db8c033af7f8d69492429def"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1124,9 +1133,9 @@ dependencies = [
 
 [[package]]
 name = "magellan"
-version = "4.8.0"
+version = "4.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfbb6c6181223b97d630d62bc608c6f64c614b40f8067eed7b7f38c2edcdb5d0"
+checksum = "9a234869f4d956ecfcb04ecbb843d572f12023add00c06cb376f9c95a72bdf82"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1135,6 +1144,7 @@ dependencies = [
  "blake3",
  "camino",
  "chrono",
+ "cpp_demangle",
  "csv",
  "git2",
  "globset",
@@ -1147,6 +1157,7 @@ dependencies = [
  "petgraph 0.6.5",
  "protobuf",
  "rayon",
+ "regex",
  "rusqlite",
  "scip",
  "serde",
@@ -1226,7 +1237,7 @@ dependencies = [
 
 [[package]]
 name = "mirage-analyzer"
-version = "1.9.1"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "blake3",

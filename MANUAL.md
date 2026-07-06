@@ -1,6 +1,6 @@
 # Mirage User Manual
 
-Version 1.9.1
+Version 1.10.1
 
 ---
 
@@ -43,9 +43,9 @@ cargo install --path .
 ### Requirements
 
 - **Magellan SQLite `.db` database**
-  - Current release verified with Magellan schema v18
+  - Current release verified with Magellan schema v20
   - Minimum CFG-compatible Magellan schema remains v7
-  - Run `magellan watch --root ./src --db .magellan/mirage.db` first
+  - Run `magellan watch --root ./src --db .magellan/magellan.db` first
 - **Rust 1.70+**
 
 ### Magellan Schema Compatibility
@@ -54,12 +54,12 @@ Mirage reads Magellan-managed CFG data and does not require Magellan's temporal 
 
 ```bash
 # Check the embedded Magellan schema version
-mirage status --db .magellan/mirage.db
-# Example: "Schema version: 1 (Magellan: 18)"
+mirage status --db .magellan/magellan.db
+# Example: "Schema version: 1 (Magellan: 20)"
 
 # If the database is too old, rebuild it with current Magellan
-rm .magellan/mirage.db
-magellan watch --root ./src --db .magellan/mirage.db --scan-initial
+rm .magellan/magellan.db
+magellan watch --root ./src --db .magellan/magellan.db --scan-initial
 ```
 
 ### Full Workflow Setup
@@ -74,13 +74,13 @@ cargo install magellan llmgrep mirage-analyzer splice
 cd /path/to/rust/project
 
 # Start the call graph indexer (magellan) - this creates CFG data
-magellan watch --root ./src --db .magellan/mirage.db
+magellan watch --root ./src --db .magellan/magellan.db
 
 # Search symbols (llmgrep)
-llmgrep search --query "function_name" --db .magellan/mirage.db
+llmgrep search --query "function_name" --db .magellan/magellan.db
 
 # Analyze paths (mirage)
-mirage paths --function "main" --db .magellan/mirage.db
+mirage paths --function "main" --db .magellan/magellan.db
 ```
 
 ### First Usage
@@ -90,12 +90,12 @@ mirage paths --function "main" --db .magellan/mirage.db
 cd /path/to/rust/project
 
 # 2. Create database with Magellan (this extracts CFG data)
-magellan watch --root ./src --db .magellan/mirage.db
+magellan watch --root ./src --db .magellan/magellan.db
 
 # 3. Analyze with Mirage
-mirage status --db .magellan/mirage.db
-mirage paths --function "main" --db .magellan/mirage.db
-mirage cfg --function "main" --db .magellan/mirage.db
+mirage status --db .magellan/magellan.db
+mirage paths --function "main" --db .magellan/magellan.db
+mirage cfg --function "main" --db .magellan/magellan.db
 ```
 
 ---
@@ -106,13 +106,13 @@ These options apply to all commands:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--db <PATH>` | Path to SQLite database | `.magellan/mirage.db` |
+| `--db <PATH>` | Path to Magellan-managed SQLite database | `.magellan/magellan.db` |
 | `--output <FORMAT>` | Output: `human`, `json`, `pretty` | `human` |
 | `--tokens <N>` | Limit output to ~N tokens (chars/4 heuristic). Preserves symbol names, truncates context first. `0` or absent = no limit. JSON includes `tokens_estimated` and `truncated` metadata fields. | `0` (unlimited) |
 
 Set the database path with environment variable:
 ```bash
-export MIRAGE_DB=/custom/path/mirage.db
+export MIRAGE_DB=/custom/path/magellan.db
 ```
 
 ---

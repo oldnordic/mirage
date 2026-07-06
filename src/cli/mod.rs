@@ -664,7 +664,7 @@ pub enum CfgFormat {
 /// Resolve the database path from multiple sources
 ///
 /// Priority: CLI arg > MIRAGE_DB env var > auto-discover in common locations
-/// Auto-discovery searches: .magellan/*.db, .forge/*.db, *.db in current directory
+/// Auto-discovery searches Magellan-managed `.db` files first, then legacy paths.
 pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
     if let Some(path) = cli_db {
         return Ok(path);
@@ -693,7 +693,7 @@ pub fn resolve_db_path(cli_db: Option<String>) -> anyhow::Result<String> {
 /// 1. .magellan/*.db files (Magellan's conventional location)
 /// 2. .forge/*.db files
 /// 3. *.db in current directory
-/// 4. mirage.db or magellan.db in current directory
+/// 4. explicit legacy/current filenames in the current directory
 fn auto_discover_db() -> Option<String> {
     use std::path::Path;
 
@@ -714,13 +714,13 @@ fn auto_discover_db() -> Option<String> {
             // Sort for deterministic results
             db_files.sort();
 
-            // Return first match, preferring current Magellan/Mirage database names.
+            // Return first match, preferring current Magellan database names.
             if let Some(preferred) = db_files.iter().find(|p| {
                 let name = p
                     .file_stem()
                     .map(|s| s.to_string_lossy())
                     .unwrap_or_default();
-                name == "magellan" || name == "mirage"
+                name == "magellan" || name.ends_with("-core") || name == "mirage"
             }) {
                 return Some(preferred.to_string_lossy().to_string());
             }
@@ -734,8 +734,8 @@ fn auto_discover_db() -> Option<String> {
 
     // Check for specific filenames in current directory
     let candidates = [
-        ".magellan/mirage.db",
         ".magellan/magellan.db",
+        ".magellan/mirage.db",
         "mirage.db",
         "magellan.db",
         "graph.db",

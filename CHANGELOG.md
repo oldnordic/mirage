@@ -19,6 +19,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-07-06
+
+### Fixed
+
+- **Unified Magellan DB compatibility restored** (`Cargo.toml`):
+  - Updated `magellan` to `4.13.1` and `sqlitegraph` to `3.7.0`.
+  - Mirage can once again open current Magellan-managed unified `.db` files and read CFG data directly instead of failing during `sqlitegraph::open_graph()`.
+  - Verified live against `~/.magellan/sqlitegraph/sqlitegraph-core.db` with working `mirage status` and `mirage stats`.
+
+### Changed
+
+- **CLI database discovery now prefers Magellan-owned DB names** (`src/cli/mod.rs`):
+  - Auto-discovery now prefers `magellan.db` and `*-core.db` ahead of the legacy `mirage.db` naming.
+  - Legacy `.magellan/mirage.db` paths are still accepted for backward compatibility.
+- **JSON open-error reporting is no longer misleading** (`src/cli/cmds/status.rs`, `src/cli/cmds/stats.rs`, `src/output/mod.rs`):
+  - Existing files that fail to open now return `DatabaseOpenFailed` with the actual error details instead of always claiming the database was missing.
+- **Docs now describe Mirage as a Magellan DB consumer** (`README.md`, `MANUAL.md`):
+  - Updated examples and defaults from `.magellan/mirage.db` to `.magellan/magellan.db`.
+  - Public docs now reflect Magellan schema v20 validation and the single-DB ownership model.
+
 ## [1.9.1] - 2026-06-22
 
 ### Changed

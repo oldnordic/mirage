@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/mirage-analyzer)](https://crates.io/crates/mirage-analyzer)
 [![Documentation](https://docs.rs/mirage-analyzer/badge.svg)](https://docs.rs/mirage-analyzer)
 
-**Version:** 1.9.1
+**Version:** 1.10.1
 
 Path-aware code intelligence engine for Rust. Analyzes control-flow graphs from Magellan databases.
 
@@ -21,7 +21,7 @@ Mirage reads Magellan code graphs and provides control-flow analysis:
 
 ## Technical Architecture
 
-**Reads Magellan code graphs directly** — no separate index.
+**Reads Magellan-managed code graphs directly** — no separate Mirage index.
 
 **Analyses**
 - Path enumeration through functions
@@ -45,16 +45,16 @@ Mirage reads Magellan code graphs and provides control-flow analysis:
 cargo install mirage-analyzer
 
 # Index your codebase with Magellan first
-magellan watch --root ./src --db .magellan/mirage.db
+magellan watch --root ./src --db .magellan/magellan.db
 
 # Analyze CFG
-mirage --db .magellan/mirage.db paths --function "main"
-mirage --db .magellan/mirage.db cfg --function "process"
-mirage --db .magellan/mirage.db cycles
-mirage --db .magellan/mirage.db docs --kind wiki
+mirage --db .magellan/magellan.db paths --function "main"
+mirage --db .magellan/magellan.db cfg --function "process"
+mirage --db .magellan/magellan.db cycles
+mirage --db .magellan/magellan.db docs --kind wiki
 
 # Semantic entry point discovery (requires `magellan embed --db <db>` first)
-mirage --db .magellan/mirage.db paths --semantic-query "error handling in the parser"
+mirage --db .magellan/magellan.db paths --semantic-query "error handling in the parser"
 ```
 
 ## Backends
@@ -77,11 +77,11 @@ cargo install mirage-analyzer --features backend-geometric --no-default-features
 
 ## Requirements
 
-- **[Magellan](https://github.com/oldnordic/magellan)** SQLite `.db` databases with schema v18 support (minimum CFG-compatible schema remains v7)
+- **[Magellan](https://github.com/oldnordic/magellan)** SQLite `.db` databases with schema v20 support (minimum CFG-compatible schema remains v7)
 - Rust 1.70+
 - Magellan database (`.db`) created by `magellan watch`
 
-**Database Location:** Default is `.magellan/mirage.db` (auto-discovered)
+**Database Location:** Default is a Magellan-managed `.db` file such as `.magellan/magellan.db` (auto-discovered). Legacy `.magellan/mirage.db` paths are still accepted.
 
 ## Documentation
 

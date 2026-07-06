@@ -219,6 +219,15 @@ impl JsonError {
         .with_remediation(R_HINT_INDEX)
     }
 
+    /// Database open failed for a reason other than file absence.
+    pub fn database_open_failed(path: &str, details: &str) -> Self {
+        Self::new(
+            "DatabaseOpenFailed",
+            &format!("Failed to open database {}: {}", path, details),
+            E_DATABASE_NOT_FOUND,
+        )
+    }
+
     /// Function not found error with remediation
     pub fn function_not_found(name: &str) -> Self {
         Self::new(

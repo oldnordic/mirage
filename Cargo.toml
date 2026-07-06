@@ -1,6 +1,6 @@
 [package]
 name = "mirage-analyzer"
-version = "1.10.0"
+version = "1.10.1"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Mirage Contributors"]
@@ -28,10 +28,10 @@ clap = { version = "4.5", features = ["derive", "env"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Magellan for inter-procedural analysis (required for CFG data)
-magellan = { version = "4.13", default-features = false, features = ["sqlite-backend"] }
+magellan = { version = "4.13.1", default-features = false, features = ["sqlite-backend"] }
 
 # sqlitegraph for GraphBackend trait
-sqlitegraph = { version = "3.3.1", default-features = false, features = ["sqlite-backend"] }
+sqlitegraph = { version = "3.7.0", default-features = false, features = ["sqlite-backend"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

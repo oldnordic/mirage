@@ -14,9 +14,16 @@ pub fn status(_args: &StatusArgs, cli: &Cli) -> Result<()> {
         Err(e) => {
             // JSON-aware error handling with remediation
             if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::database_not_found(&db_path);
+                let error = if std::path::Path::new(&db_path).exists() {
+                    output::JsonError::database_open_failed(&db_path, &e.to_string())
+                } else {
+                    output::JsonError::database_not_found(&db_path)
+                };
                 let wrapper = output::JsonResponse::new(error);
-                println!("{}", wrapper.to_json());
+                match cli.output {
+                    OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
+                    _ => println!("{}", wrapper.to_json()),
+                }
                 std::process::exit(output::EXIT_DATABASE);
             } else {
                 output::error(&format!("Failed to open database: {}", db_path));

@@ -95,12 +95,6 @@ pub fn exit_usage(msg: &str) -> ! {
     std::process::exit(EXIT_USAGE);
 }
 
-/// Exit with file not found error
-pub fn exit_file_not_found(path: &str) -> ! {
-    error(&format!("File not found: {}", path));
-    std::process::exit(EXIT_FILE_NOT_FOUND);
-}
-
 /// Exit with database error
 pub fn exit_database(msg: &str) -> ! {
     error(&format!("Database error: {}", msg));
@@ -116,15 +110,12 @@ pub const E_DATABASE_NOT_FOUND: &str = "E001";
 pub const E_FUNCTION_NOT_FOUND: &str = "E002";
 pub const E_BLOCK_NOT_FOUND: &str = "E003";
 pub const E_PATH_NOT_FOUND: &str = "E004";
-pub const E_PATH_EXPLOSION: &str = "E005";
 pub const E_INVALID_INPUT: &str = "E006";
 pub const E_CFG_ERROR: &str = "E007";
 
 /// Common remediation messages
 pub const R_HINT_INDEX: &str = "Run 'magellan watch' to create the database";
 pub const R_HINT_LIST_FUNCTIONS: &str = "Run 'magellan find <function_name>' to find the function (or 'magellan status' to see indexed symbols)";
-pub const R_HINT_MAX_LENGTH: &str = "Use --max-length N to bound path exploration";
-pub const R_HINT_VERIFY_PATH: &str = "Use 'mirage paths --function <name>' to see available paths";
 
 /// JSON output wrapper (following Magellan's response format)
 #[derive(Debug, Clone, serde::Serialize)]
@@ -245,16 +236,6 @@ impl JsonError {
             &format!("Block {} not found in CFG", id),
             E_BLOCK_NOT_FOUND,
         )
-    }
-
-    /// Path not found error
-    pub fn path_not_found(id: &str) -> Self {
-        Self::new(
-            "PathNotFound",
-            &format!("Path '{}' not found or no longer valid", id),
-            E_PATH_NOT_FOUND,
-        )
-        .with_remediation("Run 'mirage verify --path-id ID' to check path validity")
     }
 }
 

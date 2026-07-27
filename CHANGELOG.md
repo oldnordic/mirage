@@ -5,6 +5,34 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-07-27
+
+### Fixed
+
+- **Unbounded path enumeration in risk/suggest scoring** (`src/analysis/risk.rs`,
+  `src/analysis/paths.rs`): `graph_compute`-scale functions made `mirage risk`
+  effectively hang (570s timeout observed); bounded enumeration via
+  `PathLimits` now completes in ~0.02s with an honest truncation contract
+  (reported counts are exact-up-to-cap and flagged as truncated).
+- **`risk`/`suggest` severity divergence**: severity classification now flows
+  through shared `src/analysis/severity.rs` — both commands classify the same
+  function identically instead of maintaining two drift-prone copies.
+- **ICFG test fixture was CWD-flattered** (`src/cfg/icfg.rs`): the bundled
+  fixture DB baked in absolute paths from the generating worktree, so ICFG
+  tests passed only from that directory. Fixture paths are rewritten to the
+  tempdir at copy time (graph entities and `File.data.path`); the suite now
+  passes from any working directory (531/0/14).
+
+### Changed
+
+- **Dependency: magellan 4.13.1 → 4.14** (`Cargo.toml`): picks up the
+  path-normalization contract (cwd-independent file/symbol lookups — ICFG
+  precise-stitching no longer silently falls back to coarse edges when run
+  outside the indexed repo root) and stable-ID CALLER/CALLS ingest edges.
+  Existing magellan DBs should be repaired once with
+  `magellan repair-edges --db <db> --apply` for correct caller attribution.
+- Dead-code sweep across analysis modules (no behavior change).
+
 ## [1.10.0] - 2026-07-03
 
 ### Changed

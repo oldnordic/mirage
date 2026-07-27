@@ -32,7 +32,30 @@ pub fn risk(args: &RiskArgs, cli: &Cli) -> Result<()> {
         }
     };
 
-    let report = risk::compute_risk(&db, function_id, &args.function, args.file.as_deref())?;
+    // Resolve the function's file path: prefer the explicit --file arg, else
+    // look it up from the graph. Needed for the git-churn factor and display.
+    let resolved_file = args
+        .file
+        .clone()
+        .or_else(|| db.get_function_file(function_id));
+
+    // Opt-in git-churn factor: count commits touching the file in the window.
+    let churn_commits = if args.churn {
+        risk::resolve_churn(resolved_file.as_deref(), args.churn_days)
+    } else {
+        None
+    };
+
+    // Both opt-in factors stay off unless explicitly requested, so default
+    // output stays in lockstep with `mirage suggest` (P2 agreement).
+    let report = risk::compute_risk_with_factors(
+        &db,
+        function_id,
+        &args.function,
+        resolved_file.as_deref(),
+        args.coverage,
+        churn_commits,
+    )?;
 
     match cli.output {
         OutputFormat::Human => {
@@ -71,6 +94,18 @@ pub fn risk(args: &RiskArgs, cli: &Cli) -> Result<()> {
                 "  Loops: {} (max nesting: {})",
                 report.factors.loop_count, report.factors.max_nesting_depth
             );
+            if args.coverage {
+                match report.factors.uncovered_ratio {
+                    Some(u) => println!("  Uncovered blocks: {:.0}%", u * 100.0),
+                    None => println!("  Uncovered blocks: n/a (no coverage data)"),
+                }
+            }
+            if args.churn {
+                match report.factors.churn_commits {
+                    Some(c) => println!("  Churn: {} commits in last {} days", c, args.churn_days),
+                    None => println!("  Churn: n/a (not a git repo or git unavailable)"),
+                }
+            }
         }
         OutputFormat::Json => {
             let mut response = output::JsonResponse::new(&report);

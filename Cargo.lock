@@ -1224,9 +1224,9 @@ dependencies = [
 
 [[package]]
 name = "magellan"
-version = "4.13.1"
+version = "4.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "253895f87f71c1e4c2959df2b1884ef783a08593aad5a48baab7eb269da62915"
+checksum = "89ad70cf5cba5a377644b30e092b3702a9889f4b017f7767c480e9df2293e2aa"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "mirage-analyzer"
-version = "1.10.1"
+version = "1.11.0"
 dependencies = [
  "anyhow",
  "blake3",

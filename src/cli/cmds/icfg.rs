@@ -5,18 +5,12 @@ pub fn icfg(args: &IcfgArgs, cli: &Cli) -> Result<()> {
     use crate::cfg::icfg::{build_icfg, to_dot, IcfgJson, IcfgOptions};
     use crate::output::error;
     use crate::output::{EXIT_DATABASE, EXIT_NOT_FOUND};
-    use crate::storage::MirageDb;
 
     let db_path = resolve_db_path(cli.db.clone())?;
 
-    // Open database
-    let db = match MirageDb::open(&db_path) {
-        Ok(db) => db,
-        Err(e) => {
-            error(&format!("Failed to open database: {}", e));
-            std::process::exit(EXIT_DATABASE);
-        }
-    };
+    // Open database (honest open-error handling via shared helper:
+    // JSON modes get the standard error envelope, human mode gets details)
+    let db = super::open_db_or_exit(cli, &db_path);
 
     // Resolve function name to ID
     let function_id = match db.resolve_function_name(&args.entry) {

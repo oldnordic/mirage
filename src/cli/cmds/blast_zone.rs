@@ -5,28 +5,14 @@ use anyhow::Result;
 
 pub fn blast_zone(args: &BlastZoneArgs, cli: &Cli) -> Result<()> {
     use crate::cfg::{find_reachable_from_block, load_cfg_from_db, resolve_function_name};
-    use crate::storage::{compute_path_impact_from_db, get_function_name_db, MirageDb};
+    use crate::storage::{compute_path_impact_from_db, get_function_name_db};
     use rusqlite::OptionalExtension;
 
     // Resolve database path
     let db_path = resolve_db_path(cli.db.clone())?;
 
-    // Open database (follows status command pattern for error handling)
-    let db = match MirageDb::open(&db_path) {
-        Ok(db) => db,
-        Err(_e) => {
-            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::database_not_found(&db_path);
-                let wrapper = output::JsonResponse::new(error);
-                println!("{}", wrapper.to_json());
-                std::process::exit(output::EXIT_DATABASE);
-            } else {
-                output::error(&format!("Failed to open database: {}", db_path));
-                output::info("Hint: Run 'magellan watch' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
-            }
-        }
-    };
+    // Open database (honest open-error handling via shared helper)
+    let db = super::open_db_or_exit(cli, &db_path);
 
     // Determine query type: path-based or block-based
     if let Some(ref path_id) = args.path_id {

@@ -3,26 +3,9 @@ use crate::output;
 use anyhow::Result;
 
 pub fn docs(args: &DocsArgs, cli: &Cli) -> Result<()> {
-    use crate::storage::MirageDb;
-
     let db_path = resolve_db_path(cli.db.clone())?;
 
-    let db = match MirageDb::open(&db_path) {
-        Ok(db) => db,
-        Err(e) => {
-            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::database_not_found(&db_path);
-                let wrapper = output::JsonResponse::new(error);
-                println!("{}", wrapper.to_json());
-                std::process::exit(output::EXIT_DATABASE);
-            } else {
-                output::error(&format!("Failed to open database: {}", db_path));
-                output::error(&format!("Error details: {}", e));
-                output::info("Hint: Run 'magellan watch' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
-            }
-        }
-    };
+    let db = super::open_db_or_exit(cli, &db_path);
 
     let documents = db.list_source_documents()?;
 

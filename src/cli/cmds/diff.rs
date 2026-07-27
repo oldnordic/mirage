@@ -7,32 +7,12 @@ pub fn diff(args: &DiffArgs, cli: &Cli) -> Result<()> {
 
     let before = match Backend::detect_and_open(std::path::Path::new(&args.before_db)) {
         Ok(b) => b,
-        Err(e) => {
-            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::database_not_found(&args.before_db);
-                let wrapper = output::JsonResponse::new(error);
-                println!("{}", wrapper.to_json());
-                std::process::exit(output::EXIT_DATABASE);
-            } else {
-                output::error(&format!("Failed to open before database: {}", e));
-                std::process::exit(output::EXIT_DATABASE);
-            }
-        }
+        Err(e) => super::db_open_error_exit(cli, &args.before_db, &e),
     };
 
     let after = match Backend::detect_and_open(std::path::Path::new(&args.after_db)) {
         Ok(b) => b,
-        Err(e) => {
-            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::database_not_found(&args.after_db);
-                let wrapper = output::JsonResponse::new(error);
-                println!("{}", wrapper.to_json());
-                std::process::exit(output::EXIT_DATABASE);
-            } else {
-                output::error(&format!("Failed to open after database: {}", e));
-                std::process::exit(output::EXIT_DATABASE);
-            }
-        }
+        Err(e) => super::db_open_error_exit(cli, &args.after_db, &e),
     };
 
     let function_id = match resolve_function_id(&after, &args.function) {

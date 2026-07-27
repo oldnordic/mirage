@@ -8,27 +8,12 @@ pub fn hotpaths(args: &HotpathsArgs, cli: &Cli) -> Result<()> {
         hotpaths::{compute_hot_paths, HotpathsOptions},
         PathLimits,
     };
-    use crate::storage::MirageDb;
 
     // Resolve database path
     let db_path = resolve_db_path(cli.db.clone())?;
 
-    // Open database (follows status command pattern for error handling)
-    let db = match MirageDb::open(&db_path) {
-        Ok(db) => db,
-        Err(_e) => {
-            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::database_not_found(&db_path);
-                let wrapper = output::JsonResponse::new(error);
-                println!("{}", wrapper.to_json());
-                std::process::exit(output::EXIT_DATABASE);
-            } else {
-                output::error(&format!("Failed to open database: {}", db_path));
-                output::info("Hint: Run 'magellan watch' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
-            }
-        }
-    };
+    // Open database (honest open-error handling via shared helper)
+    let db = super::open_db_or_exit(cli, &db_path);
 
     // Resolve function name/ID or semantic query to function_id
     let function_id = match crate::storage::resolve_function_or_semantic(

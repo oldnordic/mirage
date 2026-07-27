@@ -4,23 +4,9 @@ use anyhow::Result;
 
 pub fn suggest(args: &SuggestArgs, cli: &Cli) -> Result<()> {
     use crate::analysis::suggest;
-    use crate::storage::MirageDb;
 
     let db_path = resolve_db_path(cli.db.clone())?;
-    let db = match MirageDb::open(&db_path) {
-        Ok(db) => db,
-        Err(e) => {
-            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::database_not_found(&db_path);
-                let wrapper = output::JsonResponse::new(error);
-                println!("{}", wrapper.to_json());
-                std::process::exit(output::EXIT_DATABASE);
-            } else {
-                output::error(&format!("Failed to open database: {}", e));
-                std::process::exit(output::EXIT_DATABASE);
-            }
-        }
-    };
+    let db = super::open_db_or_exit(cli, &db_path);
 
     let function_id = match crate::storage::resolve_function_or_semantic(
         &db,

@@ -6,7 +6,6 @@ pub fn cycles(args: &CyclesArgs, cli: &Cli) -> Result<()> {
     use crate::analysis::{CycleInfo, EnhancedCycles, LoopInfo, MagellanBridge};
     use crate::cfg::detect_natural_loops;
     use crate::cfg::load_cfg_from_db;
-    use crate::storage::MirageDb;
 
     // Resolve database path
     let db_path = resolve_db_path(cli.db.clone())?;
@@ -50,22 +49,8 @@ pub fn cycles(args: &CyclesArgs, cli: &Cli) -> Result<()> {
         std::collections::HashMap::new();
 
     if show_function_loops {
-        // Open Mirage database
-        let db = match MirageDb::open(&db_path) {
-            Ok(db) => db,
-            Err(_e) => {
-                if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                    let error = output::JsonError::database_not_found(&db_path);
-                    let wrapper = output::JsonResponse::new(error);
-                    println!("{}", wrapper.to_json());
-                    std::process::exit(output::EXIT_DATABASE);
-                } else {
-                    output::error(&format!("Failed to open database: {}", db_path));
-                    output::info("Hint: Run 'magellan watch' to create the database");
-                    std::process::exit(output::EXIT_DATABASE);
-                }
-            }
-        };
+        // Open Mirage database (honest open-error handling via shared helper)
+        let db = super::open_db_or_exit(cli, &db_path);
 
         // Query all functions from the database
         // Note: Requires SQLite backend for SQL queries

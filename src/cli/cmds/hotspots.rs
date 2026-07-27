@@ -16,26 +16,9 @@ pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
     let db_path = resolve_db_path(cli.db.clone())?;
 
     // Open Mirage database for intra-procedural analysis
+    // (honest open-error handling via shared helper)
     #[cfg(feature = "sqlite")]
-    let mut db = match MirageDb::open(&db_path) {
-        Ok(db) => db,
-        Err(e) => {
-            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::new(
-                    "DatabaseError",
-                    &format!("Failed to open database: {}", e),
-                    output::E_DATABASE_NOT_FOUND,
-                );
-                let wrapper = output::JsonResponse::new(error);
-                println!("{}", wrapper.to_json());
-                std::process::exit(output::EXIT_DATABASE);
-            } else {
-                output::error(&format!("Failed to open database: {}", e));
-                output::info("Hint: Run 'magellan watch' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
-            }
-        }
-    };
+    let mut db = super::open_db_or_exit(cli, &db_path);
 
     let mut hotspots: Vec<HotspotEntry> = Vec::new();
     let mut function_count = 0;

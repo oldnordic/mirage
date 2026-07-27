@@ -5,27 +5,12 @@ use anyhow::Result;
 pub fn coverage(args: &CoverageArgs, cli: &Cli) -> Result<()> {
     use crate::cfg::load_cfg_from_db;
     use crate::storage::resolve_function_or_semantic;
-    use crate::storage::MirageDb;
 
     // Resolve database path
     let db_path = resolve_db_path(cli.db.clone())?;
 
-    // Open database
-    let db = match MirageDb::open(&db_path) {
-        Ok(db) => db,
-        Err(_e) => {
-            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = output::JsonError::database_not_found(&db_path);
-                let wrapper = output::JsonResponse::new(error);
-                println!("{}", wrapper.to_json());
-                std::process::exit(output::EXIT_DATABASE);
-            } else {
-                output::error(&format!("Failed to open database: {}", db_path));
-                output::info("Hint: Run 'magellan watch' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
-            }
-        }
-    };
+    // Open database (honest open-error handling via shared helper)
+    let db = super::open_db_or_exit(cli, &db_path);
 
     // Resolve function name/ID or semantic query to function_id (with optional file filter)
     let function_id = match resolve_function_or_semantic(

@@ -3,36 +3,11 @@ use crate::output;
 use anyhow::Result;
 
 pub fn status(_args: &StatusArgs, cli: &Cli) -> Result<()> {
-    use crate::storage::MirageDb;
-
     // Resolve database path
     let db_path = resolve_db_path(cli.db.clone())?;
 
-    // Open database
-    let db = match MirageDb::open(&db_path) {
-        Ok(db) => db,
-        Err(e) => {
-            // JSON-aware error handling with remediation
-            if matches!(cli.output, OutputFormat::Json | OutputFormat::Pretty) {
-                let error = if std::path::Path::new(&db_path).exists() {
-                    output::JsonError::database_open_failed(&db_path, &e.to_string())
-                } else {
-                    output::JsonError::database_not_found(&db_path)
-                };
-                let wrapper = output::JsonResponse::new(error);
-                match cli.output {
-                    OutputFormat::Pretty => println!("{}", wrapper.to_pretty_json()),
-                    _ => println!("{}", wrapper.to_json()),
-                }
-                std::process::exit(output::EXIT_DATABASE);
-            } else {
-                output::error(&format!("Failed to open database: {}", db_path));
-                output::error(&format!("Error details: {}", e));
-                output::info("Hint: Run 'magellan watch' to create the database");
-                std::process::exit(output::EXIT_DATABASE);
-            }
-        }
-    };
+    // Open database (honest open-error handling via shared helper)
+    let db = super::open_db_or_exit(cli, &db_path);
 
     // Query database statistics
     let status = db.status()?;

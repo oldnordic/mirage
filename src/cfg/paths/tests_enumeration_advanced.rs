@@ -396,22 +396,3 @@ fn test_perf_enumeration_context_reuse() {
     println!("100 calls with context: {:?}", duration);
     assert!(duration < Duration::from_millis(100));
 }
-
-#[test]
-#[ignore = "benchmark test - run with cargo test -- --ignored"]
-fn test_perf_estimation_vs_actual() {
-    use super::cached::estimate_path_count;
-    use std::time::Instant;
-    let cfg = test_fixtures::create_diamond_cfg();
-    let start = Instant::now();
-    let estimate = estimate_path_count(&cfg, 3);
-    let est_duration = start.elapsed();
-    let start = Instant::now();
-    let limits = PathLimits::default();
-    let paths = enumerate_paths(&cfg, &limits);
-    let enum_duration = start.elapsed();
-    println!("Estimation: {} paths in {:?}", estimate, est_duration);
-    println!("Enumeration: {} paths in {:?}", paths.len(), enum_duration);
-    assert!(est_duration.as_micros() < 1000);
-    assert!(enum_duration.as_micros() < 1000);
-}

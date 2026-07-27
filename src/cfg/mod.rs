@@ -75,36 +75,6 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
     paths::enumerate_paths(cfg, limits)
 }
 
-pub fn enumerate_paths_cached(
-    cfg: &Cfg,
-    function_id: i64,
-    function_hash: &str,
-    limits: &PathLimits,
-    db_conn: &mut rusqlite::Connection,
-) -> anyhow::Result<Vec<Path>> {
-    paths::enumerate_paths_cached(cfg, function_id, function_hash, limits, db_conn)
-        .map_err(anyhow::Error::msg)
-}
-
-pub fn enumerate_paths_cached_with_context(
-    cfg: &Cfg,
-    function_id: i64,
-    function_hash: &str,
-    limits: &PathLimits,
-    ctx: &EnumerationContext,
-    db_conn: &mut rusqlite::Connection,
-) -> anyhow::Result<Vec<Path>> {
-    paths::enumerate_paths_cached_with_context(
-        cfg,
-        function_id,
-        function_hash,
-        limits,
-        ctx,
-        db_conn,
-    )
-    .map_err(anyhow::Error::msg)
-}
-
 pub fn enumerate_paths_incremental(
     function_name: &str,
     db: &crate::storage::MirageDb,

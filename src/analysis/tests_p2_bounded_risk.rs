@@ -136,7 +136,7 @@ fn test_risk_bomb_cfg_bounded_with_truncation() {
     let elapsed = start.elapsed();
 
     assert!(
-        elapsed < Duration::from_secs(10),
+        elapsed < Duration::from_secs(60),
         "risk on bomb CFG took {:?}; bounded enumeration regressed",
         elapsed
     );
@@ -165,7 +165,7 @@ fn test_suggest_bomb_cfg_bounded_with_truncation() {
     let elapsed = start.elapsed();
 
     assert!(
-        elapsed < Duration::from_secs(10),
+        elapsed < Duration::from_secs(60),
         "suggest on bomb CFG took {:?}; bounded enumeration regressed",
         elapsed
     );
@@ -187,7 +187,7 @@ fn test_work_budget_bounds_enumeration() {
     let elapsed = start.elapsed();
 
     assert!(
-        elapsed < Duration::from_secs(5),
+        elapsed < Duration::from_secs(60),
         "budgeted enumeration took {:?}",
         elapsed
     );

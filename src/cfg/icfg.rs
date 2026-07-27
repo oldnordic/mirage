@@ -769,6 +769,57 @@ mod tests {
             .join("tests/fixtures/icfg_caller_callee.db");
         let db_path = temp_dir.path().join(name);
         std::fs::copy(&src, &db_path).unwrap();
+
+        // The checked-in fixture was indexed from a worktree whose absolute
+        // paths are baked into file_path columns. magellan resolves relative
+        // query paths against the process CWD (normalize_path_for_index), so
+        // those baked paths make symbol lookups succeed only when the test
+        // runs from that original directory. Rewrite every file_path to a
+        // canonical absolute path inside the temp dir: absolute paths pass
+        // through normalization unchanged, making lookups CWD-independent.
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        for table in [
+            "graph_entities",
+            "code_chunks",
+            "file_metrics",
+            "symbol_metrics",
+        ] {
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT rowid, file_path FROM {table} WHERE file_path IS NOT NULL"
+                ))
+                .unwrap();
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            for (rowid, path) in rows {
+                let basename = std::path::Path::new(&path)
+                    .file_name()
+                    .map(std::ffi::OsStr::to_string_lossy)
+                    .unwrap_or_default();
+                let rewritten = temp_dir.path().join(basename.as_ref());
+                let rewritten = rewritten.to_string_lossy().to_string();
+                conn.execute(
+                    &format!("UPDATE {table} SET file_path = ?1 WHERE rowid = ?2"),
+                    rusqlite::params![rewritten, rowid],
+                )
+                .unwrap();
+                if table == "graph_entities" {
+                    // File entities also embed the path in the data JSON;
+                    // magellan builds its in-memory file index from that.
+                    conn.execute(
+                        "UPDATE graph_entities SET data = json_set(data, '$.path', ?1) \
+                         WHERE rowid = ?2 AND kind = 'File'",
+                        rusqlite::params![rewritten, rowid],
+                    )
+                    .unwrap();
+                }
+            }
+        }
         (temp_dir, db_path)
     }
 

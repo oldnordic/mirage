@@ -41,6 +41,25 @@ pub fn suggest(args: &SuggestArgs, cli: &Cli) -> Result<()> {
             if let Some(ref fp) = report.file_path {
                 println!("  File: {}", fp);
             }
+            println!(
+                "  Overall severity: {} (score {:.1})",
+                report.overall_severity, report.risk_score
+            );
+            if report.path_count_truncated {
+                let reason = if report.path_count_budget_exhausted {
+                    "work budget exhausted; path sample only"
+                } else {
+                    "path enumeration truncated at cap"
+                };
+                let estimate = report
+                    .path_count_estimated
+                    .map(|e| format!("~{}", e))
+                    .unwrap_or_else(|| "astronomical (exceeds 2^64)".to_string());
+                println!(
+                    "  Note: {}; estimated true path count: {}",
+                    reason, estimate
+                );
+            }
             println!();
             for s in &report.suggestions {
                 println!(
@@ -55,11 +74,17 @@ pub fn suggest(args: &SuggestArgs, cli: &Cli) -> Result<()> {
             }
         }
         OutputFormat::Json => {
-            let response = output::JsonResponse::new(&report);
+            let mut response = output::JsonResponse::new(&report);
+            if report.path_count_truncated {
+                response.truncated = Some(true);
+            }
             println!("{}", response.to_json());
         }
         OutputFormat::Pretty => {
-            let response = output::JsonResponse::new(&report);
+            let mut response = output::JsonResponse::new(&report);
+            if report.path_count_truncated {
+                response.truncated = Some(true);
+            }
             println!("{}", response.to_pretty_json());
         }
     }

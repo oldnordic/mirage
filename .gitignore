@@ -18,6 +18,8 @@ Cargo.lock
 *.db
 *.db-shm
 *.db-wal
+# Test fixtures are checked in intentionally (binary DB snapshots)
+!tests/fixtures/*.db
 codemcp/
 
 # Documentation (local only)

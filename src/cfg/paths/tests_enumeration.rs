@@ -640,6 +640,7 @@ fn test_check_path_explosion_exceeds_limit() {
         max_length: 100,
         max_paths: 1,
         loop_unroll_limit: 3,
+        ..Default::default()
     };
     let result = check_path_explosion(&cfg, &limits);
     assert!(result.is_some());

@@ -49,9 +49,12 @@ pub type EnumerationContext = paths::EnumerationContext;
 pub type EnumerationStats = paths::EnumerationStats;
 pub type IncrementalPathsResult = paths::IncrementalPathsResult;
 pub type LimitsHit = paths::LimitsHit;
+pub type PathEnumeration = paths::PathEnumeration;
 pub type PathEnumerationResult = paths::PathEnumerationResult;
 pub type PathKind = paths::PathKind;
 pub type PathLimits = paths::PathLimits;
+
+pub use paths::estimate_path_count;
 
 pub fn find_entry(cfg: &Cfg) -> Option<petgraph::graph::NodeIndex> {
     analysis::find_entry(cfg)
@@ -119,12 +122,24 @@ pub fn enumerate_paths_iterative(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
     paths::enumerate_paths_iterative(cfg, limits)
 }
 
+pub fn enumerate_paths_outcome(cfg: &Cfg, limits: &PathLimits) -> PathEnumeration {
+    paths::enumerate_paths_outcome(cfg, limits)
+}
+
 pub fn enumerate_paths_with_context(
     cfg: &Cfg,
     limits: &PathLimits,
     ctx: &EnumerationContext,
 ) -> Vec<Path> {
     paths::enumerate_paths_with_context(cfg, limits, ctx)
+}
+
+pub fn enumerate_paths_with_context_outcome(
+    cfg: &Cfg,
+    limits: &PathLimits,
+    ctx: &EnumerationContext,
+) -> paths::PathEnumeration {
+    paths::enumerate_paths_with_context_outcome(cfg, limits, ctx)
 }
 
 pub fn enumerate_paths_with_metadata(cfg: &Cfg, limits: &PathLimits) -> PathEnumerationResult {

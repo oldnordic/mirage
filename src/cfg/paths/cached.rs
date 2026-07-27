@@ -106,21 +106,20 @@ pub fn estimate_path_count(cfg: &Cfg, loop_unroll_limit: usize) -> usize {
         return 1;
     }
 
-    let unroll_factor = loop_unroll_limit + 1;
+    let unroll_factor = (loop_unroll_limit + 1) as u128;
 
-    let branch_factor = if branch_count < 31 {
-        2_usize.pow(branch_count as u32)
+    // u128 intermediate so moderately-large estimates (e.g. 2^40) stay
+    // meaningful; only truly astronomical counts saturate to usize::MAX,
+    // which callers must treat as "exceeds representable range".
+    let branch_factor: u128 = if branch_count < 128 {
+        1u128 << branch_count
     } else {
-        usize::MAX / 2
+        u128::MAX
     };
 
-    let loop_factor = if loop_count < 31 {
-        unroll_factor.pow(loop_count as u32)
-    } else {
-        usize::MAX / 2
-    };
+    let loop_factor: u128 = unroll_factor.saturating_pow(loop_count as u32);
 
-    branch_factor.saturating_mul(loop_factor)
+    usize::try_from(branch_factor.saturating_mul(loop_factor)).unwrap_or(usize::MAX)
 }
 
 /// Check if path enumeration may exceed limits

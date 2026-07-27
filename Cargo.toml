@@ -31,7 +31,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 magellan = { version = "4.13.1", default-features = false, features = ["sqlite-backend"] }
 
 # sqlitegraph for GraphBackend trait
-sqlitegraph = { version = "3.7.0", default-features = false, features = ["sqlite-backend"] }
+sqlitegraph = { version = "3.9.0", default-features = false, features = ["sqlite-backend"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

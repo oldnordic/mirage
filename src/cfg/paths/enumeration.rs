@@ -12,6 +12,14 @@ struct ContextPathEnumerator<'a> {
     current_path: Vec<BlockId>,
     visited: HashSet<NodeIndex>,
     loop_iterations: HashMap<NodeIndex, usize>,
+    /// Set once `limits.max_paths` is reached. Checked at DFS entry and in the
+    /// successor loop so post-saturation recursion unwinds in O(depth) instead
+    /// of walking the full exponential recursion tree (the 570s `risk` hang).
+    saturated: bool,
+    /// DFS node visits so far; compared against `limits.max_visits`.
+    visits: usize,
+    /// Set when saturation was caused by the work budget, not the path cap.
+    budget_hit: bool,
 }
 
 impl<'a> ContextPathEnumerator<'a> {
@@ -24,15 +32,29 @@ impl<'a> ContextPathEnumerator<'a> {
             current_path: Vec::new(),
             visited: HashSet::new(),
             loop_iterations: HashMap::new(),
+            saturated: false,
+            visits: 0,
+            budget_hit: false,
         }
     }
 
-    fn enumerate(mut self, entry: NodeIndex) -> Vec<Path> {
+    fn enumerate(mut self, entry: NodeIndex) -> (Vec<Path>, bool, bool) {
         self.dfs(entry);
-        self.paths
+        (self.paths, self.saturated, self.budget_hit)
     }
 
     fn dfs(&mut self, current: NodeIndex) {
+        if self.saturated {
+            return;
+        }
+        self.visits += 1;
+        if self.visits > self.limits.max_visits {
+            // Work budget exhausted: stop immediately. `max_paths` alone does
+            // not bound runtime when complete paths are rare among walks.
+            self.saturated = true;
+            self.budget_hit = true;
+            return;
+        }
         let block_id = match self.cfg.node_weight(current) {
             Some(block) => block.id,
             None => return,
@@ -49,11 +71,14 @@ impl<'a> ContextPathEnumerator<'a> {
             let kind =
                 classify_path_precomputed(self.cfg, &self.current_path, &self.ctx.reachable_blocks);
             self.paths.push(Path::new(self.current_path.clone(), kind));
+            if self.paths.len() >= self.limits.max_paths {
+                self.saturated = true;
+            }
             self.current_path.pop();
             return;
         }
 
-        if self.paths.len() >= self.limits.max_paths {
+        if self.saturated {
             self.current_path.pop();
             return;
         }
@@ -78,6 +103,9 @@ impl<'a> ContextPathEnumerator<'a> {
 
         let neighbors: Vec<_> = self.cfg.neighbors(current).collect();
         for next in neighbors {
+            if self.saturated {
+                break;
+            }
             self.dfs(next);
         }
 
@@ -102,6 +130,12 @@ struct PathEnumerator<'a> {
     current_path: Vec<BlockId>,
     visited: HashSet<NodeIndex>,
     loop_iterations: HashMap<NodeIndex, usize>,
+    /// Set once `limits.max_paths` is reached; short-circuits the remaining DFS.
+    saturated: bool,
+    /// DFS node visits so far; compared against `limits.max_visits`.
+    visits: usize,
+    /// Set when saturation was caused by the work budget, not the path cap.
+    budget_hit: bool,
 }
 
 impl<'a> PathEnumerator<'a> {
@@ -122,15 +156,27 @@ impl<'a> PathEnumerator<'a> {
             current_path: Vec::new(),
             visited: HashSet::new(),
             loop_iterations: HashMap::new(),
+            saturated: false,
+            visits: 0,
+            budget_hit: false,
         }
     }
 
-    fn enumerate(mut self, entry: NodeIndex) -> Vec<Path> {
+    fn enumerate(mut self, entry: NodeIndex) -> (Vec<Path>, bool, bool) {
         self.dfs(entry);
-        self.paths
+        (self.paths, self.saturated, self.budget_hit)
     }
 
     fn dfs(&mut self, current: NodeIndex) {
+        if self.saturated {
+            return;
+        }
+        self.visits += 1;
+        if self.visits > self.limits.max_visits {
+            self.saturated = true;
+            self.budget_hit = true;
+            return;
+        }
         let block_id = match self.cfg.node_weight(current) {
             Some(block) => block.id,
             None => return,
@@ -147,11 +193,14 @@ impl<'a> PathEnumerator<'a> {
             let kind =
                 classify_path_precomputed(self.cfg, &self.current_path, &self.reachable_blocks);
             self.paths.push(Path::new(self.current_path.clone(), kind));
+            if self.paths.len() >= self.limits.max_paths {
+                self.saturated = true;
+            }
             self.current_path.pop();
             return;
         }
 
-        if self.paths.len() >= self.limits.max_paths {
+        if self.saturated {
             self.current_path.pop();
             return;
         }
@@ -175,6 +224,9 @@ impl<'a> PathEnumerator<'a> {
             let kind =
                 classify_path_precomputed(self.cfg, &self.current_path, &self.reachable_blocks);
             self.paths.push(Path::new(self.current_path.clone(), kind));
+            if self.paths.len() >= self.limits.max_paths {
+                self.saturated = true;
+            }
         } else {
             for succ in successors {
                 let is_back_edge =
@@ -192,7 +244,7 @@ impl<'a> PathEnumerator<'a> {
 
                 self.dfs(succ);
 
-                if self.paths.len() >= self.limits.max_paths {
+                if self.saturated {
                     break;
                 }
             }
@@ -212,27 +264,86 @@ impl<'a> PathEnumerator<'a> {
     }
 }
 
+/// Result of a bounded path enumeration.
+///
+/// `truncated` is true when enumeration stopped early because
+/// `PathLimits::max_paths` was reached — in that case `paths` is a prefix
+/// sample, not the complete set, and callers must not present its length as
+/// the true path count.
+#[derive(Debug, Clone)]
+pub struct PathEnumeration {
+    pub paths: Vec<Path>,
+    /// True when enumeration stopped early for any reason (path cap or work
+    /// budget); `paths` is then a sample, not the complete set.
+    pub truncated: bool,
+    /// True when the `max_visits` work budget (not the `max_paths` cap) caused
+    /// the truncation — i.e. the CFG is too dense/loopy for deeper exact
+    /// enumeration within the budget.
+    pub budget_exhausted: bool,
+}
+
 pub fn enumerate_paths_with_context(
     cfg: &Cfg,
     limits: &PathLimits,
     ctx: &EnumerationContext,
 ) -> Vec<Path> {
+    enumerate_paths_with_context_outcome(cfg, limits, ctx).paths
+}
+
+/// Bounded enumeration with honest truncation reporting.
+///
+/// Always terminates: once `max_paths` paths have been collected the DFS
+/// unwinds immediately (a `saturated` flag short-circuits every remaining
+/// recursive call), so even a 2^N-path CFG costs only as much as collecting
+/// the first `max_paths` paths.
+pub fn enumerate_paths_with_context_outcome(
+    cfg: &Cfg,
+    limits: &PathLimits,
+    ctx: &EnumerationContext,
+) -> PathEnumeration {
     let entry = match crate::cfg::analysis::find_entry(cfg) {
         Some(e) => e,
-        None => return vec![],
+        None => {
+            return PathEnumeration {
+                paths: vec![],
+                truncated: false,
+                budget_exhausted: false,
+            }
+        }
     };
 
     if ctx.exits.is_empty() {
-        return vec![];
+        return PathEnumeration {
+            paths: vec![],
+            truncated: false,
+            budget_exhausted: false,
+        };
     }
 
-    ContextPathEnumerator::new(cfg, limits, ctx).enumerate(entry)
+    let (paths, truncated, budget_exhausted) =
+        ContextPathEnumerator::new(cfg, limits, ctx).enumerate(entry);
+    PathEnumeration {
+        paths,
+        truncated,
+        budget_exhausted,
+    }
 }
 
 pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
+    enumerate_paths_outcome(cfg, limits).paths
+}
+
+/// Bounded enumeration (no pre-computed context) with truncation reporting.
+pub fn enumerate_paths_outcome(cfg: &Cfg, limits: &PathLimits) -> PathEnumeration {
     let entry = match crate::cfg::analysis::find_entry(cfg) {
         Some(e) => e,
-        None => return vec![],
+        None => {
+            return PathEnumeration {
+                paths: vec![],
+                truncated: false,
+                budget_exhausted: false,
+            }
+        }
     };
 
     let mut exits: HashSet<NodeIndex> = crate::cfg::analysis::find_exits(cfg).into_iter().collect();
@@ -246,7 +357,11 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
     }
 
     if exits.is_empty() {
-        return vec![];
+        return PathEnumeration {
+            paths: vec![],
+            truncated: false,
+            budget_exhausted: false,
+        };
     }
 
     let reachable_nodes = crate::cfg::reachability::find_reachable(cfg);
@@ -254,7 +369,13 @@ pub fn enumerate_paths(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
         reachable_nodes.iter().map(|&idx| cfg[idx].id).collect();
 
     let loop_headers = crate::cfg::loops::find_loop_headers(cfg);
-    PathEnumerator::new(cfg, exits, limits, loop_headers, reachable_blocks).enumerate(entry)
+    let (paths, truncated, budget_exhausted) =
+        PathEnumerator::new(cfg, exits, limits, loop_headers, reachable_blocks).enumerate(entry);
+    PathEnumeration {
+        paths,
+        truncated,
+        budget_exhausted,
+    }
 }
 
 /// Iterative DFS path enumeration (stack-based, no recursion)
@@ -299,6 +420,7 @@ pub fn enumerate_paths_iterative(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
 
     let mut stack = Vec::new();
     let mut paths = Vec::new();
+    let mut visits: usize = 0;
 
     let entry_block_id = cfg[entry].id;
     let mut initial_visited = HashSet::new();
@@ -321,6 +443,12 @@ pub fn enumerate_paths_iterative(cfg: &Cfg, limits: &PathLimits) -> Vec<Path> {
 
         if current_path.len() > limits.max_length {
             continue;
+        }
+
+        visits += 1;
+        if visits > limits.max_visits {
+            // Work budget exhausted: stop; results are a truncated sample.
+            break;
         }
 
         if exits.contains(&current) {

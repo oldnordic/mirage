@@ -546,6 +546,27 @@ pub struct RiskArgs {
     /// File path to disambiguate functions with same name (optional)
     #[arg(long)]
     pub file: Option<String>,
+
+    /// Fold an opt-in coverage-inverse factor into the risk score: the
+    /// fraction of the function's CFG blocks with zero coverage hits adds up
+    /// to +5.0. Gracefully skipped when the function has no coverage rows.
+    /// Off by default so the default score agrees with `mirage suggest`.
+    /// Mined from code-review-graph (MIT, Tirth Kanani 2026).
+    #[arg(long)]
+    pub coverage: bool,
+
+    /// Fold an opt-in git-churn factor into the risk score: the number of
+    /// commits touching the function's file in the trailing window (default
+    /// 90 days), saturating at 10 commits for up to +4.0. Requires a git
+    /// repo. Off by default so the default score agrees with `mirage
+    /// suggest`. Mined from code-review-graph's opt-in churn term (MIT,
+    /// Tirth Kanani 2026).
+    #[arg(long)]
+    pub churn: bool,
+
+    /// Trailing window in days for `--churn` commit counting.
+    #[arg(long, default_value_t = 90)]
+    pub churn_days: u32,
 }
 
 /// Suggest refactoring arguments

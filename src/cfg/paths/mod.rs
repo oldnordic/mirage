@@ -36,13 +36,21 @@
 //! - **Degenerate:** Dead end, infinite loop, or infeasible path
 //! - **Unreachable:** Statically unreachable code path
 
+pub mod cached;
 pub mod enumeration;
 pub mod feasibility;
 pub mod incremental;
 pub mod limits;
 pub mod metadata;
 
-pub use enumeration::{enumerate_paths, enumerate_paths_iterative, enumerate_paths_with_context};
+pub use cached::{
+    check_path_explosion, enumerate_paths_cached, enumerate_paths_cached_with_context,
+    estimate_path_count,
+};
+pub use enumeration::{
+    enumerate_paths, enumerate_paths_iterative, enumerate_paths_outcome,
+    enumerate_paths_with_context, enumerate_paths_with_context_outcome, PathEnumeration,
+};
 pub use feasibility::{
     classify_path, classify_path_precomputed, is_feasible_path, is_feasible_path_precomputed,
 };

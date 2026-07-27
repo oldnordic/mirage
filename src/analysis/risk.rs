@@ -6,13 +6,22 @@
 //! - Nesting depth (max loop nesting)
 //! - Error path ratio (error paths / total paths)
 //! - Block count (function size indicator)
+//!
+//! Path enumeration is *bounded*: it stops at `PathLimits::max_paths` and the
+//! report then carries `path_count_truncated: true` plus an estimate of the
+//! true path count, instead of hanging on huge dispatch CFGs.
+//!
+//! The headline severity (`risk_level`) comes from
+//! [`crate::analysis::severity`], the same mapping `suggest` uses, so the two
+//! subcommands cannot disagree on severity for the same function.
 
 use anyhow::Result;
 use serde::Serialize;
 
+use crate::analysis::severity::{classify_score, composite_score};
 use crate::cfg::{
-    detect_natural_loops, enumerate_paths_with_context, Cfg, EnumerationContext, PathKind,
-    PathLimits,
+    detect_natural_loops, enumerate_paths_with_context_outcome, estimate_path_count, Cfg,
+    EnumerationContext, PathKind, PathLimits,
 };
 use crate::storage::MirageDb;
 
@@ -32,6 +41,17 @@ pub struct RiskReport {
 pub struct RiskFactors {
     pub cyclomatic_complexity: usize,
     pub path_count: usize,
+    /// True when enumeration stopped early (path cap or work budget);
+    /// `path_count` is then a lower bound, not the true path count.
+    pub path_count_truncated: bool,
+    /// True when truncation was caused by the DFS work budget
+    /// (`PathLimits::max_visits`) rather than the path cap — the CFG is too
+    /// dense/loopy for exact enumeration within the budget.
+    pub path_count_budget_exhausted: bool,
+    /// Estimated true path count (branch/loop upper bound), present only when
+    /// `path_count_truncated` is true.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_count_estimated: Option<usize>,
     pub error_path_count: usize,
     pub error_path_ratio: f64,
     pub block_count: usize,
@@ -49,20 +69,50 @@ pub fn compute_risk(
 
     let cfg = load_cfg_from_db_with_conn(conn, function_id)?;
 
-    let ctx = EnumerationContext::new(&cfg);
-    let limits = PathLimits::default();
-    let paths = enumerate_paths_with_context(&cfg, &limits, &ctx);
+    Ok(compute_risk_from_cfg(&cfg, function_name, file_path))
+}
 
-    let path_count = paths.len();
-    let error_path_count = paths.iter().filter(|p| p.kind == PathKind::Error).count();
+/// Compute a risk report from an already-loaded CFG.
+///
+/// Always terminates in bounded time: enumeration stops at
+/// `PathLimits::max_paths` and unwinds immediately once saturated.
+pub fn compute_risk_from_cfg(
+    cfg: &Cfg,
+    function_name: &str,
+    file_path: Option<&str>,
+) -> RiskReport {
+    let ctx = EnumerationContext::new(cfg);
+    let limits = PathLimits::default();
+    let outcome = enumerate_paths_with_context_outcome(cfg, &limits, &ctx);
+
+    let path_count = outcome.paths.len();
+    let path_count_truncated = outcome.truncated;
+    let path_count_budget_exhausted = outcome.budget_exhausted;
+    // estimate_path_count saturates at usize::MAX for astronomically large
+    // counts; don't present the sentinel as a number.
+    let path_count_estimated = if path_count_truncated {
+        let est = estimate_path_count(cfg, limits.loop_unroll_limit);
+        if est == usize::MAX {
+            None
+        } else {
+            Some(est)
+        }
+    } else {
+        None
+    };
+    let error_path_count = outcome
+        .paths
+        .iter()
+        .filter(|p| p.kind == PathKind::Error)
+        .count();
     let error_path_ratio = if path_count > 0 {
         error_path_count as f64 / path_count as f64
     } else {
         0.0
     };
 
-    let cyclomatic_complexity = compute_cyclomatic_complexity(&cfg);
-    let natural_loops = detect_natural_loops(&cfg);
+    let cyclomatic_complexity = compute_cyclomatic_complexity(cfg);
+    let natural_loops = detect_natural_loops(cfg);
     let loop_count = natural_loops.len();
     let max_nesting_depth = natural_loops
         .iter()
@@ -71,7 +121,7 @@ pub fn compute_risk(
         .unwrap_or(0);
     let block_count = cfg.node_count();
 
-    let risk_score = score(
+    let risk_score = composite_score(
         cyclomatic_complexity,
         path_count,
         error_path_ratio,
@@ -79,9 +129,9 @@ pub fn compute_risk(
         max_nesting_depth,
     );
 
-    let risk_level = classify_risk(risk_score);
+    let risk_level = classify_score(risk_score).to_string();
 
-    Ok(RiskReport {
+    RiskReport {
         function: function_name.to_string(),
         file_path: file_path.map(|s| s.to_string()),
         risk_score,
@@ -89,13 +139,16 @@ pub fn compute_risk(
         factors: RiskFactors {
             cyclomatic_complexity,
             path_count,
+            path_count_truncated,
+            path_count_budget_exhausted,
+            path_count_estimated,
             error_path_count,
             error_path_ratio,
             block_count,
             max_nesting_depth,
             loop_count,
         },
-    })
+    }
 }
 
 fn compute_cyclomatic_complexity(cfg: &Cfg) -> usize {
@@ -111,54 +164,26 @@ fn compute_cyclomatic_complexity(cfg: &Cfg) -> usize {
     }
 }
 
-fn score(
-    complexity: usize,
-    path_count: usize,
-    error_ratio: f64,
-    block_count: usize,
-    nesting: usize,
-) -> f64 {
-    let complexity_weight = (complexity as f64).ln_1p() * 3.0;
-    let path_weight = (path_count as f64).ln_1p() * 2.0;
-    let error_weight = error_ratio * 5.0;
-    let size_weight = (block_count as f64).ln_1p() * 1.0;
-    let nesting_weight = (nesting as f64) * 4.0;
-
-    complexity_weight + path_weight + error_weight + size_weight + nesting_weight
-}
-
-fn classify_risk(score: f64) -> String {
-    if score >= 25.0 {
-        "critical".to_string()
-    } else if score >= 15.0 {
-        "high".to_string()
-    } else if score >= 8.0 {
-        "medium".to_string()
-    } else {
-        "low".to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_classify_risk() {
-        assert_eq!(classify_risk(0.0), "low");
-        assert_eq!(classify_risk(5.0), "low");
-        assert_eq!(classify_risk(8.0), "medium");
-        assert_eq!(classify_risk(14.0), "medium");
-        assert_eq!(classify_risk(15.0), "high");
-        assert_eq!(classify_risk(24.0), "high");
-        assert_eq!(classify_risk(25.0), "critical");
-        assert_eq!(classify_risk(100.0), "critical");
+        assert_eq!(classify_score(0.0), "low");
+        assert_eq!(classify_score(5.0), "low");
+        assert_eq!(classify_score(8.0), "medium");
+        assert_eq!(classify_score(14.0), "medium");
+        assert_eq!(classify_score(15.0), "high");
+        assert_eq!(classify_score(24.0), "high");
+        assert_eq!(classify_score(25.0), "critical");
+        assert_eq!(classify_score(100.0), "critical");
     }
 
     #[test]
     fn test_score_monotonic() {
-        let s1 = score(5, 10, 0.1, 20, 1);
-        let s2 = score(20, 50, 0.5, 100, 3);
+        let s1 = composite_score(5, 10, 0.1, 20, 1);
+        let s2 = composite_score(20, 50, 0.5, 100, 3);
         assert!(s2 > s1, "higher inputs should produce higher score");
     }
 

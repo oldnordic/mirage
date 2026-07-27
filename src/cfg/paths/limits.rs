@@ -14,6 +14,15 @@ pub struct PathLimits {
     pub max_paths: usize,
     /// Loop iterations to unroll before stopping
     pub loop_unroll_limit: usize,
+    /// Maximum number of DFS node visits (work budget)
+    ///
+    /// `max_paths` alone does NOT bound runtime: on dense/loopy CFGs the DFS
+    /// can explore an exponential number of *walks* while recording few
+    /// complete paths (most walks dead-end on the visited set or the length
+    /// cap). This budget caps total work, guaranteeing termination in time
+    /// proportional to the budget regardless of CFG shape. When hit,
+    /// enumeration reports itself truncated.
+    pub max_visits: usize,
 }
 
 impl Default for PathLimits {
@@ -22,6 +31,7 @@ impl Default for PathLimits {
             max_length: 1000,
             max_paths: 10000,
             loop_unroll_limit: 3,
+            max_visits: 5_000_000,
         }
     }
 }
@@ -33,6 +43,7 @@ impl PathLimits {
             max_length,
             max_paths,
             loop_unroll_limit,
+            ..Default::default()
         }
     }
 
@@ -54,6 +65,12 @@ impl PathLimits {
         self
     }
 
+    /// Create limits with a custom DFS work budget
+    pub fn with_max_visits(mut self, max_visits: usize) -> Self {
+        self.max_visits = max_visits;
+        self
+    }
+
     /// Quick analysis preset for fast, approximate path enumeration
     ///
     /// Use this for:
@@ -70,6 +87,7 @@ impl PathLimits {
             max_length: 100,
             max_paths: 1000,
             loop_unroll_limit: 2,
+            max_visits: 500_000,
         }
     }
 
@@ -89,6 +107,7 @@ impl PathLimits {
             max_length: 10000,
             max_paths: 100000,
             loop_unroll_limit: 5,
+            max_visits: 50_000_000,
         }
     }
 }

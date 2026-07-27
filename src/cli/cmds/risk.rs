@@ -45,10 +45,27 @@ pub fn risk(args: &RiskArgs, cli: &Cli) -> Result<()> {
                 "  Cyclomatic complexity: {}",
                 report.factors.cyclomatic_complexity
             );
-            println!(
-                "  Paths: {} ({} error)",
-                report.factors.path_count, report.factors.error_path_count
-            );
+            if report.factors.path_count_truncated {
+                let reason = if report.factors.path_count_budget_exhausted {
+                    "work budget exhausted; path sample only"
+                } else {
+                    "truncated at cap"
+                };
+                let estimate = report
+                    .factors
+                    .path_count_estimated
+                    .map(|e| format!("~{}", e))
+                    .unwrap_or_else(|| "astronomical (exceeds 2^64)".to_string());
+                println!(
+                    "  Paths: {} ({} error) [{}; estimated true count: {}]",
+                    report.factors.path_count, report.factors.error_path_count, reason, estimate
+                );
+            } else {
+                println!(
+                    "  Paths: {} ({} error)",
+                    report.factors.path_count, report.factors.error_path_count
+                );
+            }
             println!("  Blocks: {}", report.factors.block_count);
             println!(
                 "  Loops: {} (max nesting: {})",
@@ -56,11 +73,17 @@ pub fn risk(args: &RiskArgs, cli: &Cli) -> Result<()> {
             );
         }
         OutputFormat::Json => {
-            let response = output::JsonResponse::new(&report);
+            let mut response = output::JsonResponse::new(&report);
+            if report.factors.path_count_truncated {
+                response.truncated = Some(true);
+            }
             println!("{}", response.to_json());
         }
         OutputFormat::Pretty => {
-            let response = output::JsonResponse::new(&report);
+            let mut response = output::JsonResponse::new(&report);
+            if report.factors.path_count_truncated {
+                response.truncated = Some(true);
+            }
             println!("{}", response.to_pretty_json());
         }
     }

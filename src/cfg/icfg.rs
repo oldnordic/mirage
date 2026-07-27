@@ -745,9 +745,32 @@ mod tests {
     use super::*;
     use crate::cfg::PathLimits;
     use crate::storage::MirageDb;
-    use magellan::CodeGraph;
     use petgraph::visit::EdgeRef;
     use tempfile::TempDir;
+
+    /// Copy the checked-in caller/callee fixture DB into a fresh temp dir and
+    /// return `(TempDir, db_path)`. The fixture was generated once with
+    /// `magellan::CodeGraph::index_file` (magellan 4.13.1 + sqlitegraph 3.7.0)
+    /// indexing exactly:
+    ///
+    /// ```rust
+    /// fn callee(x: i32) -> i32 { return x + 1; }
+    /// fn caller() -> i32 { let y = callee(41); return y + 1; }
+    /// ```
+    ///
+    /// It is checked in as a binary because magellan's write path
+    /// (`index_file`, pool_size = 1) deadlocks against sqlitegraph >= 3.9
+    /// (nested pooled-connection checkout in `insert_entity` ->
+    /// `bump_authoritative_version`), while mirage only ever *reads* magellan
+    /// databases in production.
+    fn copy_icfg_fixture(name: &str) -> (TempDir, std::path::PathBuf) {
+        let temp_dir = TempDir::new().unwrap();
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/icfg_caller_callee.db");
+        let db_path = temp_dir.path().join(name);
+        std::fs::copy(&src, &db_path).unwrap();
+        (temp_dir, db_path)
+    }
 
     #[test]
     fn test_icfg_options_default() {
@@ -771,29 +794,7 @@ mod tests {
 
     #[test]
     fn test_build_icfg_stitches_real_callsite_and_resume_blocks() {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("icfg.db");
-
-        let callee_source = r#"
-fn callee(x: i32) -> i32 {
-    return x + 1;
-}
-"#;
-
-        let caller_source = r#"
-fn caller() -> i32 {
-    let y = callee(41);
-    return y + 1;
-}
-"#;
-
-        let mut graph = CodeGraph::open(&db_path).unwrap();
-        graph
-            .index_file("callee.rs", callee_source.as_bytes())
-            .unwrap();
-        graph
-            .index_file("caller.rs", caller_source.as_bytes())
-            .unwrap();
+        let (_temp_dir, db_path) = copy_icfg_fixture("icfg.db");
 
         let db = MirageDb::open(&db_path).unwrap();
         let caller_id = db.resolve_function_name("caller").unwrap();
@@ -850,29 +851,7 @@ fn caller() -> i32 {
 
     #[test]
     fn test_enumerate_icfg_paths_crosses_call_and_return_edges() {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("icfg-paths.db");
-
-        let callee_source = r#"
-fn callee(x: i32) -> i32 {
-    return x + 1;
-}
-"#;
-
-        let caller_source = r#"
-fn caller() -> i32 {
-    let y = callee(41);
-    return y + 1;
-}
-"#;
-
-        let mut graph = CodeGraph::open(&db_path).unwrap();
-        graph
-            .index_file("callee.rs", callee_source.as_bytes())
-            .unwrap();
-        graph
-            .index_file("caller.rs", caller_source.as_bytes())
-            .unwrap();
+        let (_temp_dir, db_path) = copy_icfg_fixture("icfg-paths.db");
 
         let db = MirageDb::open(&db_path).unwrap();
         let caller_id = db.resolve_function_name("caller").unwrap();

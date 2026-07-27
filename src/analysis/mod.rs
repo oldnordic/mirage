@@ -15,9 +15,12 @@ pub mod analysis_types;
 pub mod bridge;
 pub mod json_types;
 pub mod risk;
+pub mod severity;
 pub mod stats;
 pub mod suggest;
 pub mod telemetry;
+#[cfg(test)]
+mod tests_p2_bounded_risk;
 
 pub use magellan::CodeGraph;
 

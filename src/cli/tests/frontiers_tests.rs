@@ -337,6 +337,7 @@ fn test_hotspots_args_parsing() {
         verbose: true,
         inter_procedural: false,
         intra_procedural: false,
+        chunk_size: 500,
         tokens: None,
     };
 
@@ -357,6 +358,7 @@ fn test_hotspots_args_default_entry() {
         verbose: false,
         inter_procedural: false,
         intra_procedural: false,
+        chunk_size: 500,
         tokens: None,
     };
 

@@ -5,6 +5,28 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`mirage hotspots` no longer hangs on large databases.** The default
+  inter-procedural mode previously enumerated call-graph execution paths
+  from the entry symbol via `magellan::CodeGraph::enumerate_paths`, whose
+  DFS has no work budget and no early exit once `max_paths` is reached —
+  on a ~5k-symbol / ~70k-edge call graph it explored a combinatorial
+  number of walks (one SQLite query per visited node), so the command was
+  effectively killed by timeout after burning CPU for hours (observed:
+  10h+ on a 5231-symbol DB; peak RSS stayed ~1.4G, i.e. unbounded
+  runtime, not OOM). Hotspots now streams candidate symbols in bounded
+  chunks (`--chunk-size`, default 500; keyset pagination) and scores each
+  chunk from bounded queries — call-graph degree (callers + callees) and
+  in-memory Tarjan SCC sizes — merged through a bounded top-K heap, so
+  peak memory is independent of symbol count and the global ranking is
+  exact (chunk size never changes the result). The same command now
+  completes in well under a second. `--intra-procedural` (per-function
+  CFG path enumeration) now actually forces intra-procedural mode; it was
+  previously accepted but ignored because inter-procedural defaulted on.
+
 ## [1.11.0] - 2026-07-27
 
 ### Fixed

@@ -450,14 +450,24 @@ pub struct HotspotsArgs {
     #[arg(long)]
     pub verbose: bool,
 
-    /// Use inter-procedural analysis (requires Magellan DB)
+    /// Use inter-procedural analysis (call-graph degree + SCC coupling)
     /// Enabled by default. Use --intra-procedural to force intra-procedural analysis.
     #[arg(long, default_value = "true")]
     pub inter_procedural: bool,
 
-    /// Use intra-procedural analysis only (faster, but may show 0 functions if cfg_blocks not populated)
+    /// Use intra-procedural analysis only (per-function CFG path enumeration)
     #[arg(long, conflicts_with = "inter_procedural")]
     pub intra_procedural: bool,
+
+    /// Number of candidate symbols processed per chunk
+    ///
+    /// Candidates are streamed from the database in bounded chunks and
+    /// merged through a bounded top-K heap, so peak memory is independent
+    /// of the total symbol count. The chunk size does not affect the
+    /// ranking: per-symbol scores are chunk-independent and the top-K
+    /// merge is exact.
+    #[arg(long, default_value = "500")]
+    pub chunk_size: usize,
 
     /// Token budget for output (0 or absent = no limit)
     #[arg(long)]

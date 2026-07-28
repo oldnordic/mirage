@@ -665,7 +665,7 @@ Found 5 hot paths
 
 ### `hotspots` - High-Risk Functions
 
-Identify high-risk functions using path counts, call dominance, and complexity.
+Identify high-risk functions using call-graph traffic, SCC coupling, and complexity.
 
 ```bash
 mirage hotspots --entry main --top 10
@@ -675,12 +675,24 @@ mirage hotspots --entry main --top 10
 |--------|-------------|
 | `--entry <SYMBOL>` | Entry point for analysis (default: main) |
 | `--top <N>` | Max hotspots to return (default: 20) |
-| `--min-paths <N>` | Minimum path count threshold |
+| `--min-paths <N>` | Minimum traffic/path threshold (default: 1) |
 | `--verbose` | Show detailed metrics |
-| `--inter-procedural` | Use call graph analysis (requires Magellan) |
+| `--inter-procedural` | Use call graph analysis (default) |
+| `--intra-procedural` | Force per-function CFG path enumeration |
+| `--chunk-size <N>` | Symbols processed per chunk (default: 500) |
+
+**Scalability:** candidates are streamed from the database in bounded
+chunks (keyset pagination) and merged through a bounded top-K heap, so
+peak memory is independent of the symbol count and the global ranking is
+exact (chunk size never changes the result).
 
 **Risk Score Calculation:**
-- Combines path count, SCC size (coupling), and complexity
+- Inter-procedural (default): `degree * 1.0 + scc_size * 2.0` where
+  `degree` is the symbol's call-graph degree (callers + callees, reported
+  as `Paths`) and `scc_size` is its strongly-connected-component size
+  (`Dominance`).
+- Intra-procedural: `path_count * 0.5 + complexity * 0.1` from bounded
+  per-function CFG path enumeration.
 - Higher score = higher risk
 
 **Output:**

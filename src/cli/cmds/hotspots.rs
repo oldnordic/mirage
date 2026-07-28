@@ -4,150 +4,81 @@ use crate::output;
 use anyhow::Result;
 
 pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
-    use crate::analysis::MagellanBridge;
-    #[cfg(feature = "sqlite")]
-    use crate::cfg::{
-        enumerate_paths_with_context, load_cfg_from_db_with_conn, EnumerationContext, PathLimits,
-    };
-    #[cfg(feature = "sqlite")]
-    use crate::storage::MirageDb;
-    use std::collections::HashMap;
+    #[cfg(feature = "backend-sqlite")]
+    use crate::analysis::hotspots::{rank_inter_procedural, rank_intra_procedural, RankedHotspots};
 
     let db_path = resolve_db_path(cli.db.clone())?;
 
     // Open Mirage database for intra-procedural analysis
     // (honest open-error handling via shared helper)
-    #[cfg(feature = "sqlite")]
+    #[cfg(feature = "backend-sqlite")]
     let mut db = super::open_db_or_exit(cli, &db_path);
 
-    let mut hotspots: Vec<HotspotEntry> = Vec::new();
-    let mut function_count = 0;
+    let min_threshold = args.min_paths.unwrap_or(1);
+    let chunk_size = args.chunk_size.max(1);
 
-    if args.inter_procedural {
-        // Inter-procedural: Use Magellan for call graph analysis
-        match MagellanBridge::open(&db_path) {
-            Ok(bridge) => {
-                // Get path enumeration from entry point
-                let path_result = bridge.enumerate_paths(&args.entry, None, 50, args.top * 10);
+    // `--intra-procedural` forces intra-procedural analysis; otherwise the
+    // default inter-procedural mode runs (falling back to intra-procedural
+    // when the DB carries no call-graph edges).
+    let use_inter = args.inter_procedural && !args.intra_procedural;
 
-                if let Ok(paths) = path_result {
-                    // Count paths through each function
-                    let mut path_counts: HashMap<String, usize> = HashMap::new();
-
-                    for path in &paths.paths {
-                        for symbol in &path.symbols {
-                            if let Some(fqn) = &symbol.fqn {
-                                *path_counts.entry(fqn.clone()).or_insert(0) += 1;
-                            }
-                        }
-                    }
-
-                    // Get condensation for dominance (SCC size indicates coupling)
-                    let condensed = bridge.condense_call_graph();
-                    if let Ok(condensed) = condensed {
-                        let mut scc_sizes: HashMap<String, f64> = HashMap::new();
-
-                        for supernode in &condensed.graph.supernodes {
-                            let size = supernode.members.len() as f64;
-                            for member in &supernode.members {
-                                if let Some(fqn) = &member.fqn {
-                                    scc_sizes.insert(fqn.clone(), size);
-                                }
-                            }
-                        }
-
-                        // Combine metrics for hotspot scoring
-                        for (fqn, path_count) in &path_counts {
-                            if *path_count >= args.min_paths.unwrap_or(1) {
-                                let dominance = scc_sizes.get(fqn).copied().unwrap_or(1.0);
-                                let risk_score = (*path_count as f64) * 1.0 + dominance * 2.0;
-
-                                hotspots.push(HotspotEntry {
-                                    function: fqn.clone(),
-                                    risk_score,
-                                    path_count: *path_count,
-                                    dominance_factor: dominance,
-                                    complexity: 0, // Would need CFG for this
-                                    file_path: "".to_string(),
-                                });
-                            }
-                        }
-
-                        // Count total functions found in inter-procedural analysis
-                        function_count = path_counts.len();
-                    }
-                }
-            }
-            Err(_) => {
-                output::warn("Magellan database not available, using intra-procedural analysis");
-            }
-        }
-    }
-
-    // Fallback to intra-procedural if no hotspots found or inter-procedural failed
-    #[cfg(feature = "sqlite")]
-    if hotspots.is_empty() && db.is_sqlite() {
-        // Get all functions from database by joining with graph_entities
+    #[cfg(feature = "backend-sqlite")]
+    let (ranked, mode): (RankedHotspots, &str) = {
+        let is_sqlite = db.is_sqlite();
         let conn = db.conn_mut()?;
+        let mut mode = "intra-procedural";
+        let mut ranked = RankedHotspots::default();
 
-        let query = "SELECT DISTINCT cb.function_id, ge.name, ge.file_path
-                    FROM cfg_blocks cb
-                    JOIN graph_entities ge ON cb.function_id = ge.id";
-        let mut stmt = conn.prepare(query)?;
-
-        let function_rows = stmt.query_map([], |row: &rusqlite::Row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })?;
-
-        for func_result in function_rows {
-            let (func_id, func_name, file_path) = func_result?;
-            function_count += 1;
-
-            if let Ok(cfg) = load_cfg_from_db_with_conn(conn, func_id) {
-                let ctx = EnumerationContext::new(&cfg);
-                let limits = PathLimits::quick_analysis();
-                let paths = enumerate_paths_with_context(&cfg, &limits, &ctx);
-
-                let path_count = paths.len();
-                if path_count < args.min_paths.unwrap_or(1) {
-                    continue;
+        if use_inter {
+            match rank_inter_procedural(conn, args.top, chunk_size, min_threshold) {
+                Ok(r) if !r.entries.is_empty() => {
+                    ranked = r;
+                    mode = "inter-procedural";
                 }
-
-                let complexity = cfg.node_count();
-                let dominance = 1.0;
-                let risk_score = path_count as f64 * 0.5 + complexity as f64 * 0.1;
-
-                hotspots.push(HotspotEntry {
-                    function: func_name.clone(),
-                    risk_score,
-                    path_count,
-                    dominance_factor: dominance,
-                    complexity,
-                    file_path,
-                });
+                Ok(_) => {
+                    output::warn(
+                        "No call-graph edges found, falling back to intra-procedural analysis",
+                    );
+                }
+                Err(e) => {
+                    output::warn(&format!(
+                        "Inter-procedural analysis unavailable ({e}), using intra-procedural analysis"
+                    ));
+                }
             }
         }
-    }
-    // Sort by risk score (descending) - use total_cmp for f64 comparison
-    hotspots.sort_by(|a, b| b.risk_score.total_cmp(&a.risk_score));
 
-    // Limit to top N
-    hotspots.truncate(args.top);
+        if ranked.entries.is_empty() && mode == "intra-procedural" && is_sqlite {
+            ranked = rank_intra_procedural(conn, args.top, chunk_size, min_threshold)?;
+        }
+
+        (ranked, mode)
+    };
+
+    #[cfg(not(feature = "backend-sqlite"))]
+    let (ranked, mode): (crate::analysis::hotspots::RankedHotspots, &str) = {
+        let _ = &db_path;
+        (Default::default(), "intra-procedural")
+    };
+
+    let hotspots: Vec<HotspotEntry> = ranked
+        .entries
+        .iter()
+        .map(|e| HotspotEntry {
+            function: e.function.clone(),
+            risk_score: e.risk_score,
+            path_count: e.path_count,
+            dominance_factor: e.dominance_factor,
+            complexity: e.complexity,
+            file_path: e.file_path.clone(),
+        })
+        .collect();
 
     let response = HotspotsResponse {
         entry_point: args.entry.clone(),
-        total_functions: function_count,
+        total_functions: ranked.total_functions,
         hotspots: hotspots.clone(),
-        mode: if args.inter_procedural {
-            "inter-procedural"
-        } else {
-            "intra-procedural"
-        }
-        .to_string(),
+        mode: mode.to_string(),
     };
 
     match cli.output {
@@ -164,7 +95,6 @@ pub fn hotspots(args: &HotspotsArgs, cli: &Cli) -> Result<()> {
                 output.push_str("No functions found. This may be because:\n");
                 output.push_str("  1. The database hasn't been indexed yet\n");
                 output.push_str("  2. You need to run: magellan watch --db <path>\n");
-                output.push_str("  3. Try --inter-procedural for call-graph-based analysis\n");
                 output.push('\n');
             }
 

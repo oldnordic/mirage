@@ -13,6 +13,7 @@
 
 pub mod analysis_types;
 pub mod bridge;
+pub mod hotspots;
 pub mod json_types;
 pub mod risk;
 pub mod severity;

@@ -5,7 +5,17 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.12.0] - 2026-07-28
+
+### Added
+
+- **Opt-in risk factors: `--coverage` and `--churn`** (`src/analysis/risk.rs`):
+  `mirage risk` can now blend two additional, explicitly flag-gated signals
+  into the risk score — coverage-inverse (per-block coverage data where
+  available) and git-churn (file change frequency). Both are off by default;
+  the P2 risk/suggest severity-agreement invariant is preserved (both
+  commands classify the same function identically, with or without the new
+  factors).
 
 ### Fixed
 

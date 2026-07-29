@@ -251,6 +251,31 @@ fn load_cfg_from_sqlite(conn: &Connection, function_id: i64) -> Result<crate::cf
 /// Common CFG loading logic used by the SQLite backend
 ///
 /// This function takes pre-fetched block rows and builds the CFG structure.
+/// Map Debug-formatted compiler-extractor terminators (clang→LLVM IR and
+/// javac→bytecode paths store `format!("{:?}", enum)` with payloads) to a
+/// Terminator by prefix. Payload data (block indices) is not needed here —
+/// real edges come from the cfg_edges table.
+fn map_compiler_debug_terminator(s: &str) -> crate::cfg::Terminator {
+    use crate::cfg::Terminator;
+    if s.starts_with("Conditional") || s.starts_with("Switch") {
+        Terminator::SwitchInt {
+            targets: vec![],
+            otherwise: 0,
+        }
+    } else if s.starts_with("Unconditional")
+        || s.starts_with("Fallthrough")
+        || s.starts_with("Goto")
+    {
+        Terminator::Goto { target: 0 }
+    } else if s.starts_with("Throw") {
+        Terminator::Abort("throw".to_string())
+    } else if s.starts_with("Return") {
+        Terminator::Return
+    } else {
+        Terminator::Unreachable
+    }
+}
+
 pub(super) fn load_cfg_from_rows(
     block_rows: Vec<CfgBlockRow>,
     file_path: Option<std::path::PathBuf>,
@@ -281,28 +306,37 @@ pub(super) fn load_cfg_from_rows(
     ) in block_rows.iter().enumerate()
     {
         let kind = match kind_str.as_str() {
-            "entry" => BlockKind::Entry,
+            "entry" | "Entry" => BlockKind::Entry,
             "return" => BlockKind::Exit,
             "if" | "else" | "loop" | "while" | "for" | "match_arm" | "block" => BlockKind::Normal,
             _ => BlockKind::Normal,
         };
 
+        // Two terminator vocabularies land in this table:
+        // tree-sitter CFG extraction (lowercase: "conditional", "fallthrough", ...)
+        // and MIR CFG extraction (classify_terminator in magellan's mir_parser:
+        // "Jump", "SwitchInt", "Return", "Assert", "Drop", "Call", ...).
         let terminator = match terminator_str.as_deref() {
             Some("fallthrough") => Terminator::Goto { target: 0 },
-            Some("conditional") => Terminator::SwitchInt {
+            Some("conditional") | Some("SwitchInt") | Some("Assert") => Terminator::SwitchInt {
                 targets: vec![],
                 otherwise: 0,
             },
-            Some("goto") => Terminator::Goto { target: 0 },
-            Some("return") => Terminator::Return,
+            Some("goto") | Some("Jump") | Some("Drop") => Terminator::Goto { target: 0 },
+            Some("return") | Some("Return") => Terminator::Return,
             Some("break") => Terminator::Abort("break".to_string()),
             Some("continue") => Terminator::Abort("continue".to_string()),
-            Some("call") => Terminator::Call {
+            Some("call") | Some("Call") => Terminator::Call {
                 target: None,
                 unwind: None,
             },
             Some("panic") => Terminator::Abort("panic".to_string()),
-            Some(_) | None => Terminator::Unreachable,
+            // clang→LLVM IR and javac→bytecode extractors store Debug-formatted
+            // Rust enums with payloads, e.g. `Conditional { cond: "%c", .. }`,
+            // `Unconditional { dest: "14" }`, `Switch { default: 3, .. }` —
+            // match them by prefix. None falls through to Unreachable.
+            Some(other) => map_compiler_debug_terminator(other),
+            None => Terminator::Unreachable,
         };
 
         let source_location = if let Some(ref path) = file_path {
@@ -701,6 +735,89 @@ mod tests {
     }
 
     #[test]
+    fn test_load_cfg_mir_terminator_vocabulary() {
+        use crate::cfg::Terminator;
+
+        let conn = create_test_db_with_schema();
+
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "mir_func", "test.rs", "{}"),
+        )
+        .unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // MIR-sourced rows (magellan mir_parser classify_terminator spellings)
+        for (kind, term) in [
+            ("Entry", "SwitchInt"),
+            ("Normal", "Jump"),
+            ("Normal", "Return"),
+        ] {
+            conn.execute(
+                "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                         start_line, start_col, end_line, end_col)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                rusqlite::params!(function_id, kind, term, 0, 10, 1, 0, 1, 10),
+            )
+            .unwrap();
+        }
+
+        let cfg = load_cfg_from_db_with_conn(&conn, function_id).unwrap();
+
+        assert_eq!(cfg.node_count(), 3);
+        let block0 = &cfg[petgraph::graph::NodeIndex::new(0)];
+        assert!(matches!(block0.terminator, Terminator::SwitchInt { .. }));
+        assert!(matches!(block0.kind, crate::cfg::BlockKind::Entry));
+        let block1 = &cfg[petgraph::graph::NodeIndex::new(1)];
+        assert!(matches!(block1.terminator, Terminator::Goto { .. }));
+        let block2 = &cfg[petgraph::graph::NodeIndex::new(2)];
+        assert!(matches!(block2.terminator, Terminator::Return));
+    }
+
+    #[test]
+    fn test_load_cfg_compiler_debug_terminator_vocabulary() {
+        use crate::cfg::Terminator;
+
+        let conn = create_test_db_with_schema();
+
+        conn.execute(
+            "INSERT INTO graph_entities (kind, name, file_path, data) VALUES (?, ?, ?, ?)",
+            rusqlite::params!("function", "polyglot_func", "test.c", "{}"),
+        )
+        .unwrap();
+        let function_id: i64 = conn.last_insert_rowid();
+
+        // Debug-formatted spellings stored by the clang→LLVM IR and
+        // javac→bytecode extractors (observed in real cfg_blocks rows).
+        for term in [
+            "Conditional { cond: \"%cond\", true_dest: \"12\", false_dest: \"13\" }",
+            "Unconditional { dest: \"14\" }",
+            "Switch { default: 3, cases: [4, 5] }",
+            "Throw",
+        ] {
+            conn.execute(
+                "INSERT INTO cfg_blocks (function_id, kind, terminator, byte_start, byte_end,
+                                         start_line, start_col, end_line, end_col)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                rusqlite::params!(function_id, "Normal", term, 0, 10, 1, 0, 1, 10),
+            )
+            .unwrap();
+        }
+
+        let cfg = load_cfg_from_db_with_conn(&conn, function_id).unwrap();
+
+        assert_eq!(cfg.node_count(), 4);
+        let b0 = &cfg[petgraph::graph::NodeIndex::new(0)];
+        assert!(matches!(b0.terminator, Terminator::SwitchInt { .. }));
+        let b1 = &cfg[petgraph::graph::NodeIndex::new(1)];
+        assert!(matches!(b1.terminator, Terminator::Goto { .. }));
+        let b2 = &cfg[petgraph::graph::NodeIndex::new(2)];
+        assert!(matches!(b2.terminator, Terminator::SwitchInt { .. }));
+        let b3 = &cfg[petgraph::graph::NodeIndex::new(3)];
+        assert!(matches!(b3.terminator, Terminator::Abort(_)));
+    }
+
+    #[test]
     fn test_load_cfg_missing_cfg_blocks_table() {
         let conn = Connection::open_in_memory().unwrap();
 
@@ -817,9 +934,9 @@ mod tests {
     fn test_load_cfg_drops_dead_cfg_condition_blocks() {
         let conn = create_test_db_with_schema();
 
-        conn.execute("ALTER TABLE cfg_blocks ADD COLUMN cfg_condition TEXT", [])
-            .unwrap();
-
+        // cfg_condition is already part of the test schema
+        // (storage::schema::create_test_db_with_schema); only project_metadata
+        // needs the legacy ALTER.
         conn.execute(
             "ALTER TABLE magellan_meta ADD COLUMN project_metadata TEXT",
             [],

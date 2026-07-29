@@ -100,3 +100,6 @@ CLAUDE.md
 .magellan/
 .hermes/
 .claude/
+
+# Local worktrees
+/.worktrees/

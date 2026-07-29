@@ -5,6 +5,34 @@ All notable changes to Mirage are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.1] - 2026-07-29
+
+### Fixed
+
+- **Compiler-derived CFG blocks rendered as `unreachable`**
+  (`src/storage/operations.rs`): `load_cfg_from_rows` only recognized the
+  lowercase tree-sitter terminator vocabulary, so blocks indexed from real
+  compiler IR fell into the catch-all and rendered as `unreachable` with
+  misleading CFG output. Three vocabularies are now mapped: tree-sitter
+  (lowercase), Rust MIR (`Jump`, `SwitchInt`, `Return`, `Assert`, `Drop`,
+  `Call`, `Unreachable`), and the Debug-formatted enums stored by the
+  clang→LLVM IR and javac→bytecode extractors (prefix-matched:
+  `Conditional { .. }`, `Unconditional { .. }`, `Switch { .. }`, `Throw`,
+  `Return`). `Entry` block kinds keep `BlockKind::Entry`. Covered by
+  `test_load_cfg_mir_terminator_vocabulary` and
+  `test_load_cfg_compiler_debug_terminator_vocabulary`.
+
+- **Test schema drift: `test_load_cfg_drops_dead_cfg_condition_blocks`**
+  (`src/storage/operations.rs`): the test ALTERed `cfg_condition` onto
+  `cfg_blocks`, but the shared test schema already includes that column,
+  failing with "duplicate column name". The legacy ALTER is removed.
+
+### Known issues
+
+- `mirage cfg --function <name>` fails to resolve Java methods (e.g.
+  `classify`) in magellan databases even though `cfg_blocks` rows exist for
+  the entity; C and Rust names resolve. Under investigation.
+
 ## [1.12.0] - 2026-07-28
 
 ### Added
